@@ -49,7 +49,7 @@ A specialized, web-based project management system built to digitalize factory p
 - **Frontend**: [React](https://react.dev/) + [Tailwind CSS v4](https://tailwindcss.com/)
 - **Charts & Visualization**: [Recharts](https://recharts.org/)
 - **Icons**: [Lucide React](https://lucide.dev/)
-- **Database**: SQLite (Development) / MySQL compatible
+- **Database**: MySQL
 - **Bundler**: [Vite](https://vitejs.dev/)
 
 ---
