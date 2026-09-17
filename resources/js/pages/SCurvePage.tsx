@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { PROJECT } from '@/data/mockData';
+import { Project, PROJECT } from '@/data/mockData';
+import { recalculateWeeklyData } from '@/utils/weeklyEngine';
+import { exportToCSV } from '@/utils/exportEngine';
 import { PageHeader, Card, Button } from '@/components/ui';
-import { TrendingUp, BarChart2, Calendar, Eye, EyeOff } from 'lucide-react';
+import { TrendingUp, BarChart2, Calendar, Eye, EyeOff, Download } from 'lucide-react';
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, Area, ReferenceLine
@@ -12,7 +14,10 @@ type ViewMode = 'cumulative' | 'weekly';
 export default function SCurvePage() {
   const [viewMode, setViewMode] = useState<ViewMode>('cumulative');
   const [showTable, setShowTable] = useState(true);
-  const weeks = PROJECT.weeklyData;
+  
+  // Use engine to calculate exact cumulative values, avoiding any #REF! or #N/A from Excel logic
+  const [projectData] = useState<Project>(() => recalculateWeeklyData(PROJECT));
+  const weeks = projectData.weeklyData;
 
   const chartData = weeks.map(w => ({
     name: `W${w.week}`,
@@ -54,33 +59,57 @@ export default function SCurvePage() {
     );
   };
 
+  const handleExportCSV = () => {
+    const headers = ['Week', 'Start Date', 'End Date', 'Planned Weekly (%)', 'Actual Weekly (%)', 'Planned Cumulative (%)', 'Actual Cumulative (%)', 'Deviation (%)'];
+    const rows = weeks.map(w => {
+      const variance = w.actualCumulative > 0 ? w.actualCumulative - w.plannedCumulative : null;
+      return [
+        `W${w.week}`,
+        w.startDate,
+        w.endDate,
+        w.planned,
+        w.actual > 0 ? w.actual : '-',
+        w.plannedCumulative,
+        w.actualCumulative > 0 ? w.actualCumulative : '-',
+        variance !== null ? variance : '-'
+      ];
+    });
+    
+    exportToCSV(`SCurve_Data_Export_${new Date().toISOString().slice(0,10)}`, headers, rows);
+  };
+
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
       <PageHeader
         title="S-Curve Analysis"
         subtitle="Planned vs. Actual cumulative progress tracking over project lifecycle"
         actions={
-          <div className="flex items-center gap-2 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
-            <button
-              onClick={() => setViewMode('cumulative')}
-              className={`px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
-                viewMode === 'cumulative'
-                  ? 'bg-brand text-white shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              Cumulative S-Curve
-            </button>
-            <button
-              onClick={() => setViewMode('weekly')}
-              className={`px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
-                viewMode === 'weekly'
-                  ? 'bg-brand text-white shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              Weekly Progress
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
+              <button
+                onClick={() => setViewMode('cumulative')}
+                className={`px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
+                  viewMode === 'cumulative'
+                    ? 'bg-brand text-white shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                Cumulative S-Curve
+              </button>
+              <button
+                onClick={() => setViewMode('weekly')}
+                className={`px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
+                  viewMode === 'weekly'
+                    ? 'bg-brand text-white shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                Weekly Progress
+              </button>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleExportCSV} icon={Download} className="text-[12px] h-[34px]">
+              <span className="hidden sm:inline">Export Data</span>
+            </Button>
           </div>
         }
       />
@@ -90,7 +119,7 @@ export default function SCurvePage() {
         {[
           {
             label: 'Target S-Curve',
-            value: `${PROJECT.weeklyData.at(-1)?.plannedCumulative.toFixed(1)}%`,
+            value: `${weeks.at(-1)?.plannedCumulative.toFixed(1)}%`,
             sub: 'Target at completion (W150)',
           },
           {

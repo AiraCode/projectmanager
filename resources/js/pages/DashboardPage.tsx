@@ -1,25 +1,39 @@
 import { Calendar, Clock, TrendingUp, DollarSign, CheckCircle2, AlertTriangle, XCircle, Layers, ArrowUpRight } from 'lucide-react';
 import { NavLink } from 'react-router';
-import { PROJECT } from '@/data/mockData';
+import { useState } from 'react';
+import { Project, PROJECT } from '@/data/mockData';
 import { StatusBadge, ProgressBar, formatRupiah, PageHeader, Card, KpiCard } from '@/components/ui';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-
-const miniChart = PROJECT.weeklyData.slice(20, 42).map(w => ({
-  week: `W${w.week}`,
-  Planned: w.plannedCumulative,
-  Actual: w.actualCumulative > 0 ? w.actualCumulative : undefined,
-}));
+import { recalculateProgress } from '@/utils/progressEngine';
+import { recalculateSchedule } from '@/utils/scheduleEngine';
+import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 
 export default function DashboardPage() {
-  const p = PROJECT;
-  const budgetUsedPct = Math.round((p.usedBudget / p.totalBudget) * 100);
-  const remaining = p.totalBudget - p.usedBudget;
+  // Initialize with fully recalculated data from all engines
+  const [p] = useState<Project>(() => 
+    recalculateWeeklyData(recalculateSchedule(recalculateProgress(PROJECT)))
+  );
+
+  const usedBudget = p.budgetEntries?.reduce((a, b) => a + b.hargaTotal, 0) || p.usedBudget;
+  const budgetUsedPct = Math.round((usedBudget / p.totalBudget) * 100);
+  const remaining = p.totalBudget - usedBudget;
   const budgetHealth = budgetUsedPct <= 80 ? 'good' : budgetUsedPct <= 95 ? 'warning' : 'critical';
 
   const statusCounts = p.mainJobs.reduce((acc, mj) => {
     acc[mj.status] = (acc[mj.status] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+
+  // Find current week and slice around it for the mini chart
+  const currentWeekIdx = p.weeklyData.findIndex(w => w.actual === 0 && w.week > 30) - 1;
+  const chartStart = Math.max(0, currentWeekIdx - 10);
+  const chartEnd = Math.min(p.weeklyData.length, currentWeekIdx + 12);
+  
+  const miniChart = p.weeklyData.slice(chartStart, chartEnd).map(w => ({
+    week: `W${w.week}`,
+    Planned: w.plannedCumulative,
+    Actual: w.actualCumulative > 0 ? w.actualCumulative : undefined,
+  }));
 
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-6">
@@ -51,7 +65,7 @@ export default function DashboardPage() {
         />
         <KpiCard
           label="Realisasi Budget"
-          value={formatRupiah(p.usedBudget)}
+          value={formatRupiah(usedBudget)}
           sub={`${budgetUsedPct}% of ${formatRupiah(p.totalBudget)}`}
           icon={DollarSign}
         />
@@ -113,7 +127,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <TrendingUp size={16} className="text-brand" />
               <span className="text-[13px] font-bold text-neutral-800 tracking-tight">S-Curve Overview</span>
-              <span className="text-[11px] text-neutral-400 font-medium">(Weeks 21–42)</span>
+              <span className="text-[11px] text-neutral-400 font-medium">(W{chartStart + 1}–W{chartEnd})</span>
             </div>
             <NavLink to="/scurve" className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
               Full S-Curve <ArrowUpRight size={12} />
@@ -230,7 +244,7 @@ export default function DashboardPage() {
             <div className="space-y-2.5">
               <div className="flex justify-between items-baseline text-[12px]">
                 <span className="text-neutral-500 font-medium">Realisasi</span>
-                <span className="font-bold text-neutral-900">{formatRupiah(p.usedBudget)}</span>
+                <span className="font-bold text-neutral-900">{formatRupiah(usedBudget)}</span>
               </div>
               <ProgressBar
                 value={budgetUsedPct}

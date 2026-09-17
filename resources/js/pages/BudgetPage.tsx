@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X } from 'lucide-react';
+import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X, Download } from 'lucide-react';
 import { PROJECT, BudgetEntry } from '@/data/mockData';
+import { exportToCSV } from '@/utils/exportEngine';
 import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState } from '@/components/ui';
 
 const KATEGORI = ['Material', 'Jasa', 'Mesin', 'Peralatan', 'Logistik', 'Lainnya'];
@@ -39,6 +40,17 @@ export default function BudgetPage() {
   const remaining = totalBudget - totalUsed;
   const usedPct = Math.round((totalUsed / totalBudget) * 100);
   const budgetColor: 'brand' | 'warning' | 'danger' = usedPct <= 80 ? 'brand' : usedPct <= 95 ? 'warning' : 'danger';
+
+  // Generate flat list of all tasks from project structure for selection
+  const allTasks = PROJECT.mainJobs.flatMap(mj => 
+    mj.subMainJobs.flatMap(smj => 
+      smj.subtasks.map(st => ({
+        code: st.code,
+        name: st.name,
+        mjName: mj.name
+      }))
+    )
+  );
 
   const numQty = Number(form.qty || 0);
   const numHargaSatuan = Number(form.hargaSatuan || 0);
@@ -88,20 +100,50 @@ export default function BudgetPage() {
     total: entries.filter(e => e.kategori === k).reduce((a, e) => a + e.hargaTotal, 0),
   })).filter(k => k.total > 0);
 
+  const handleExportCSV = () => {
+    const headers = ['Tanggal', 'Code WBS', 'Sub Task WBS', 'Kategori', 'Nama Item', 'Spesifikasi', 'QTY', 'Satuan', 'Harga Satuan (Rp)', 'Harga Total (Rp)', 'Referensi', 'Lokasi', 'Keterangan'];
+    const rows = filtered.map(e => [
+      e.tanggal,
+      e.codeSubWbs,
+      e.subTaskWbs,
+      e.kategori,
+      e.namaItem,
+      e.spesifikasi || '-',
+      e.qty,
+      e.satuan,
+      e.hargaSatuan,
+      e.hargaTotal,
+      e.referensi || '-',
+      e.lokasi || '-',
+      e.keterangan || '-'
+    ]);
+    exportToCSV(`Budget_Realization_${new Date().toISOString().slice(0,10)}`, headers, rows);
+  };
+
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
       <PageHeader
         title="Budget Realization"
         subtitle="Realisasi Anggaran Proyek — Expenditure tracking tied to WBS structure"
         actions={
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => setShowModal(true)}
-            icon={Plus}
-          >
-            Add Transaction
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={handleExportCSV}
+              icon={Download}
+            >
+              <span className="hidden sm:inline">Export CSV</span>
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => setShowModal(true)}
+              icon={Plus}
+            >
+              Add Transaction
+            </Button>
+          </div>
         }
       />
 
@@ -295,7 +337,7 @@ export default function BudgetPage() {
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Tanggal</label>
               <input
@@ -303,26 +345,29 @@ export default function BudgetPage() {
                 required
                 value={form.tanggal}
                 onChange={e => setForm(p => ({ ...p, tanggal: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                className="w-full sm:w-1/3 px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
               />
             </div>
             <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Code Sub-WBS</label>
-              <input
-                placeholder="e.g. 4.5"
+              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Tugas WBS Terkait</label>
+              <select
+                required
                 value={form.codeSubWbs}
-                onChange={e => setForm(p => ({ ...p, codeSubWbs: e.target.value }))}
+                onChange={e => {
+                  const selected = allTasks.find(t => t.code === e.target.value);
+                  setForm(p => ({
+                    ...p, 
+                    codeSubWbs: selected?.code || '',
+                    subTaskWbs: selected?.name || ''
+                  }));
+                }}
                 className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-              />
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Sub Task - WBS</label>
-              <input
-                placeholder="e.g. Instalasi Pompa"
-                value={form.subTaskWbs}
-                onChange={e => setForm(p => ({ ...p, subTaskWbs: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-              />
+              >
+                <option value="" disabled>Pilih Tugas dari WBS...</option>
+                {allTasks.map(t => (
+                  <option key={t.code} value={t.code}>[{t.code}] {t.name} (Bagian dari: {t.mjName})</option>
+                ))}
+              </select>
             </div>
           </div>
 

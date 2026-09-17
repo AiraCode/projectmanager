@@ -1,13 +1,15 @@
-import { useState } from 'react';
-import { PROJECT, WeekData } from '@/data/mockData';
+import { useState, useEffect } from 'react';
+import { Project, PROJECT, WeekData } from '@/data/mockData';
+import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { PageHeader, Card, Button, Toast } from '@/components/ui';
 import { Info, ChevronLeft, ChevronRight, Check, Calendar, TrendingUp } from 'lucide-react';
 
 const PAGE_SIZE = 10;
 
 export default function WeeklyPage() {
-  const weeks = PROJECT.weeklyData;
-  const [page, setPage] = useState(2); // Start around week 21-30 for good visibility of active progress
+  const [projectData, setProjectData] = useState<Project>(() => recalculateWeeklyData(PROJECT));
+  const weeks = projectData.weeklyData;
+  const [page, setPage] = useState(0); // Start at beginning for dynamically generated
   const [editing, setEditing] = useState<Record<number, string>>({});
   const [saved, setSaved] = useState<Record<number, boolean>>({});
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -23,8 +25,23 @@ export default function WeeklyPage() {
   };
 
   const handleSave = (weekNo: number) => {
+    const val = parseFloat(editing[weekNo]);
+    if (isNaN(val) || val < 0) {
+      setToastMsg('Masukkan nilai yang valid.');
+      return;
+    }
+
+    setProjectData(prev => {
+      const newData = { ...prev };
+      const weekIndex = newData.weeklyData.findIndex(w => w.week === weekNo);
+      if (weekIndex !== -1) {
+        newData.weeklyData[weekIndex].actual = val;
+      }
+      return recalculateWeeklyData(newData);
+    });
+
     setSaved(p => ({ ...p, [weekNo]: true }));
-    setToastMsg(`Actual progress untuk W${weekNo} berhasil disimpan.`);
+    setToastMsg(`Actual progress untuk W${weekNo} berhasil disimpan sebesar ${val}%.`);
     setTimeout(() => setSaved(p => ({ ...p, [weekNo]: false })), 2000);
   };
 
@@ -43,7 +60,7 @@ export default function WeeklyPage() {
         <Info size={16} className="text-brand flex-shrink-0 mt-0.5" />
         <div className="text-[12.5px] text-neutral-700 flex-1 leading-relaxed">
           <span className="font-semibold text-brand">System-Generated Weekly Periods: </span>
-          The number and dates of weeks are derived automatically from the project schedule (Start: {PROJECT.startDate} → End: {PROJECT.endDate}).
+          The number and dates of weeks are derived automatically from the project schedule (Start: {projectData.startDate} → End: {projectData.endDate}).
           Planned weekly progress is calculated from WBS work weights, while Actual values are reported by authorized PICs.
         </div>
       </div>
