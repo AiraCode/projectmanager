@@ -1,58 +1,127 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# JEKER — Project Management Web Application
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A specialized, web-based project management system built to digitalize factory project execution, scheduling, S-Curve analysis, and budget monitoring.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 📌 Project Overview
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+**JEKER** is designed according to corporate manufacturing project workflows and master planning methodologies (derived from `MASTER Project MGMT.xlsx` and Microsoft Project standards). It enforces strict WBS structuring, automated template instantiation, and department-level accountability.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### Core Architectural Concepts
 
-## Learning Laravel
+1. **3-Tier WBS Hierarchy**:
+   $$\text{Project} \longrightarrow \text{Main Job} \longrightarrow \text{Sub Main Job} \longrightarrow \text{Sub-Subtask}$$
+   - **Main Job (Level 1)**: 17 fixed corporate master jobs representing the complete factory lifecycle.
+   - **Sub Main Job (Level 2)**: 72 predefined jobs with fixed PIC department assignments.
+   - **Sub-Subtask (Level 3)**: Dynamic, project-specific operational tasks created by project teams.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+2. **Strict Admin Ownership Rule**:
+   - One Admin can own **exactly one Project in total** across all companies.
+   - Enforced across the database schema (`UNIQUE` constraint), backend request validation, and frontend interface.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+3. **Automated Master Template Instantiation**:
+   - Creating a project automatically provisions all 17 Main Jobs and 72 Sub Main Jobs with predefined department PICs in a single transaction.
+   - Admin does not manually recreate the project structure.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+4. **Role-Based Authorization**:
+   - **Admin**: Full project management, project instantiation, and governance.
+   - **PIC Roles**: Department-specific responsibilities (`Engineering`, `Procurement`, `Purchasing`, `Legal`, `Production`, `PPIC`, `HRGA`, `Finance`, `SHE`, `QC`, `Sales`, `IT`, `BUSDEV`).
+   - Task checklists are restricted so that only the assigned department PIC or Admin can mark progress.
 
-## Agentic Development
+---
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## 🚀 Key Modules
 
+- **Dashboard**: High-level KPI indicators (Progress %, Active Main Jobs, Days Left, Budget Absorption), S-Curve preview, and fixed job status breakdown.
+- **Projects**: Dynamic company layer (`Company` entity), project overview, and master template structure viewer.
+- **Task Management**: Interactive 3-tier WBS hierarchy, predecessor dependencies (`FS`, `SS`, `FF`, `SF` with lag days), and role-gated checklist authorization.
+- **Timeline (Gantt Chart)**: Visual schedule tracking with interactive timeline grid, milestone markers, and dependency indicators.
+- **Weekly Progress**: Planned vs. actual progress tracking with automated deviation status alerts (On Track, At Risk, Critical Lag).
+- **S-Curve Analytics**: Dual-mode interactive visualization (Cumulative % and Weekly %) with milestone projection and data table inspection.
+- **Budget Monitoring**: Expense tracking categorized by Material, Jasa/Subkon, Sewa Alat, and Overhead with Rupiah currency formatting.
+
+---
+
+## 🛠️ Technology Stack
+
+- **Backend**: [Laravel](https://laravel.com/) (PHP 8.3+)
+- **Frontend**: [React](https://react.dev/) + [Tailwind CSS v4](https://tailwindcss.com/)
+- **Charts & Visualization**: [Recharts](https://recharts.org/)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **Database**: SQLite (Development) / MySQL compatible
+- **Bundler**: [Vite](https://vitejs.dev/)
+
+---
+
+## ⚙️ Installation & Setup
+
+### 1. Prerequisites
+- PHP 8.3 or higher
+- Composer 2.x
+- Node.js 18+ and npm
+
+### 2. Clone & Install Dependencies
 ```bash
-composer require laravel/boost --dev
+# Clone the repository
+git clone https://github.com/AiraCode/projectmanager.git
+cd projectmanager
 
-php artisan boost:install
+# Install PHP dependencies
+composer install
+
+# Install Frontend dependencies
+npm install
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### 3. Environment Configuration
+```bash
+# Copy environment file
+cp .env.example .env
 
-## Contributing
+# Generate application key
+php artisan key:generate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 4. Database Setup & Seeding
+```bash
+# Run database migrations and seed master data
+php artisan migrate:fresh --seed
+```
+*Note: Seeders populate initial companies, department PIC accounts, and a sample project with the 17 fixed Main Jobs template.*
 
-## Code of Conduct
+### 5. Compile Frontend Assets
+```bash
+# Development mode with hot reload
+npm run dev
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+# Or build for production
+npm run build
+```
 
-## Security Vulnerabilities
+### 6. Run Application
+```bash
+php artisan serve
+```
+Open your browser and navigate to `http://localhost:8000`.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+---
 
-## License
+## 🧪 Testing
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Automated feature tests verify role authorization, the Admin ownership constraint, and template cloning:
+
+```bash
+# Run all tests
+php artisan test
+
+# Run Admin ownership and project creation tests specifically
+php artisan test --filter=AdminOwnershipAndProjectCreationTest
+```
+
+---
+
+## 🔒 Security & Guidelines
+
+- Standard Laravel best practices are followed for routing, Eloquent ORM, and CSRF/session protection.
+- Sensitive environment variables and secrets must be configured in `.env` and never committed to version control.
