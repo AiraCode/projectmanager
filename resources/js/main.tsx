@@ -1,10 +1,31 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
+import { createInertiaApp } from '@inertiajs/react'
+import { createRoot } from 'react-dom/client'
+import Layout from './components/Layout'
+import { AuthProvider } from './context/AuthContext'
 import './index.css'
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+createInertiaApp({
+  resolve: name => {
+    const pages = import.meta.glob('./pages/**/*.tsx', { eager: true }) as Record<string, any>
+    const page = pages[`./pages/${name}.tsx`]
+
+    if (name === 'LoginPage') {
+      // Login page: just render the page directly (no sidebar layout)
+      page.default.layout = page.default.layout
+        ?? ((page: React.ReactNode) => <AuthProvider>{page}</AuthProvider>)
+    } else {
+      // All other pages: wrap with AuthProvider + Layout
+      page.default.layout = page.default.layout
+        ?? ((page: React.ReactNode) => (
+          <AuthProvider>
+            <Layout>{page}</Layout>
+          </AuthProvider>
+        ))
+    }
+
+    return page
+  },
+  setup({ el, App, props }) {
+    createRoot(el).render(<App {...props} />)
+  },
+})

@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Company extends Model
+class Role extends Model
 {
     use SoftDeletes;
 
@@ -13,11 +13,6 @@ class Company extends Model
 
     public function users()
     {
-        return $this->hasMany(User::class, 'companies_id');
-    }
-
-    public function projects()
-    {
-        return $this->hasMany(Project::class, 'companies_id');
+        return $this->hasMany(User::class, 'roles_id');
     }
 }

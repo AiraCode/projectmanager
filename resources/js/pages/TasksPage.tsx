@@ -11,9 +11,22 @@ const STATUSES: Status[] = ['Open', 'On Track', 'At Risk', 'Delayed', 'Cancelled
 
 export default function TasksPage() {
   const { user } = useAuth();
+  const { project } = usePage().props as any;
   
-  // Initialize with recalculated progress and schedule so initial mock data is also correct
-  const [projectData, setProjectData] = useState<Project>(() => recalculateSchedule(recalculateProgress(PROJECT)));
+  // Role checks
+  // PIC can add/edit/delete tasks in their scope
+  // Admin (Utama/Progres) = read-only, no edit buttons
+  // Worker = can only check/uncheck tasks assigned to their division
+  const isPIC    = user?.role === 'PIC';
+  const isWorker = user?.role === 'Worker';
+  const isAdmin  = user?.role === 'Admin'; // read-only
+  
+  const [projectData, setProjectData] = useState<Project>(() => {
+    if (!project || !project.mainJobs) {
+      return recalculateSchedule(recalculateProgress(PROJECT));
+    }
+    return recalculateSchedule(recalculateProgress(project));
+  });
   
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<Status | ''>('');
@@ -21,7 +34,6 @@ export default function TasksPage() {
   const [expandedMJ, setExpandedMJ] = useState<Record<string, boolean>>({ 'mj-01': true, 'mj-04': true });
   const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({ 'smj-1-1': true, 'smj-4-5': true });
   
-  // showAddTaskModal stores { smjId } for Add, or { smjId, task } for Edit
   const [showAddTaskModal, setShowAddTaskModal] = useState<{ smjId: string, task?: SubSubtask } | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -90,10 +102,21 @@ export default function TasksPage() {
     setToastMsg(`Sub-Subtask "${taskName}" berhasil dihapus. Jadwal otomatis disesuaikan.`);
   };
 
-  const isAuthorized = (pic: string) => {
-    if (user?.role === 'Admin') return true;
-    if (!user?.pic) return false;
-    return user.pic.toLowerCase() === pic.toLowerCase();
+  // PIC is authorized for their WBS scope; Worker authorized for their division
+  const isAuthorizedToCheck = (smjPic: string) => {
+    if (isPIC) return user?.division?.toLowerCase() === smjPic.toLowerCase() ||
+                      user?.company?.toLowerCase() === smjPic.toLowerCase() ||
+                      (user?.pic ?? '').toLowerCase() === smjPic.toLowerCase();
+    if (isWorker) return (user?.division ?? '').toLowerCase() === smjPic.toLowerCase();
+    return false; // Admin = cannot check (read-only)
+  };
+
+  // PIC can edit/delete within their scope
+  const canEditScope = (smjPic: string) => {
+    if (!isPIC) return false;
+    return user?.division?.toLowerCase() === smjPic.toLowerCase() ||
+           (user?.pic ?? '').toLowerCase() === smjPic.toLowerCase() ||
+           true; // PIC manages all WBS in their project for now
   };
 
   const handleCheck = (taskId: string, authorized: boolean, taskName: string) => {
@@ -164,7 +187,10 @@ export default function TasksPage() {
         actions={
           <div className="flex items-center gap-4">
             <span className="text-[12px] text-neutral-500 hidden sm:inline">
-              Role: <strong className="text-neutral-800">{user?.role}</strong> ({user?.pic || 'All Scope'})
+              Role: <strong className="text-neutral-800">{user?.role}</strong>
+              {isAdmin && <span className="ml-1 text-warning font-semibold">(Read-Only)</span>}
+              {isPIC && <span className="ml-1 text-brand font-semibold">(Can Manage Tasks)</span>}
+              {isWorker && <span className="ml-1 text-neutral-600 font-semibold">· {user?.division || 'Worker'}</span>}
             </span>
             
             <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
@@ -284,12 +310,13 @@ export default function TasksPage() {
                       smj={smj}
                       expanded={!!expandedSMJ[smj.id]}
                       onToggle={() => toggleSMJ(smj.id)}
-                      isAuthorized={isAuthorized(smj.pic)}
+                      canCheck={isAuthorizedToCheck(smj.pic)}
+                      canEdit={canEditScope(smj.pic)}
                       onOpenAddModal={() => setShowAddTaskModal({ smjId: smj.id })}
                       onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, task })}
                       onDeleteTask={(taskId, taskName) => handleDeleteSubtask(smj.id, taskId, taskName)}
                       onCheck={handleCheck}
-                      isAdmin={user?.role === 'Admin'}
+                      userRole={user?.role ?? 'Admin'}
                     />
                   ))}
                   {mj.subMainJobs.length === 0 && (
@@ -415,18 +442,21 @@ export default function TasksPage() {
 }
 
 function SubMainJobSection({
-  smj, expanded, onToggle, isAuthorized, onOpenAddModal, onOpenEditModal, onDeleteTask, onCheck, isAdmin
+  smj, expanded, onToggle, canCheck, canEdit, onOpenAddModal, onOpenEditModal, onDeleteTask, onCheck, userRole
 }: {
   smj: SubMainJob;
   expanded: boolean;
   onToggle: () => void;
-  isAuthorized: boolean;
+  canCheck: boolean;  // Worker/PIC authorized for this scope
+  canEdit: boolean;   // PIC only
   onOpenAddModal: () => void;
   onOpenEditModal: (task: SubSubtask) => void;
   onDeleteTask: (taskId: string, taskName: string) => void;
   onCheck: (id: string, auth: boolean, name: string) => void;
-  isAdmin: boolean;
+  userRole: string;
 }) {
+  const isPIC = userRole === 'PIC';
+
   return (
     <div className="transition-colors">
       <div className="flex items-center gap-3 pl-6 sm:pl-9 pr-4 py-2.5 hover:bg-neutral-50/80">
@@ -439,23 +469,26 @@ function SubMainJobSection({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-[12.5px] font-semibold text-neutral-800 truncate">{smj.name}</span>
-            {!isAuthorized && (
-              <span title="Hanya PIC bertanggung jawab yang dapat mengubah tugas ini" className="text-neutral-400">
+            {!canCheck && userRole !== 'Admin' && (
+              <span title="Divisi berbeda — tidak dapat mengubah tugas ini" className="text-neutral-400">
                 <Lock size={12} />
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-neutral-100 text-neutral-600 border border-neutral-200">
-              PIC: {smj.pic}
+            {/* Divisi yang bertanggung jawab */}
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand/8 text-brand border border-brand/20">
+              <Shield size={9} className="mr-1" />
+              Divisi: {smj.pic}
             </span>
-            <span className="text-[10.5px] text-neutral-400 font-medium">Sub Main Job (Fixed)</span>
+            <span className="text-[10.5px] text-neutral-400 font-medium">Sub Main Job</span>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <StatusBadge status={smj.status} size="xs" />
           <span className="text-[11.5px] font-bold text-neutral-700 w-8 text-right">{smj.progress}%</span>
-          {isAdmin && (
+          {/* Only PIC can add tasks — Admin is read-only */}
+          {isPIC && canEdit && (
             <Button
               variant="outline"
               size="sm"
@@ -469,27 +502,27 @@ function SubMainJobSection({
         </div>
       </div>
 
-      {/* Level 3: Project-Specific Sub-Subtasks */}
+      {/* Level 3: Sub-Subtasks */}
       {expanded && (
         <div className="pl-12 sm:pl-16 pr-4 pb-3 pt-1 space-y-1.5">
           {smj.subtasks.length === 0 ? (
             <div className="py-2 text-[12px] text-neutral-400 italic">
-              No Sub-Subtasks added yet. {isAdmin && "Click 'Add' to enter project-specific tasks."}
+              Belum ada Sub-Subtask.{isPIC && canEdit && " Klik 'Add' untuk menambahkan task."}
             </div>
           ) : (
             smj.subtasks.map(st => (
-                <SubtaskRow
-                  key={st.id}
-                  st={st}
-                  isChecked={st.checked}
-                  auth={isAuthorized}
-                  isAdmin={isAdmin}
-                  onCheck={() => onCheck(st.id, isAuthorized, st.name)}
-                  onEdit={() => onOpenEditModal(st)}
-                  onDelete={() => onDeleteTask(st.id, st.name)}
-                />
-              )
-            )
+              <SubtaskRow
+                key={st.id}
+                st={st}
+                divisi={smj.pic}
+                isChecked={st.checked}
+                canCheck={canCheck}
+                canEdit={canEdit && isPIC}
+                onCheck={() => onCheck(st.id, canCheck, st.name)}
+                onEdit={() => onOpenEditModal(st)}
+                onDelete={() => onDeleteTask(st.id, st.name)}
+              />
+            ))
           )}
         </div>
       )}
@@ -497,11 +530,12 @@ function SubMainJobSection({
   );
 }
 
-function SubtaskRow({ st, isChecked, auth, isAdmin, onCheck, onEdit, onDelete }: {
+function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit, onDelete }: {
   st: SubSubtask;
+  divisi: string;      // Nama divisi yang bertanggung jawab
   isChecked: boolean;
-  auth: boolean;
-  isAdmin: boolean;
+  canCheck: boolean;   // Boleh check/uncheck
+  canEdit: boolean;    // Boleh edit/delete (PIC only)
   onCheck: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -514,12 +548,13 @@ function SubtaskRow({ st, isChecked, auth, isAdmin, onCheck, onEdit, onDelete }:
           : 'bg-white border-neutral-200/80 hover:border-neutral-300 shadow-xs'
       }`}
     >
+      {/* Checkbox — only shown to Worker/PIC in their scope */}
       <button
         onClick={onCheck}
-        disabled={!auth}
+        disabled={!canCheck}
         aria-label={`Toggle checklist for ${st.name}`}
         className={`mt-0.5 sm:mt-0 flex-shrink-0 transition-transform active:scale-90 ${
-          auth ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
+          canCheck ? 'cursor-pointer' : 'cursor-not-allowed opacity-30'
         }`}
       >
         {isChecked ? (
@@ -535,11 +570,16 @@ function SubtaskRow({ st, isChecked, auth, isAdmin, onCheck, onEdit, onDelete }:
           <span className={`text-[12.5px] font-medium ${isChecked ? 'line-through text-neutral-400' : 'text-neutral-800'}`}>
             {st.name}
           </span>
-          {!auth && <Lock size={11} className="text-neutral-300" />}
+          {!canCheck && <Lock size={11} className="text-neutral-300" />}
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-neutral-400">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-neutral-400">
+          {/* Divisi yang bertugas */}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[10px] font-semibold text-neutral-600">
+            <Shield size={9} />
+            {divisi}
+          </span>
           <span>{st.startDate} → {st.finishDate}</span>
-          <span>Duration: {st.duration}d</span>
+          <span>Durasi: {st.duration}h</span>
           {st.predecessor && (
             <span className="font-medium text-neutral-500">
               Pred: {st.predecessor} ({st.depType || 'FS'}{st.lag ? ` +${st.lag}d` : ''})
@@ -553,7 +593,8 @@ function SubtaskRow({ st, isChecked, auth, isAdmin, onCheck, onEdit, onDelete }:
         <span className="text-[11px] font-bold text-neutral-700 w-7 text-right">
           {isChecked ? 100 : st.progress}%
         </span>
-        {isAdmin && (
+        {/* Edit/Delete: PIC only — Admin cannot edit */}
+        {canEdit && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
             <button onClick={onEdit} className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Edit Task">
               <Edit2 size={13} />

@@ -2,53 +2,42 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Project extends Model
 {
-    use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
-        'company_id',
-        'admin_id',
-        'name',
+        'companies_id',
         'project_manager',
-        'start_date',
-        'end_date',
-        'total_budget',
-        'status',
-        'overall_progress',
-        'description',
+        'title',
+        'start',
+        'end',
+        'actual_start',
+        'actual_end',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'start_date' => 'date:Y-m-d',
-            'end_date' => 'date:Y-m-d',
-            'total_budget' => 'integer',
-            'overall_progress' => 'float',
-        ];
-    }
+    protected $casts = [
+        'start' => 'datetime',
+        'end' => 'datetime',
+        'actual_start' => 'datetime',
+        'actual_end' => 'datetime',
+    ];
 
     public function company()
     {
-        return $this->belongsTo(Company::class);
+        return $this->belongsTo(Company::class, 'companies_id');
     }
 
-    public function admin()
+    public function manager()
     {
-        return $this->belongsTo(User::class, 'admin_id');
+        return $this->belongsTo(User::class, 'project_manager');
     }
 
-    public function mainJobs()
+    public function mainWbs()
     {
-        return $this->hasMany(MainJob::class);
-    }
-
-    public function subMainJobs()
-    {
-        return $this->hasMany(SubMainJob::class);
+        return $this->hasMany(MainWbs::class, 'projects_id');
     }
 }

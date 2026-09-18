@@ -1,0 +1,42 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Wbs extends Model
+{
+    use SoftDeletes;
+
+    protected $table = 'wbs';
+
+    // Disable auto-incrementing ID since we use VARCHAR
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'sub_wbs_id',
+        'divisions_id',
+        'name',
+        'vendor',
+        'start',
+        'end',
+    ];
+
+    protected $casts = [
+        'start' => 'datetime',
+        'end' => 'datetime',
+    ];
+
+    public function parentSubWbs()
+    {
+        return $this->belongsTo(SubWbs::class, 'sub_wbs_id');
+    }
+
+    public function division()
+    {
+        return $this->belongsTo(Division::class, 'divisions_id');
+    }
+}

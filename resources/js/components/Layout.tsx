@@ -1,26 +1,26 @@
 import { useState, useEffect } from 'react';
-import { Outlet, NavLink, useNavigate, Navigate } from 'react-router';
+import { Link, usePage, router } from '@inertiajs/react';
 import {
   LayoutDashboard, FolderOpen, CheckSquare, GitBranch,
   BarChart2, TrendingUp, DollarSign, Menu, X, LogOut,
   ChevronRight, Shield, User
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { Role } from '@/data/mockData';
 
 const NAV_ITEMS = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/project', icon: FolderOpen, label: 'Project' },
-  { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
-  { to: '/timeline', icon: GitBranch, label: 'Timeline' },
-  { to: '/weekly', icon: BarChart2, label: 'Weekly' },
-  { to: '/scurve', icon: TrendingUp, label: 'S-Curve' },
-  { to: '/budget', icon: DollarSign, label: 'Budget', adminOnly: true },
+  { to: '/projects',  icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/project',   icon: FolderOpen,      label: 'Project'   },
+  { to: '/tasks',     icon: CheckSquare,     label: 'Tasks'     },
+  { to: '/timeline',  icon: GitBranch,       label: 'Timeline'  },
+  { to: '/weekly',    icon: BarChart2,       label: 'Weekly'    },
+  { to: '/scurve',    icon: TrendingUp,      label: 'S-Curve'   },
+  { to: '/budget',    icon: DollarSign,      label: 'Budget',   adminOnly: true },
 ] as const;
 
-export default function Layout() {
-  const { user, logout, switchRole } = useAuth();
-  const navigate = useNavigate();
+export default function Layout({ children }: { children?: React.ReactNode }) {
+  const { url } = usePage();          // url comes from the top-level page object
+  const { user } = useAuth();
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -33,16 +33,22 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handle);
   }, []);
 
-  if (!user) return <Navigate to="/login" replace />;
+  const handleLogout = () => { router.post('/logout'); };
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  // While user data is still loading / not available, show nothing
+  if (!user) return null;
 
-  const visibleNav = NAV_ITEMS.filter(n => !('adminOnly' in n && n.adminOnly && user.role !== 'Admin'));
+  const visibleNav = NAV_ITEMS.filter(n =>
+    !('adminOnly' in n && n.adminOnly && user.role !== 'Admin')
+  );
+
+  const currentUrl = url ?? '';
+  const isProjectSelector = currentUrl === '/projects';
 
   return (
     <div className="flex h-screen bg-neutral-50 overflow-hidden">
       {/* Mobile overlay */}
-      {sidebarOpen && (
+      {sidebarOpen && !isProjectSelector && (
         <div
           className="fixed inset-0 bg-neutral-900/60 backdrop-blur-xs z-40 lg:hidden transition-opacity"
           onClick={() => setSidebarOpen(false)}
@@ -50,13 +56,14 @@ export default function Layout() {
       )}
 
       {/* Sidebar */}
-      <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50
-        w-64 flex flex-col bg-sidebar text-white shadow-xl lg:shadow-none
-        transition-transform duration-200 ease-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-        {/* Logo with blue + red brand identity */}
+      {!isProjectSelector && (
+        <aside className={`
+          fixed lg:static inset-y-0 left-0 z-50
+          w-64 flex flex-col bg-sidebar text-white shadow-xl lg:shadow-none
+          transition-transform duration-200 ease-out
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}>
+          {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
           <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-brand flex-shrink-0 shadow-sm">
             <span className="text-white font-bold text-sm tracking-tight">J</span>
@@ -85,58 +92,35 @@ export default function Layout() {
               : 'bg-white/10 text-white/80 border border-white/20'
           }`}>
             <Shield size={11} className={user.role === 'Admin' ? 'text-brand-light' : 'text-white/70'} />
-            {user.role} {user.pic ? `· ${user.pic}` : ''}
+            {user.role} {user.division ? `· ${user.division}` : (user.company ? `· ${user.company}` : '')}
           </span>
           <span className="text-[10px] text-white/40 font-mono">v1.0</span>
         </div>
 
-        {/* Mobile View-as switcher */}
-        <div className="lg:hidden px-5 py-3 border-b border-white/5 bg-white/3">
-          <div className="text-[11px] text-white/50 mb-1.5 font-medium">Switch View (Demo):</div>
-          <div className="flex gap-2">
-            {(['Admin', 'PIC'] as Role[]).map(r => (
-              <button
-                key={r}
-                onClick={() => switchRole(r)}
-                className={`flex-1 py-1 rounded text-[11px] font-semibold transition-colors ${
-                  user.role === r
-                    ? 'bg-brand text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/15'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Navigation items */}
+        {/* Navigation */}
         <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto scrollbar-hide">
-          {visibleNav.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }: { isActive: boolean }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-all duration-150 ${
+          {visibleNav.map(({ to, icon: Icon, label }) => {
+            const isActive = currentUrl === to || currentUrl.startsWith(to + '/');
+            return (
+              <Link
+                key={to}
+                href={to}
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-all duration-150 ${
                   isActive
                     ? 'bg-brand text-white shadow-sm font-semibold'
                     : 'text-white/65 hover:text-white hover:bg-white/8'
-                }`
-              }
-            >
-              {({ isActive }: { isActive: boolean }) => (
-                <>
-                  <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
-                  <span>{label}</span>
-                  {isActive && <ChevronRight size={14} className="ml-auto opacity-70" />}
-                </>
-              )}
-            </NavLink>
-          ))}
+                }`}
+              >
+                <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
+                <span>{label}</span>
+                {isActive && <ChevronRight size={14} className="ml-auto opacity-70" />}
+              </Link>
+            );
+          })}
         </nav>
 
-        {/* User section in sidebar footer */}
+        {/* User footer */}
         <div className="p-3 border-t border-white/10">
           <div
             className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/8 cursor-pointer transition-colors"
@@ -154,8 +138,9 @@ export default function Layout() {
           </div>
         </div>
       </aside>
+      )}
 
-      {/* Main app container */}
+      {/* Main app */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
         <header className="flex items-center gap-4 px-5 lg:px-8 py-3 bg-white border-b border-neutral-200 flex-shrink-0">
@@ -169,31 +154,11 @@ export default function Layout() {
 
           {/* Mobile title */}
           <div className="flex items-center gap-2 lg:hidden">
-            <div className="flex items-center justify-center w-6 h-6 rounded bg-brand text-white font-bold text-xs">
-              J
-            </div>
+            <div className="flex items-center justify-center w-6 h-6 rounded bg-brand text-white font-bold text-xs">J</div>
             <span className="font-bold text-neutral-900 text-sm tracking-tight">JEKER</span>
           </div>
 
           <div className="flex-1" />
-
-          {/* Desktop demo role switcher */}
-          <div className="hidden sm:flex items-center gap-2 text-[12px] text-neutral-500 bg-neutral-50 px-3 py-1.5 rounded-lg border border-neutral-200">
-            <span className="text-[11px] font-medium text-neutral-400">View as:</span>
-            {(['Admin', 'PIC'] as Role[]).map(r => (
-              <button
-                key={r}
-                onClick={() => switchRole(r)}
-                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition-colors ${
-                  user.role === r
-                    ? 'bg-brand text-white shadow-xs'
-                    : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/60'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
 
           {/* User profile dropdown */}
           <div className="relative" data-profile-menu>
@@ -203,7 +168,7 @@ export default function Layout() {
             >
               <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center shadow-xs">
                 <span className="text-white text-[12px] font-bold">
-                  {user.name.charAt(0)}
+                  {(user.name ?? 'U').charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="hidden sm:block text-left">
@@ -213,13 +178,13 @@ export default function Layout() {
             </button>
 
             {profileOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl border border-neutral-200 shadow-xl z-50 py-1.5 modal-enter">
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl border border-neutral-200 shadow-xl z-50 py-1.5">
                 <div className="px-4 py-3 border-b border-neutral-100">
                   <div className="text-[13px] font-bold text-neutral-900">{user.name}</div>
                   <div className="text-[11px] text-neutral-500 mt-0.5 truncate">{user.email}</div>
                   <div className="mt-2">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-light text-brand">
-                      {user.role} {user.pic ? `· ${user.pic}` : ''}
+                      {user.role}
                     </span>
                   </div>
                 </div>
@@ -235,9 +200,9 @@ export default function Layout() {
           </div>
         </header>
 
-        {/* Main page content scroll area */}
+        {/* Page content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
-          <Outlet />
+          {children}
         </main>
       </div>
     </div>

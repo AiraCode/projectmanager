@@ -1,20 +1,22 @@
 import { useState, FormEvent } from 'react';
-import { useNavigate, Navigate } from 'react-router';
+import { usePage, router } from '@inertiajs/react';
 import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
 
 export default function LoginPage() {
-  const { user, login } = useAuth();
-  const navigate = useNavigate();
+  const { auth, errors } = usePage().props as any;
+  const user = auth?.user;
   const [email, setEmail] = useState('admin@jeker.id');
   const [password, setPassword] = useState('admin123');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(errors?.email || '');
 
-  if (user) return <Navigate to="/dashboard" replace />;
+  if (user) {
+    if (typeof window !== 'undefined') window.location.href = '/projects';
+    return null;
+  }
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError('');
     if (!email || !password) {
@@ -22,13 +24,14 @@ export default function LoginPage() {
       return;
     }
     setLoading(true);
-    const res = await login(email, password);
-    setLoading(false);
-    if (res.success) {
-      navigate('/dashboard');
-    } else {
-      setError(res.error || 'Invalid credentials. Please try again.');
-    }
+    
+    router.post('/login', { email, password }, {
+      onError: (err) => {
+        setLoading(false);
+        setError(err.email || 'Invalid credentials. Please try again.');
+      },
+      onFinish: () => setLoading(false)
+    });
   };
 
   return (

@@ -1,5 +1,5 @@
 import { Calendar, Clock, TrendingUp, DollarSign, CheckCircle2, AlertTriangle, XCircle, Layers, ArrowUpRight } from 'lucide-react';
-import { NavLink } from 'react-router';
+import { Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { Project, PROJECT } from '@/data/mockData';
 import { StatusBadge, ProgressBar, formatRupiah, PageHeader, Card, KpiCard } from '@/components/ui';
@@ -9,10 +9,19 @@ import { recalculateSchedule } from '@/utils/scheduleEngine';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 
 export default function DashboardPage() {
-  // Initialize with fully recalculated data from all engines
-  const [p] = useState<Project>(() => 
-    recalculateWeeklyData(recalculateSchedule(recalculateProgress(PROJECT)))
-  );
+  const { project, userRole } = usePage().props as any;
+  const isPIC = userRole === 'pic';
+
+  // Initialize with recalculated progress and schedule using the project from DB
+  const [p] = useState<Project>(() => {
+    if (!project || !project.mainJobs) {
+       // Fallback kalau data belum terload dengan benar
+       return PROJECT;
+    }
+    // Gabungkan weekly data dari PROJECT statis (karena belum ada di DB) dengan mainJobs dari DB
+    const dbProject = { ...project, weeklyData: PROJECT.weeklyData, budgetEntries: PROJECT.budgetEntries };
+    return recalculateWeeklyData(recalculateSchedule(recalculateProgress(dbProject)));
+  });
 
   const usedBudget = p.budgetEntries?.reduce((a, b) => a + b.hargaTotal, 0) || p.usedBudget;
   const budgetUsedPct = Math.round((usedBudget / p.totalBudget) * 100);
@@ -87,9 +96,9 @@ export default function DashboardPage() {
                 <Layers size={16} className="text-brand" />
                 <span className="text-[13px] font-bold text-neutral-800 tracking-tight">Project Information</span>
               </div>
-              <NavLink to="/project" className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
+              <Link href="/project" className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
                 Details <ArrowUpRight size={12} />
-              </NavLink>
+              </Link>
             </div>
 
             <div className="space-y-3">
@@ -129,9 +138,9 @@ export default function DashboardPage() {
               <span className="text-[13px] font-bold text-neutral-800 tracking-tight">S-Curve Overview</span>
               <span className="text-[11px] text-neutral-400 font-medium">(W{chartStart + 1}–W{chartEnd})</span>
             </div>
-            <NavLink to="/scurve" className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
+            <Link href="/scurve" className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
               Full S-Curve <ArrowUpRight size={12} />
-            </NavLink>
+            </Link>
           </div>
 
           <div className="w-full h-56">
@@ -172,9 +181,9 @@ export default function DashboardPage() {
               <CheckCircle2 size={16} className="text-brand" />
               <span className="text-[13px] font-bold text-neutral-800 tracking-tight">Main Job Progress ({p.mainJobs.length})</span>
             </div>
-            <NavLink to="/tasks" className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
+            <Link href="/tasks" className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
               Manage Tasks <ArrowUpRight size={12} />
-            </NavLink>
+            </Link>
           </div>
 
           <div className="space-y-3 max-h-84 overflow-y-auto scrollbar-thin pr-1">
@@ -236,9 +245,9 @@ export default function DashboardPage() {
           <Card className="p-5">
             <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-neutral-100">
               <span className="text-[13px] font-bold text-neutral-800 tracking-tight">Budget Realization</span>
-              <NavLink to="/budget" className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
+              <Link href="/budget" className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
                 Budget <ArrowUpRight size={12} />
-              </NavLink>
+              </Link>
             </div>
 
             <div className="space-y-2.5">
