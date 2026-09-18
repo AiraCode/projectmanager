@@ -87,6 +87,15 @@ class DatabaseSeeder extends Seeder
             'divisions_id' => null,
         ]);
 
+        $pic4 = User::create([
+            'username' => 'PIC 4 (Test Create Project)',
+            'email' => 'pic4@jeker.id',
+            'password' => Hash::make('admin123'),
+            'roles_id' => $rolePic->id,
+            'companies_id' => null, // Sengaja null / atau bisa diberi company bebas untuk test
+            'divisions_id' => null,
+        ]);
+
         // Workers for testing auth scopes
         foreach ($divisions as $name => $division) {
             User::create([
