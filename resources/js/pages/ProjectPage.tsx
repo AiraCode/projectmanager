@@ -1,4 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
+import { usePage } from '@inertiajs/react';
 import { Building2, User, Calendar, Target, CheckCircle2, Layers, ShieldCheck, Plus, Lock, AlertCircle, Check } from 'lucide-react';
 import { PROJECT, MainJob } from '@/data/mockData';
 import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast } from '@/components/ui';
@@ -12,8 +13,21 @@ interface CompanyOption {
 
 export default function ProjectPage() {
   const { user, refreshUser } = useAuth();
-  const [projectData, setProjectData] = useState(PROJECT);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ 'mj-01': true, 'mj-04': true });
+  const pageProps = usePage().props as any;
+  const project = pageProps?.project;
+  const userRole = pageProps?.userRole;
+
+  const [projectData, setProjectData] = useState(() => {
+    return project && project.mainJobs ? project : PROJECT;
+  });
+
+  useEffect(() => {
+    if (project && project.mainJobs) {
+      setProjectData(project);
+    }
+  }, [project]);
+
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ 'mj-1': true, 'mj-2': true, 'mj-3': true });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'error' } | null>(null);
@@ -143,8 +157,8 @@ export default function ProjectPage() {
   };
 
   const p = projectData;
-  const isOwner = user?.ownedProject != null;
-  const canCreate = user?.role === 'Admin' && (user.canCreateProject ?? !isOwner);
+  const isPIC = user?.isPIC || user?.role === 'pic';
+  const canCreate = isPIC && Boolean(user?.canCreateProject);
 
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-6">
@@ -156,15 +170,17 @@ export default function ProjectPage() {
         actions={
           <div className="flex items-center gap-2.5">
             <StatusBadge status={p.status} size="md" />
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setShowCreateModal(true)}
-              className="text-[12.5px] shadow-xs"
-            >
-              <Plus size={14} className="mr-1.5" />
-              Create Project
-            </Button>
+            {canCreate && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowCreateModal(true)}
+                className="text-[12.5px] shadow-xs"
+              >
+                <Plus size={14} className="mr-1.5" />
+                Create Project
+              </Button>
+            )}
           </div>
         }
       />

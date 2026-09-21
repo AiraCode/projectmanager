@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { usePage } from '@inertiajs/react';
 import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X, Download } from 'lucide-react';
 import { PROJECT, BudgetEntry } from '@/data/mockData';
 import { exportToCSV } from '@/utils/exportEngine';
@@ -29,22 +30,35 @@ const EMPTY_FORM: EntryForm = {
 };
 
 export default function BudgetPage() {
-  const [entries, setEntries] = useState<BudgetEntry[]>(PROJECT.budgetEntries);
+  const pageProps = usePage().props as any;
+  const project = pageProps?.project;
+  const currentProject = project && project.mainJobs ? project : PROJECT;
+
+  const [entries, setEntries] = useState<BudgetEntry[]>(() => {
+    return currentProject.budgetEntries?.length ? currentProject.budgetEntries : PROJECT.budgetEntries;
+  });
+
+  useEffect(() => {
+    if (project && project.budgetEntries?.length) {
+      setEntries(project.budgetEntries);
+    }
+  }, [project]);
+
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<EntryForm>(EMPTY_FORM);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const totalBudget = PROJECT.totalBudget;
+  const totalBudget = currentProject.totalBudget || 45000000000;
   const totalUsed = entries.reduce((a, e) => a + e.hargaTotal, 0);
   const remaining = totalBudget - totalUsed;
   const usedPct = Math.round((totalUsed / totalBudget) * 100);
   const budgetColor: 'brand' | 'warning' | 'danger' = usedPct <= 80 ? 'brand' : usedPct <= 95 ? 'warning' : 'danger';
 
   // Generate flat list of all tasks from project structure for selection
-  const allTasks = PROJECT.mainJobs.flatMap(mj => 
-    mj.subMainJobs.flatMap(smj => 
-      smj.subtasks.map(st => ({
+  const allTasks = currentProject.mainJobs.flatMap((mj: any) => 
+    mj.subMainJobs.flatMap((smj: any) => 
+      smj.subtasks.map((st: any) => ({
         code: st.code,
         name: st.name,
         mjName: mj.name

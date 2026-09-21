@@ -17,6 +17,8 @@ class Project extends Model
         'end',
         'actual_start',
         'actual_end',
+        'progress',
+        'status',
     ];
 
     protected $casts = [

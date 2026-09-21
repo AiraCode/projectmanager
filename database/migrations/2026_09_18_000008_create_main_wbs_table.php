@@ -12,7 +12,7 @@ return new class extends Migration
             $table->increments('id');
             $table->unsignedInteger('projects_id');
             $table->unsignedInteger('list_main_wbs_names_id');
-            $table->string('name', 45)->nullable();
+            $table->string('name', 255)->nullable();
             $table->decimal('percentage');
             $table->dateTime('actual_start');
             $table->dateTime('actual_end');

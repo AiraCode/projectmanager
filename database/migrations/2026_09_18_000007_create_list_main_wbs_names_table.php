@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('list_main_wbs_names', function (Blueprint $table) {
             $table->increments('id');
-            $table->string('name', 45);
+            $table->string('name', 255);
             $table->timestamps();
             $table->softDeletes();
         });

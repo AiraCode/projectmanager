@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePage } from '@inertiajs/react';
 import { Project, PROJECT } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { exportToCSV } from '@/utils/exportEngine';
@@ -12,11 +13,17 @@ import {
 type ViewMode = 'cumulative' | 'weekly';
 
 export default function SCurvePage() {
+  const { project, userRole } = usePage().props as any;
   const [viewMode, setViewMode] = useState<ViewMode>('cumulative');
   const [showTable, setShowTable] = useState(true);
   
-  // Use engine to calculate exact cumulative values, avoiding any #REF! or #N/A from Excel logic
-  const [projectData] = useState<Project>(() => recalculateWeeklyData(PROJECT));
+  // Use engine to calculate exact cumulative values
+  const [projectData] = useState<Project>(() => {
+    if (project && project.weeklyData && project.weeklyData.length > 0) {
+      return project;
+    }
+    return recalculateWeeklyData(project || PROJECT);
+  });
   const weeks = projectData.weeklyData;
 
   const chartData = weeks.map(w => ({
@@ -81,8 +88,8 @@ export default function SCurvePage() {
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
       <PageHeader
-        title="S-Curve Analysis"
-        subtitle="Planned vs. Actual cumulative progress tracking over project lifecycle"
+        title={`S-Curve Analysis ${project?.name ? `· ${project.name}` : ''}`}
+        subtitle={userRole === 'admin_progres' ? 'Mode Khusus Admin Progres — Pemantauan grafik S-Curve kemajuan kumulatif' : 'Planned vs. Actual cumulative progress tracking over project lifecycle'}
         actions={
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">

@@ -1,66 +1,73 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { usePage } from '@inertiajs/react';
 import { PROJECT, MainJob, SubMainJob, SubSubtask } from '@/data/mockData';
 import { PageHeader, Card, Button } from '@/components/ui';
 import { Calendar, ChevronDown, ChevronRight, Layers, Clock, Info } from 'lucide-react';
 
-const PROJECT_START = new Date('2024-01-15');
-const PROJECT_END = new Date('2026-12-31');
-const TOTAL_DAYS = Math.ceil((PROJECT_END.getTime() - PROJECT_START.getTime()) / 86400000);
-const TODAY = new Date('2026-09-17');
-
-function dayOffset(dateStr: string): number {
-  return Math.ceil((new Date(dateStr).getTime() - PROJECT_START.getTime()) / 86400000);
-}
-
-function pct(dateStr: string): number {
-  return Math.max(0, Math.min(100, (dayOffset(dateStr) / TOTAL_DAYS) * 100));
-}
-
-function barWidth(start: string, end: string): number {
-  return Math.max(0.6, Math.min(100, (dayOffset(end) - dayOffset(start)) / TOTAL_DAYS * 100));
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  'Completed': '#1E46D9',
-  'On Track': '#16A34A',
-  'At Risk': '#D97706',
-  'Delayed': '#DC3545',
-  'Open': '#94A3B8',
-  'Cancelled': '#CBD5E1',
-};
-
-function getMonthMarkers() {
-  const markers: { label: string; pct: number }[] = [];
-  const d = new Date(PROJECT_START);
-  d.setDate(1);
-  while (d <= PROJECT_END) {
-    const p = ((d.getTime() - PROJECT_START.getTime()) / 86400000 / TOTAL_DAYS) * 100;
-    if (p >= 0 && p <= 100) {
-      markers.push({
-        label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-        pct: p,
-      });
-    }
-    d.setMonth(d.getMonth() + 3);
-  }
-  return markers;
-}
-
 export default function TimelinePage() {
-  const [expandedMJ, setExpandedMJ] = useState<Record<string, boolean>>({ 'mj-01': true, 'mj-04': true });
-  const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({ 'smj-4-5': true });
+  const pageProps = usePage().props as any;
+  const project = pageProps?.project;
+
+  const [projectData, setProjectData] = useState(() => {
+    return project && project.mainJobs ? project : PROJECT;
+  });
+
+  useEffect(() => {
+    if (project && project.mainJobs) {
+      setProjectData(project);
+    }
+  }, [project]);
+
+  const pStart = projectData.startDate ? new Date(projectData.startDate) : new Date('2026-01-01');
+  const pEnd = projectData.endDate ? new Date(projectData.endDate) : new Date('2027-12-31');
+  const TOTAL_DAYS = Math.max(1, Math.ceil((pEnd.getTime() - pStart.getTime()) / 86400000));
+  const TODAY = new Date();
+
+  function dayOffset(dateStr: string): number {
+    if (!dateStr) return 0;
+    return Math.ceil((new Date(dateStr).getTime() - pStart.getTime()) / 86400000);
+  }
+
+  function pct(dateStr: string): number {
+    return Math.max(0, Math.min(100, (dayOffset(dateStr) / TOTAL_DAYS) * 100));
+  }
+
+  function barWidth(start: string, end: string): number {
+    if (!start || !end) return 1;
+    return Math.max(0.6, Math.min(100, ((dayOffset(end) - dayOffset(start)) / TOTAL_DAYS) * 100));
+  }
+
+  function getMonthMarkers() {
+    const markers: { label: string; pct: number }[] = [];
+    const d = new Date(pStart);
+    d.setDate(1);
+    while (d <= pEnd) {
+      const p = ((d.getTime() - pStart.getTime()) / 86400000 / TOTAL_DAYS) * 100;
+      if (p >= 0 && p <= 100) {
+        markers.push({
+          label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          pct: p,
+        });
+      }
+      d.setMonth(d.getMonth() + 2);
+    }
+    return markers;
+  }
+
+  const [expandedMJ, setExpandedMJ] = useState<Record<string, boolean>>({ 'mj-1': true, 'mj-2': true, 'mj-3': true });
+  const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({});
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string; sub?: string } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const months = getMonthMarkers();
-  const todayPct = ((TODAY.getTime() - PROJECT_START.getTime()) / 86400000 / TOTAL_DAYS) * 100;
+  const todayPct = Math.max(0, Math.min(100, ((TODAY.getTime() - pStart.getTime()) / 86400000 / TOTAL_DAYS) * 100));
 
   const toggleAll = (expand: boolean) => {
     const newMJ: Record<string, boolean> = {};
     const newSMJ: Record<string, boolean> = {};
     if (expand) {
-      PROJECT.mainJobs.forEach(m => {
+      projectData.mainJobs.forEach((m: any) => {
         newMJ[m.id] = true;
-        m.subMainJobs.forEach(s => { newSMJ[s.id] = true; });
+        m.subMainJobs.forEach((s: any) => { newSMJ[s.id] = true; });
       });
     }
     setExpandedMJ(newMJ);
@@ -138,7 +145,7 @@ export default function TimelinePage() {
             </div>
 
             {/* Rows */}
-            {PROJECT.mainJobs.map(mj => (
+            {projectData.mainJobs.map((mj: any) => (
               <GanttMJ
                 key={mj.id}
                 mj={mj}

@@ -18,6 +18,8 @@ class MainWbs extends Model
         'percentage',
         'actual_start',
         'actual_end',
+        'progress',
+        'status',
     ];
 
     protected $casts = [

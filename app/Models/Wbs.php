@@ -23,6 +23,8 @@ class Wbs extends Model
         'vendor',
         'start',
         'end',
+        'is_completed',
+        'status',
     ];
 
     protected $casts = [

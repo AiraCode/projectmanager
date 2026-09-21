@@ -2,10 +2,15 @@
 
 namespace App\Services;
 
-use App\Models\MainJob;
 use App\Models\Project;
-use App\Models\SubMainJob;
+use App\Models\Division;
+use App\Models\ListMainWbsName;
+use App\Models\MainWbs;
+use App\Models\ListSubWbsName;
+use App\Models\SubWbs;
+use App\Models\Wbs;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class ProjectTemplateService
 {
@@ -210,7 +215,7 @@ class ProjectTemplateService
     }
 
     /**
-     * Automatically applies the fixed company template to the given project.
+     * Automatically applies the fixed 17-job company template to the given project.
      * Admin does NOT create Main Job or Sub Main Job manually.
      */
     public function applyTemplateToProject(Project $project): void
@@ -218,30 +223,81 @@ class ProjectTemplateService
         DB::transaction(function () use ($project) {
             $template = self::getTemplate();
 
+            $divisions = Division::all()->keyBy(function ($item) {
+                return strtolower(trim($item->divisi));
+            });
+
+            $picToDiv = [
+                'busdev'      => 'busdev',
+                'engineering' => 'engineering',
+                'legal'       => 'legal',
+                'finance'     => 'finance',
+                'pm'          => 'pm',
+                'procurement' => 'procurement',
+                'purchasing'  => 'purchasing',
+                'production'  => 'produksi',
+                'she'         => 'she',
+                'hrga'        => 'hrga',
+                'sales'       => 'sales',
+                'ppic'        => 'ppic',
+                'qc'          => 'qc',
+                'it'          => 'it',
+            ];
+
+            $defaultDivId = Division::first()?->id;
+            $taskCounter = 1;
+
             foreach ($template as $mjData) {
-                $mainJob = MainJob::create([
-                    'project_id' => $project->id,
-                    'code' => $mjData['code'],
+                $listMain = ListMainWbsName::firstOrCreate([
                     'name' => $mjData['name'],
-                    'weight' => $mjData['weight'],
-                    'start_date' => $project->start_date,
-                    'finish_date' => $project->end_date,
-                    'progress' => 0,
-                    'status' => 'Open',
+                ]);
+
+                $mainWbs = MainWbs::create([
+                    'projects_id'            => $project->id,
+                    'list_main_wbs_names_id' => $listMain->id,
+                    'name'                   => $mjData['name'],
+                    'percentage'             => $mjData['weight'],
+                    'actual_start'           => $project->start ?? Carbon::now(),
+                    'actual_end'             => $project->end ?? Carbon::now()->addMonths(6),
+                    'progress'               => 0,
+                    'status'                 => 'Open',
                 ]);
 
                 foreach ($mjData['sub_main_jobs'] as $smjData) {
-                    SubMainJob::create([
-                        'main_job_id' => $mainJob->id,
-                        'project_id' => $project->id,
-                        'code' => $smjData['code'],
-                        'name' => $smjData['name'],
-                        'pic' => $smjData['pic'],
-                        'weight' => $smjData['weight'],
-                        'start_date' => $project->start_date,
-                        'finish_date' => $project->end_date,
-                        'progress' => 0,
-                        'status' => 'Open',
+                    $listSub = ListSubWbsName::firstOrCreate([
+                        'name'                         => $smjData['name'],
+                        'list_main_wbs_names_copy1_id' => $listMain->id,
+                    ]);
+
+                    $subWbs = SubWbs::create([
+                        'sub_wbs_id'            => $mainWbs->id,
+                        'list_sub_wbs_names_id' => $listSub->id,
+                        'name'                  => $smjData['name'],
+                        'predecessor'           => '-',
+                        'predecessor_type'      => 'FS',
+                        'start'                 => $project->start ?? Carbon::now(),
+                        'end'                   => $project->end ?? Carbon::now()->addMonths(6),
+                        'actual_start'          => $project->start ?? Carbon::now(),
+                        'actual_end'            => $project->end ?? Carbon::now()->addMonths(6),
+                        'weight'                => $smjData['weight'],
+                        'progress'              => 0,
+                        'status'                => 'Open',
+                    ]);
+
+                    $picKey = strtolower(trim($smjData['pic'] ?? ''));
+                    $divName = $picToDiv[$picKey] ?? $picKey;
+                    $divId = $divisions->get($divName)?->id ?? $defaultDivId;
+
+                    Wbs::create([
+                        'id'           => 'st-' . $project->id . '-' . str_replace('.', '_', $smjData['code']) . '-' . ($taskCounter++),
+                        'sub_wbs_id'   => $subWbs->id,
+                        'divisions_id' => $divId,
+                        'name'         => $smjData['name'] . ' (Execution)',
+                        'vendor'       => 'INTERNAL',
+                        'start'        => $project->start ?? Carbon::now(),
+                        'end'          => $project->end ?? Carbon::now()->addMonths(6),
+                        'is_completed' => false,
+                        'status'       => 'Open',
                     ]);
                 }
             }

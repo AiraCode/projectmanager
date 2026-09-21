@@ -1,5 +1,6 @@
 import { useState, useEffect, Fragment } from 'react';
-import { Plus, Search, Filter, ChevronDown, ChevronRight, Lock, Loader2, CheckSquare, Square, Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties, Download } from 'lucide-react';
+import { usePage, router } from '@inertiajs/react';
+import { Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square, Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties, Download, AlertCircle } from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyType } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
 import { recalculateProgress } from '@/utils/progressEngine';
@@ -11,15 +12,17 @@ const STATUSES: Status[] = ['Open', 'On Track', 'At Risk', 'Delayed', 'Cancelled
 
 export default function TasksPage() {
   const { user } = useAuth();
-  const { project } = usePage().props as any;
+  const pageProps = usePage().props as any;
+  const project = pageProps?.project;
+  const divisions = pageProps?.divisions || [];
   
-  // Role checks
-  // PIC can add/edit/delete tasks in their scope
-  // Admin (Utama/Progres) = read-only, no edit buttons
-  // Worker = can only check/uncheck tasks assigned to their division
-  const isPIC    = user?.role === 'PIC';
-  const isWorker = user?.role === 'Worker';
-  const isAdmin  = user?.role === 'Admin'; // read-only
+  // Role checks:
+  // - PIC: can add/edit/delete tasks and sub-tasks, toggle checklist in their project
+  // - Worker: can ONLY check/uncheck tasks assigned to their division
+  // - Admin (Utama / Progres): strictly read-only, NO modification allowed
+  const isPIC    = user?.isPIC || user?.role === 'pic' || user?.role === 'PIC';
+  const isWorker = user?.isWorker || user?.role === 'worker' || user?.role === 'Worker';
+  const isAdmin  = user?.isAdminUtama || user?.isAdminProgres || user?.role === 'admin_utama' || user?.role === 'admin_progres' || user?.role === 'Admin';
   
   const [projectData, setProjectData] = useState<Project>(() => {
     if (!project || !project.mainJobs) {
@@ -27,20 +30,46 @@ export default function TasksPage() {
     }
     return recalculateSchedule(recalculateProgress(project));
   });
+
+  useEffect(() => {
+    if (project && project.mainJobs) {
+      setProjectData(recalculateSchedule(recalculateProgress(project)));
+    }
+  }, [project]);
   
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<Status | ''>('');
   const [viewMode, setViewMode] = useState<'checklist' | 'table'>('checklist');
-  const [expandedMJ, setExpandedMJ] = useState<Record<string, boolean>>({ 'mj-01': true, 'mj-04': true });
-  const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({ 'smj-1-1': true, 'smj-4-5': true });
+  const [expandedMJ, setExpandedMJ] = useState<Record<string, boolean>>({ 'mj-1': true, 'mj-01': true });
+  const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({ 'smj-1': true, 'smj-1-1': true });
   
-  const [showAddTaskModal, setShowAddTaskModal] = useState<{ smjId: string, task?: SubSubtask } | null>(null);
+  // Modals
+  const [showAddTaskModal, setShowAddTaskModal] = useState<{ smjId: string; smjDbId?: number; task?: SubSubtask } | null>(null);
+  const [showAddSubMainJobModal, setShowAddSubMainJobModal] = useState<{ mjId: string; mjDbId?: number; mjName: string } | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const toggleMJ = (id: string) => setExpandedMJ(p => ({ ...p, [id]: !p[id] }));
   const toggleSMJ = (id: string) => setExpandedSMJ(p => ({ ...p, [id]: !p[id] }));
 
-  const handleSaveSubtask = (smjId: string, taskData: Partial<SubSubtask>) => {
+  // Add or Edit Sub-Subtask (Task)
+  const handleSaveSubtask = (smjId: string, taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => {
+    // Send to backend if project id exists
+    if (projectData.id && taskData.name) {
+      router.post(`/projects/${projectData.id}/tasks`, {
+        sub_wbs_id: taskData.smjDbId || smjId.replace('smj-', ''),
+        name: taskData.name,
+        divisions_id: taskData.divisionId || null,
+        duration: taskData.duration || 1,
+        start: taskData.startDate || null,
+        predecessor: taskData.predecessor || null,
+        dep_type: taskData.depType || 'FS',
+        lag: taskData.lag || 0,
+      }, {
+        preserveScroll: true,
+        onError: () => setToastMsg('Gagal menyimpan task ke server.'),
+      });
+    }
+
     setProjectData(prev => {
       const newData = { ...prev };
       newData.mainJobs = newData.mainJobs.map(mj => ({
@@ -50,10 +79,10 @@ export default function TasksPage() {
           
           let updatedSubtasks = [...smj.subtasks];
           if (taskData.id) {
-            // Edit
+            // Edit local
             updatedSubtasks = updatedSubtasks.map(st => st.id === taskData.id ? { ...st, ...taskData } as SubSubtask : st);
           } else {
-            // Add
+            // Add local
             const newId = `st-${Date.now()}`;
             const newCode = `${smj.code}.${updatedSubtasks.length + 1}`;
             
@@ -62,7 +91,7 @@ export default function TasksPage() {
               code: newCode,
               name: taskData.name!,
               startDate: taskData.startDate!,
-              finishDate: taskData.startDate!, // Will be recalculated by scheduleEngine
+              finishDate: taskData.startDate!,
               duration: Number(taskData.duration || 1),
               daysLeft: Number(taskData.duration || 1),
               progress: 0,
@@ -78,11 +107,49 @@ export default function TasksPage() {
           return { ...smj, subtasks: updatedSubtasks };
         })
       }));
-      // Recalculate progress and schedule before saving
       return recalculateSchedule(recalculateProgress(newData));
     });
-    setToastMsg(`Sub-Subtask "${taskData.name}" berhasil ${taskData.id ? 'diperbarui' : 'ditambahkan'}. Jadwal otomatis disesuaikan.`);
+    setToastMsg(`Task "${taskData.name}" berhasil ${taskData.id ? 'diperbarui' : 'ditambahkan'}.`);
     setShowAddTaskModal(null);
+  };
+
+  // Add Sub Task (Sub Main Job under Main Job)
+  const handleSaveSubMainJob = (mjId: string, name: string, weight: number, mjDbId?: number) => {
+    if (projectData.id && name) {
+      router.post(`/projects/${projectData.id}/sub-wbs`, {
+        main_wbs_id: mjDbId || mjId.replace('mj-', ''),
+        name: name,
+        weight: weight,
+      }, {
+        preserveScroll: true,
+        onError: () => setToastMsg('Gagal menambahkan Sub Task ke server.'),
+      });
+    }
+
+    setProjectData(prev => {
+      const newData = { ...prev };
+      newData.mainJobs = newData.mainJobs.map(mj => {
+        if (mj.id !== mjId) return mj;
+        const newCode = `${mj.code}.${mj.subMainJobs.length + 1}`;
+        const newSMJ: SubMainJob = {
+          id: `smj-${Date.now()}`,
+          code: newCode,
+          name: name,
+          pic: 'Internal',
+          startDate: mj.startDate || new Date().toISOString().slice(0, 10),
+          finishDate: mj.finishDate || new Date().toISOString().slice(0, 10),
+          progress: 0,
+          status: 'Open',
+          weight: weight,
+          subtasks: [],
+        };
+        return { ...mj, subMainJobs: [...mj.subMainJobs, newSMJ] };
+      });
+      return recalculateSchedule(recalculateProgress(newData));
+    });
+
+    setToastMsg(`Sub Task "${name}" berhasil ditambahkan.`);
+    setShowAddSubMainJobModal(null);
   };
 
   const handleDeleteSubtask = (smjId: string, taskId: string, taskName: string) => {
@@ -96,35 +163,46 @@ export default function TasksPage() {
           return { ...smj, subtasks: smj.subtasks.filter(st => st.id !== taskId) };
         })
       }));
-      // Recalculate progress and schedule after deleting
       return recalculateSchedule(recalculateProgress(newData));
     });
-    setToastMsg(`Sub-Subtask "${taskName}" berhasil dihapus. Jadwal otomatis disesuaikan.`);
+    setToastMsg(`Task "${taskName}" berhasil dihapus.`);
   };
 
-  // PIC is authorized for their WBS scope; Worker authorized for their division
-  const isAuthorizedToCheck = (smjPic: string) => {
-    if (isPIC) return user?.division?.toLowerCase() === smjPic.toLowerCase() ||
-                      user?.company?.toLowerCase() === smjPic.toLowerCase() ||
-                      (user?.pic ?? '').toLowerCase() === smjPic.toLowerCase();
-    if (isWorker) return (user?.division ?? '').toLowerCase() === smjPic.toLowerCase();
-    return false; // Admin = cannot check (read-only)
-  };
-
-  // PIC can edit/delete within their scope
-  const canEditScope = (smjPic: string) => {
-    if (!isPIC) return false;
-    return user?.division?.toLowerCase() === smjPic.toLowerCase() ||
-           (user?.pic ?? '').toLowerCase() === smjPic.toLowerCase() ||
-           true; // PIC manages all WBS in their project for now
+  // Checklist authorization:
+  // - Admin (Utama & Progres): FALSE (strictly read-only)
+  // - PIC: TRUE (manages all tasks in their project)
+  // - Worker: TRUE only if worker's division matches the task's division
+  const isAuthorizedToCheck = (taskDivision: string) => {
+    if (isAdmin) return false;
+    if (isPIC) return true;
+    if (isWorker) {
+      const workerDiv = (user?.division ?? '').trim().toLowerCase();
+      const targetDiv = (taskDivision ?? '').trim().toLowerCase();
+      return workerDiv !== '' && workerDiv === targetDiv;
+    }
+    return false;
   };
 
   const handleCheck = (taskId: string, authorized: boolean, taskName: string) => {
     if (!authorized) {
-      setToastMsg(`Aksi dibatasi: Hanya PIC yang bersangkutan atau Admin yang dapat mengubah checklist.`);
+      if (isAdmin) {
+        setToastMsg('Aksi Dibatasi: Role Admin bersifat Read-Only dan tidak boleh mencentang tugas.');
+      } else if (isWorker) {
+        setToastMsg(`Aksi Dibatasi: Anda terdaftar di divisi "${user?.division}". Anda hanya berwenang mencentang tugas divisi Anda.`);
+      } else {
+        setToastMsg('Anda tidak memiliki izin mencentang tugas ini.');
+      }
       return;
     }
     
+    // Send toggle to backend
+    if (projectData.id) {
+      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
+        preserveScroll: true,
+        preserveState: true,
+      });
+    }
+
     setProjectData(prev => {
       let isCheckedNow = false;
       const newData = { ...prev };
@@ -142,11 +220,9 @@ export default function TasksPage() {
         }))
       }));
       
-      // Recalculate progress first, then schedule (since schedule depends on completion status for daysLeft)
       return recalculateSchedule(recalculateProgress(newData));
     });
     
-    // Determine the message (could be cleaner but this works)
     const wasChecked = projectData.mainJobs.some(mj => mj.subMainJobs.some(smj => smj.subtasks.some(st => st.id === taskId && st.checked)));
     setToastMsg(wasChecked ? `Tugas "${taskName}" ditandai belum selesai.` : `Tugas "${taskName}" ditandai selesai ✓`);
   };
@@ -183,14 +259,14 @@ export default function TasksPage() {
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
       <PageHeader
         title="Task Management"
-        subtitle="3-tier WBS hierarchy: Main Job → Sub Main Job → Sub-Subtask"
+        subtitle={`WBS 3-Tingkat: Main Job → Sub Task (Sub Main Job) → Task (${projectData.name || 'Project'})`}
         actions={
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <span className="text-[12px] text-neutral-500 hidden sm:inline">
-              Role: <strong className="text-neutral-800">{user?.role}</strong>
+              Role: <strong className="text-neutral-800">{user?.displayRole || user?.role}</strong>
               {isAdmin && <span className="ml-1 text-warning font-semibold">(Read-Only)</span>}
-              {isPIC && <span className="ml-1 text-brand font-semibold">(Can Manage Tasks)</span>}
-              {isWorker && <span className="ml-1 text-neutral-600 font-semibold">· {user?.division || 'Worker'}</span>}
+              {isPIC && <span className="ml-1 text-emerald-600 font-semibold">(PIC - Bisa Tambah Task & Sub Task)</span>}
+              {isWorker && <span className="ml-1 text-blue-600 font-semibold">· Divisi: {user?.division || 'Internal'}</span>}
             </span>
             
             <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
@@ -227,10 +303,10 @@ export default function TasksPage() {
       <div className="p-3.5 sm:p-4 rounded-xl bg-brand-light/60 border border-brand-border flex items-start gap-3">
         <Info size={16} className="text-brand flex-shrink-0 mt-0.5" />
         <div className="text-[12.5px] text-neutral-700 flex-1">
-          <span className="font-semibold text-brand">WBS Hierarchy & Permission Rule: </span>
-          <strong>Main Job</strong> and <strong>Sub Main Job</strong> form the fixed company template with assigned PICs.
-          Project-specific work is entered at the <strong>Sub-Subtask</strong> level.
-          PICs can only check off Sub-Subtasks assigned to their authorized department.
+          <span className="font-semibold text-brand">Otorisasi Sesuai Aturan: </span>
+          {isPIC && "Sebagai PIC, Anda berwenang penuh untuk menambah Sub Task, menambah Task, serta mengedit jadwal di proyek ini."}
+          {isWorker && `Sebagai Pekerja dari divisi "${user?.division || 'Internal'}", Anda hanya diizinkan untuk mencentang tugas yang ditujukan ke divisi Anda.`}
+          {isAdmin && "Sebagai Admin, Anda dapat memantau seluruh progres tugas secara transparan dalam mode baca (Read-Only)."}
         </div>
       </div>
 
@@ -241,7 +317,7 @@ export default function TasksPage() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search Main Jobs, Sub Main Jobs, or Sub-Subtasks…"
+            placeholder="Cari Main Job, Sub Task, atau Task…"
             className="w-full pl-8 pr-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white shadow-xs"
           />
         </div>
@@ -273,9 +349,9 @@ export default function TasksPage() {
           {filteredMJs.map(mj => (
             <Card key={mj.id} className="overflow-hidden">
               {/* Level 1: Main Job Header */}
-              <button
+              <div
                 onClick={() => toggleMJ(mj.id)}
-                className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-neutral-50/70 transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-neutral-50/70 transition-colors text-left cursor-pointer"
               >
                 <div className="text-neutral-400 flex-shrink-0">
                   {expandedMJ[mj.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -286,22 +362,42 @@ export default function TasksPage() {
                 <div className="flex-1 min-w-0">
                   <div className="text-[13.5px] font-bold text-neutral-900 truncate">{mj.name}</div>
                   <div className="text-[11px] text-neutral-400 font-medium hidden sm:block">
-                    Main Job (Fixed Template)
+                    Bobot Main Job: {mj.weight}%
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0 ml-2">
                   <span className="text-[11px] font-medium text-neutral-400 hidden sm:inline">
-                    {mj.subMainJobs.length} Sub Main Jobs
+                    {mj.subMainJobs.length} Sub Tasks
                   </span>
                   <StatusBadge status={mj.status} size="xs" />
                   <div className="w-16 hidden md:block">
                     <ProgressBar value={mj.progress} size="xs" showLabel={false} />
                   </div>
                   <span className="text-[12px] font-bold text-neutral-800 w-9 text-right">{mj.progress}%</span>
-                </div>
-              </button>
 
-              {/* Level 2: Sub Main Jobs */}
+                  {/* PIC can add Sub Task under this Main Job */}
+                  {isPIC && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAddSubMainJobModal({
+                          mjId: mj.id,
+                          mjDbId: (mj as any).dbId,
+                          mjName: mj.name,
+                        });
+                      }}
+                      className="py-1 px-2.5 text-[11px] h-7 ml-1 bg-white hover:bg-neutral-50 border-neutral-300"
+                      icon={Plus}
+                    >
+                      Add Sub Task
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Level 2: Sub Tasks (Sub Main Jobs) */}
               {expandedMJ[mj.id] && (
                 <div className="border-t border-neutral-100 divide-y divide-neutral-100 bg-neutral-50/30">
                   {mj.subMainJobs.map(smj => (
@@ -310,17 +406,19 @@ export default function TasksPage() {
                       smj={smj}
                       expanded={!!expandedSMJ[smj.id]}
                       onToggle={() => toggleSMJ(smj.id)}
-                      canCheck={isAuthorizedToCheck(smj.pic)}
-                      canEdit={canEditScope(smj.pic)}
-                      onOpenAddModal={() => setShowAddTaskModal({ smjId: smj.id })}
-                      onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, task })}
+                      isAuthorizedToCheck={isAuthorizedToCheck}
+                      isPIC={isPIC}
+                      isAdmin={isAdmin}
+                      onOpenAddModal={() => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId })}
+                      onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, task })}
                       onDeleteTask={(taskId, taskName) => handleDeleteSubtask(smj.id, taskId, taskName)}
                       onCheck={handleCheck}
-                      userRole={user?.role ?? 'Admin'}
                     />
                   ))}
                   {mj.subMainJobs.length === 0 && (
-                    <div className="px-10 py-3 text-[12px] text-neutral-400 italic">No Sub Main Jobs in template.</div>
+                    <div className="px-10 py-3 text-[12px] text-neutral-400 italic">
+                      Belum ada Sub Task. {isPIC && "Klik 'Add Sub Task' untuk menambahkan."}
+                    </div>
                   )}
                 </div>
               )}
@@ -335,7 +433,7 @@ export default function TasksPage() {
                 <tr className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
                   <th className="px-4 py-3">WBS Code</th>
                   <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3">PIC</th>
+                  <th className="px-4 py-3">Divisi</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Progress</th>
                   <th className="px-4 py-3">Start Date</th>
@@ -387,7 +485,7 @@ export default function TasksPage() {
                               {st.checked && <CheckSquare size={13} className="text-success" />}
                               <span className={st.checked ? 'line-through text-neutral-400' : ''}>{st.name}</span>
                             </td>
-                            <td className="px-4 py-2 text-neutral-400 text-[11px]">{smj.pic}</td>
+                            <td className="px-4 py-2 text-neutral-500 text-[11px]">{st.division || smj.pic}</td>
                             <td className="px-4 py-2"><StatusBadge status={st.checked ? 'Completed' : st.status} size="xs" /></td>
                             <td className="px-4 py-2 text-right font-semibold text-neutral-600">
                               {st.checked ? '100' : st.progress}%
@@ -423,10 +521,21 @@ export default function TasksPage() {
         />
       )}
 
-      {/* Add/Edit Sub-Subtask Modal */}
-      {showAddTaskModal && (
+      {/* Modal Add Sub Task (Sub Main Job under Main Job) */}
+      {showAddSubMainJobModal && isPIC && (
+        <AddSubMainJobModal
+          mjName={showAddSubMainJobModal.mjName}
+          onClose={() => setShowAddSubMainJobModal(null)}
+          onSave={(name, weight) => handleSaveSubMainJob(showAddSubMainJobModal.mjId, name, weight, showAddSubMainJobModal.mjDbId)}
+        />
+      )}
+
+      {/* Modal Add / Edit Task (Sub-Subtask) */}
+      {showAddTaskModal && isPIC && (
         <AddSubtaskModal
           smjId={showAddTaskModal.smjId}
+          smjDbId={showAddTaskModal.smjDbId}
+          divisions={divisions}
           initialData={showAddTaskModal.task}
           onClose={() => setShowAddTaskModal(null)}
           onSave={(taskData) => handleSaveSubtask(showAddTaskModal.smjId, taskData)}
@@ -442,21 +551,19 @@ export default function TasksPage() {
 }
 
 function SubMainJobSection({
-  smj, expanded, onToggle, canCheck, canEdit, onOpenAddModal, onOpenEditModal, onDeleteTask, onCheck, userRole
+  smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteTask, onCheck
 }: {
   smj: SubMainJob;
   expanded: boolean;
   onToggle: () => void;
-  canCheck: boolean;  // Worker/PIC authorized for this scope
-  canEdit: boolean;   // PIC only
+  isAuthorizedToCheck: (taskDivisi: string) => boolean;
+  isPIC: boolean;
+  isAdmin: boolean;
   onOpenAddModal: () => void;
   onOpenEditModal: (task: SubSubtask) => void;
   onDeleteTask: (taskId: string, taskName: string) => void;
   onCheck: (id: string, auth: boolean, name: string) => void;
-  userRole: string;
 }) {
-  const isPIC = userRole === 'PIC';
-
   return (
     <div className="transition-colors">
       <div className="flex items-center gap-3 pl-6 sm:pl-9 pr-4 py-2.5 hover:bg-neutral-50/80">
@@ -469,60 +576,54 @@ function SubMainJobSection({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-[12.5px] font-semibold text-neutral-800 truncate">{smj.name}</span>
-            {!canCheck && userRole !== 'Admin' && (
-              <span title="Divisi berbeda — tidak dapat mengubah tugas ini" className="text-neutral-400">
-                <Lock size={12} />
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
-            {/* Divisi yang bertanggung jawab */}
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand/8 text-brand border border-brand/20">
-              <Shield size={9} className="mr-1" />
-              Divisi: {smj.pic}
-            </span>
-            <span className="text-[10.5px] text-neutral-400 font-medium">Sub Main Job</span>
+            <span className="text-[10.5px] text-neutral-400 font-medium">Sub Task (Sub Main Job) · Bobot: {smj.weight}%</span>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <StatusBadge status={smj.status} size="xs" />
           <span className="text-[11.5px] font-bold text-neutral-700 w-8 text-right">{smj.progress}%</span>
-          {/* Only PIC can add tasks — Admin is read-only */}
-          {isPIC && canEdit && (
+          
+          {/* Only PIC can add tasks under this Sub Main Job */}
+          {isPIC && (
             <Button
               variant="outline"
               size="sm"
               onClick={onOpenAddModal}
-              className="py-1 px-2 text-[11px] h-7"
+              className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300"
               icon={Plus}
             >
-              Add
+              Add Task
             </Button>
           )}
         </div>
       </div>
 
-      {/* Level 3: Sub-Subtasks */}
+      {/* Level 3: Sub-Subtasks (Tasks) */}
       {expanded && (
         <div className="pl-12 sm:pl-16 pr-4 pb-3 pt-1 space-y-1.5">
           {smj.subtasks.length === 0 ? (
             <div className="py-2 text-[12px] text-neutral-400 italic">
-              Belum ada Sub-Subtask.{isPIC && canEdit && " Klik 'Add' untuk menambahkan task."}
+              Belum ada Task.{isPIC && " Klik 'Add Task' untuk menambahkan pekerjaan."}
             </div>
           ) : (
-            smj.subtasks.map(st => (
-              <SubtaskRow
-                key={st.id}
-                st={st}
-                divisi={smj.pic}
-                isChecked={st.checked}
-                canCheck={canCheck}
-                canEdit={canEdit && isPIC}
-                onCheck={() => onCheck(st.id, canCheck, st.name)}
-                onEdit={() => onOpenEditModal(st)}
-                onDelete={() => onDeleteTask(st.id, st.name)}
-              />
-            ))
+            smj.subtasks.map(st => {
+              const authorized = isAuthorizedToCheck(st.division || smj.pic);
+              return (
+                <SubtaskRow
+                  key={st.id}
+                  st={st}
+                  divisi={st.division || smj.pic}
+                  isChecked={st.checked}
+                  canCheck={authorized}
+                  canEdit={isPIC}
+                  onCheck={() => onCheck(st.id, authorized, st.name)}
+                  onEdit={() => onOpenEditModal(st)}
+                  onDelete={() => onDeleteTask(st.id, st.name)}
+                />
+              );
+            })
           )}
         </div>
       )}
@@ -532,10 +633,10 @@ function SubMainJobSection({
 
 function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit, onDelete }: {
   st: SubSubtask;
-  divisi: string;      // Nama divisi yang bertanggung jawab
+  divisi: string;
   isChecked: boolean;
-  canCheck: boolean;   // Boleh check/uncheck
-  canEdit: boolean;    // Boleh edit/delete (PIC only)
+  canCheck: boolean;
+  canEdit: boolean;
   onCheck: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -548,13 +649,12 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
           : 'bg-white border-neutral-200/80 hover:border-neutral-300 shadow-xs'
       }`}
     >
-      {/* Checkbox — only shown to Worker/PIC in their scope */}
+      {/* Checkbox */}
       <button
         onClick={onCheck}
-        disabled={!canCheck}
         aria-label={`Toggle checklist for ${st.name}`}
         className={`mt-0.5 sm:mt-0 flex-shrink-0 transition-transform active:scale-90 ${
-          canCheck ? 'cursor-pointer' : 'cursor-not-allowed opacity-30'
+          canCheck ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
         }`}
       >
         {isChecked ? (
@@ -570,13 +670,12 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
           <span className={`text-[12.5px] font-medium ${isChecked ? 'line-through text-neutral-400' : 'text-neutral-800'}`}>
             {st.name}
           </span>
-          {!canCheck && <Lock size={11} className="text-neutral-300" />}
+          {!canCheck && <Lock size={11} className="text-neutral-300" title="Anda tidak berhak mengubah tugas ini" />}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-neutral-400">
-          {/* Divisi yang bertugas */}
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[10px] font-semibold text-neutral-600">
             <Shield size={9} />
-            {divisi}
+            Divisi: {divisi}
           </span>
           <span>{st.startDate} → {st.finishDate}</span>
           <span>Durasi: {st.duration}h</span>
@@ -593,7 +692,7 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
         <span className="text-[11px] font-bold text-neutral-700 w-7 text-right">
           {isChecked ? 100 : st.progress}%
         </span>
-        {/* Edit/Delete: PIC only — Admin cannot edit */}
+        {/* Edit / Delete: PIC only */}
         {canEdit && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
             <button onClick={onEdit} className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Edit Task">
@@ -609,24 +708,97 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
   );
 }
 
-function AddSubtaskModal({ smjId, onClose, onSave, initialData }: { smjId: string; onClose: () => void; onSave: (taskData: Partial<SubSubtask>) => void; initialData?: SubSubtask }) {
+function AddSubMainJobModal({ mjName, onClose, onSave }: { mjName: string; onClose: () => void; onSave: (name: string, weight: number) => void }) {
+  const [name, setName] = useState('');
+  const [weight, setWeight] = useState('10');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onSave(name.trim(), parseFloat(weight) || 10);
+  };
+
+  return (
+    <Modal
+      title="Tambah Sub Task Baru (Sub Main Job)"
+      subtitle={`Di bawah kelompok WBS: ${mjName}`}
+      onClose={onClose}
+      size="sm"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Nama Sub Task <span className="text-danger">*</span>
+          </label>
+          <input
+            type="text"
+            required
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Contoh: REVIEW DOKUMEN & PERIZINAN"
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white"
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Bobot Pekerjaan (%)
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="100"
+            value={weight}
+            onChange={e => setWeight(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+          <Button variant="ghost" size="sm" type="button" onClick={onClose}>
+            Batal
+          </Button>
+          <Button variant="primary" size="sm" type="submit">
+            Simpan Sub Task
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function AddSubtaskModal({
+  smjId,
+  smjDbId,
+  divisions,
+  onClose,
+  onSave,
+  initialData
+}: {
+  smjId: string;
+  smjDbId?: number;
+  divisions: { id: number; divisi: string }[];
+  onClose: () => void;
+  onSave: (taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => void;
+  initialData?: SubSubtask;
+}) {
   const [name, setName] = useState(initialData?.name || '');
   const [startDate, setStartDate] = useState(initialData?.startDate || new Date().toISOString().slice(0, 10));
   const [duration, setDuration] = useState(initialData?.duration?.toString() || '5');
+  const [divisionId, setDivisionId] = useState<string>(divisions[0]?.id?.toString() || '');
   const [predecessor, setPredecessor] = useState(initialData?.predecessor || '');
   const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
   const [lag, setLag] = useState(initialData?.lag?.toString() || '0');
-  const [saving, setSaving] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    setSaving(true);
-    await new Promise(r => setTimeout(r, 300));
-    setSaving(false);
     onSave({
       id: initialData?.id,
+      smjDbId,
       name,
+      divisionId: divisionId ? parseInt(divisionId) : undefined,
       startDate,
       duration: parseInt(duration) || 1,
       predecessor,
@@ -637,15 +809,15 @@ function AddSubtaskModal({ smjId, onClose, onSave, initialData }: { smjId: strin
 
   return (
     <Modal
-      isOpen={true}
+      title={initialData ? "Edit Task" : "Tambah Task Baru (Sub-Subtask)"}
+      subtitle={initialData ? `Mengedit: ${initialData.code}` : "Tambahkan rincian pekerjaan spesifik proyek"}
       onClose={onClose}
-      title={initialData ? "Edit Sub-Subtask" : "Add Project-Specific Sub-Subtask"}
-      subtitle={initialData ? `Editing task ${initialData.code}` : `Adding task under Sub Main Job ${smjId}`}
+      size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-3.5">
         <div>
           <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
-            Task Description <span className="text-danger">*</span>
+            Deskripsi Task <span className="text-danger">*</span>
           </label>
           <input
             type="text"
@@ -660,16 +832,19 @@ function AddSubtaskModal({ smjId, onClose, onSave, initialData }: { smjId: strin
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
+            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Divisi Penanggung Jawab</label>
+            <select
+              value={divisionId}
+              onChange={e => setDivisionId(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            />
+            >
+              {divisions.map(d => (
+                <option key={d.id} value={d.id}>{d.divisi}</option>
+              ))}
+            </select>
           </div>
           <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Duration (Days)</label>
+            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Durasi (Hari)</label>
             <input
               type="number"
               min="1"
@@ -680,8 +855,17 @@ function AddSubtaskModal({ smjId, onClose, onSave, initialData }: { smjId: strin
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          <div className="col-span-1">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Tanggal Mulai</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+            />
+          </div>
+          <div>
             <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Predecessor</label>
             <input
               placeholder="e.g. 1.1.1"
@@ -690,37 +874,14 @@ function AddSubtaskModal({ smjId, onClose, onSave, initialData }: { smjId: strin
               className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
             />
           </div>
-          <div className="col-span-1">
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Dependency</label>
-            <select
-              value={depType}
-              onChange={e => setDepType(e.target.value as DependencyType)}
-              className="w-full px-2.5 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            >
-              <option value="FS">FS (Finish-Start)</option>
-              <option value="SS">SS (Start-Start)</option>
-              <option value="FF">FF (Finish-Finish)</option>
-              <option value="SF">SF (Start-Finish)</option>
-            </select>
-          </div>
-          <div className="col-span-1">
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Lag / Lead (d)</label>
-            <input
-              type="number"
-              value={lag}
-              onChange={e => setLag(e.target.value)}
-              placeholder="0"
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            />
-          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
           <Button variant="outline" size="sm" type="button" onClick={onClose}>
-            Cancel
+            Batal
           </Button>
-          <Button variant="primary" size="sm" type="submit" loading={saving}>
-            Save Sub-Subtask
+          <Button variant="primary" size="sm" type="submit">
+            Simpan Task
           </Button>
         </div>
       </form>

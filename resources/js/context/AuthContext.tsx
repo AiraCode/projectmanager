@@ -5,16 +5,21 @@ export interface User {
   id?: number;
   name: string;
   email: string;
-  role: string;
+  role: string; // 'admin_utama' | 'admin_progres' | 'pic' | 'worker'
+  rawRole: string;
+  displayRole: string;
+  isAdminUtama: boolean;
+  isAdminProgres: boolean;
+  isPIC: boolean;
+  isWorker: boolean;
   pic?: string | null;
   division?: string | null;
   company?: string | null;
+  companies_id?: number | null;
   canCreateProject?: boolean;
-  ownedProject?: { id: number; name: string } | null;
 }
 
-// Keep Role type for backwards compatibility with old UI components
-export type Role = 'Admin' | 'PIC' | 'Worker';
+export type Role = 'Admin Utama' | 'Admin Progres' | 'PIC' | 'Worker';
 
 interface AuthContextType {
   user: User | null;
@@ -31,19 +36,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const page = usePage() as any;
   const authUser = page?.props?.auth?.user ?? null;
 
+  const rawRole = authUser?.role ?? 'worker';
+  const isAdminUtama   = rawRole === 'admin_utama';
+  const isAdminProgres = rawRole === 'admin_progres';
+  const isPIC          = rawRole === 'pic';
+  const isWorker       = rawRole === 'worker';
+
+  const displayRole = isAdminUtama   ? 'Admin Utama'
+                    : isAdminProgres ? 'Admin Progres'
+                    : isPIC          ? 'PIC'
+                    : 'Worker';
+
   const user: User | null = authUser ? {
     id:       authUser.id,
     name:     authUser.name ?? 'User',
     email:    authUser.email ?? '',
-    role:     authUser.role === 'admin_utama'    ? 'Admin'
-            : authUser.role === 'admin_progres'  ? 'Admin'
-            : authUser.role === 'pic'            ? 'PIC'
-            : 'Worker',
+    role:     rawRole,
+    rawRole,
+    displayRole,
+    isAdminUtama,
+    isAdminProgres,
+    isPIC,
+    isWorker,
     division: authUser.division ?? null,
     company:  authUser.company  ?? null,
+    companies_id: authUser.companies_id ?? null,
     // Legacy fields — needed by old UI components
     pic:      authUser.division ?? authUser.company ?? 'PM',
-    canCreateProject: authUser.role === 'pic' || authUser.role === 'admin_utama',
+    // Strictly enforce: Admin Utama and Admin Progres CANNOT create project! Only PIC can!
+    canCreateProject: isPIC && (authUser.canCreateProject ?? true),
   } : null;
 
   const login        = async () => ({ success: true });

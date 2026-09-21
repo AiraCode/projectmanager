@@ -12,7 +12,7 @@ return new class extends Migration
             $table->increments('id');
             $table->unsignedInteger('sub_wbs_id');
             $table->unsignedInteger('list_sub_wbs_names_id');
-            $table->string('name', 45)->nullable();
+            $table->string('name', 255)->nullable();
             $table->string('predecessor', 45);
             $table->string('predecessor_type', 45);
             $table->string('lag_lead_time', 45)->nullable();

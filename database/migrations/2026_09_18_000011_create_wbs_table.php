@@ -12,7 +12,7 @@ return new class extends Migration
             $table->string('id', 45)->primary();
             $table->unsignedInteger('sub_wbs_id');
             $table->unsignedInteger('divisions_id');
-            $table->string('name', 45)->nullable();
+            $table->string('name', 255)->nullable();
             $table->string('vendor', 45);
             $table->dateTime('start');
             $table->dateTime('end');

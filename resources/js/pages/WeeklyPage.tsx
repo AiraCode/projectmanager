@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { usePage } from '@inertiajs/react';
 import { Project, PROJECT, WeekData } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { PageHeader, Card, Button, Toast } from '@/components/ui';
@@ -7,7 +8,19 @@ import { Info, ChevronLeft, ChevronRight, Check, Calendar, TrendingUp } from 'lu
 const PAGE_SIZE = 10;
 
 export default function WeeklyPage() {
-  const [projectData, setProjectData] = useState<Project>(() => recalculateWeeklyData(PROJECT));
+  const pageProps = usePage().props as any;
+  const project = pageProps?.project;
+
+  const [projectData, setProjectData] = useState<Project>(() => {
+    const raw = project && project.mainJobs ? project : PROJECT;
+    return recalculateWeeklyData(raw);
+  });
+
+  useEffect(() => {
+    if (project && project.mainJobs) {
+      setProjectData(recalculateWeeklyData(project));
+    }
+  }, [project]);
   const weeks = projectData.weeklyData;
   const [page, setPage] = useState(0); // Start at beginning for dynamically generated
   const [editing, setEditing] = useState<Record<number, string>>({});

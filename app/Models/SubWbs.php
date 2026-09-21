@@ -22,6 +22,9 @@ class SubWbs extends Model
         'end',
         'actual_start',
         'actual_end',
+        'weight',
+        'progress',
+        'status',
     ];
 
     protected $casts = [

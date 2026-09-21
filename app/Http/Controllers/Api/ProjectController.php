@@ -53,19 +53,19 @@ class ProjectController extends Controller
     {
         $user = $request->user();
 
-        if (! $user || ! $user->isAdmin()) {
+        if (! $user || ! $user->isPic()) {
             return response()->json([
-                'message' => 'Unauthorized. Only Admins can create projects.',
+                'message' => 'Unauthorized. Only PIC can create projects. Admins cannot create projects.',
             ], 403);
         }
 
-        // Strictly enforce Admin Ownership Rule:
-        // One Admin can own exactly one Project in total across all companies.
-        $existingProject = Project::where('admin_id', $user->id)->first();
+        // Strictly enforce PIC Ownership Rule:
+        // One PIC can manage exactly one Project in total.
+        $existingProject = Project::where('project_manager', $user->id)->first();
         if ($existingProject) {
             throw ValidationException::withMessages([
-                'admin_id' => [
-                    "Admin ownership constraint violated: One Admin can own exactly one Project in total. You already own project '{$existingProject->name}'.",
+                'project_manager' => [
+                    "PIC ownership constraint violated: You already manage project '{$existingProject->title}'.",
                 ],
             ]);
         }

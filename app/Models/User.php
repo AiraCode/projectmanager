@@ -60,47 +60,42 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class, 'roles_id');
     }
 
-    /**
-     * The project owned by this Admin.
-     * Strictly 1:1 relationship according to Admin Ownership Rule.
-     */
-    public function ownedProject()
+    public function project()
     {
-        return $this->hasOne(Project::class, 'admin_id');
+        return $this->hasOne(Project::class, 'project_manager');
     }
 
-    public function isAdmin(): bool
+    public function isAdminUtama(): bool
     {
-        return $this->role === 'admin';
+        return $this->role?->name === 'admin_utama';
+    }
+
+    public function isAdminProgres(): bool
+    {
+        return $this->role?->name === 'admin_progres';
     }
 
     public function isPic(): bool
     {
-        return $this->role === 'pic';
+        return $this->role?->name === 'pic';
+    }
+
+    public function isWorker(): bool
+    {
+        return $this->role?->name === 'worker';
     }
 
     /**
      * Check if user can create a project.
-     * Rule: Must be Admin and must not already own a project.
+     * Rule: Only PIC who does not already manage a project can create a project.
+     * Admin Utama, Admin Progres, and Workers CANNOT create projects.
      */
     public function canCreateProject(): bool
     {
-        if (! $this->isAdmin()) {
+        if (! $this->isPic()) {
             return false;
         }
 
-        return ! $this->ownedProject()->exists();
-    }
-
-    /**
-     * Check if user can modify a Sub Main Job based on role and fixed PIC assignment.
-     */
-    public function canModifySubMainJob(SubMainJob $subMainJob): bool
-    {
-        if ($this->isAdmin()) {
-            return true;
-        }
-
-        return $this->pic_role !== null && strcasecmp($this->pic_role, $subMainJob->pic) === 0;
+        return ! Project::where('project_manager', $this->id)->exists();
     }
 }
