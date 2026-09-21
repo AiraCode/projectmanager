@@ -79,7 +79,8 @@ class ProjectController extends Controller
         $targetId = $id ?? $request->query('project_id');
 
         if ($role === 'admin_progres') {
-            return redirect()->route('scurve', ['project_id' => $targetId]);
+            if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
+            return redirect()->route('projects.index');
         }
 
         $project = $this->resolveProjectForUser($targetId);
@@ -103,7 +104,8 @@ class ProjectController extends Controller
         $targetId = $id ?? $request->query('project_id');
 
         if ($role === 'admin_progres') {
-            return redirect()->route('scurve', ['project_id' => $targetId]);
+            if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
+            return redirect()->route('projects.index');
         }
 
         $project = $this->resolveProjectForUser($targetId);
@@ -127,19 +129,21 @@ class ProjectController extends Controller
         $targetId = $id ?? $request->query('project_id');
 
         if ($role === 'admin_progres') {
-            return redirect()->route('scurve', ['project_id' => $targetId]);
+            if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
+            return redirect()->route('projects.index');
         }
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
-            if ($role === 'pic') return redirect()->route('projects.index');
-            abort(404, 'Project tidak ditemukan.');
+            // No project found — redirect appropriately instead of 404
+            return redirect()->route('projects.index');
         }
 
         $divisions = Division::select('id', 'divisi')->get();
+        $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
 
         return Inertia::render('TasksPage', [
-            'project'   => $this->transformProjectData($project),
+            'project'   => $this->transformProjectData($project, $workerDivisionId),
             'userRole'  => $role,
             'division'  => $user->division?->divisi ?? null,
             'divisions' => $divisions,
@@ -156,7 +160,8 @@ class ProjectController extends Controller
         $targetId = $id ?? $request->query('project_id');
 
         if ($role === 'admin_progres') {
-            return redirect()->route('scurve', ['project_id' => $targetId]);
+            if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
+            return redirect()->route('projects.index');
         }
 
         $project = $this->resolveProjectForUser($targetId);
@@ -164,8 +169,10 @@ class ProjectController extends Controller
             return redirect()->route('projects.index');
         }
 
+        $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
+
         return Inertia::render('TimelinePage', [
-            'project'  => $this->transformProjectData($project),
+            'project'  => $this->transformProjectData($project, $workerDivisionId),
             'userRole' => $role,
         ]);
     }
@@ -180,7 +187,8 @@ class ProjectController extends Controller
         $targetId = $id ?? $request->query('project_id');
 
         if ($role === 'admin_progres') {
-            return redirect()->route('scurve', ['project_id' => $targetId]);
+            if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
+            return redirect()->route('projects.index');
         }
 
         $project = $this->resolveProjectForUser($targetId);
@@ -204,7 +212,8 @@ class ProjectController extends Controller
         $targetId = $id ?? $request->query('project_id');
 
         if ($role === 'admin_progres') {
-            return redirect()->route('scurve', ['project_id' => $targetId]);
+            if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
+            return redirect()->route('projects.index');
         }
 
         $project = $this->resolveProjectForUser($targetId);
@@ -230,7 +239,8 @@ class ProjectController extends Controller
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
-            abort(404, 'Project tidak ditemukan.');
+            // Admin Progres has no specific project selected — send back to project list
+            return redirect()->route('projects.index');
         }
 
         return Inertia::render('SCurvePage', [
@@ -300,6 +310,118 @@ class ProjectController extends Controller
     }
 
     /**
+     * Add Main Task (Main Job / Main WBS) to a Project.
+     * PIC only!
+     */
+    public function addMainWbs(Request $request, $projectId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+        if ($role !== 'pic' || $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menambah Main Task.');
+        }
+
+        $validated = $request->validate([
+            'name'   => 'required|string|max:255',
+            'weight' => 'nullable|numeric|min:0|max:100',
+            'start'  => 'nullable|date',
+            'end'    => 'nullable|date',
+        ]);
+
+        $listMain = ListMainWbsName::firstOrCreate([
+            'name' => $validated['name'],
+        ]);
+
+        $start = !empty($validated['start']) ? Carbon::parse($validated['start']) : ($project->start ?? Carbon::now());
+        $end   = !empty($validated['end']) ? Carbon::parse($validated['end']) : ($project->end ?? Carbon::now()->addMonths(6));
+
+        MainWbs::create([
+            'projects_id'            => $project->id,
+            'list_main_wbs_names_id' => $listMain->id,
+            'name'                   => $validated['name'],
+            'percentage'             => $validated['weight'] ?? 5.0,
+            'actual_start'           => $start,
+            'actual_end'             => $end,
+            'progress'               => 0,
+            'status'                 => 'Open',
+        ]);
+
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        return back()->with('success', 'Main Task berhasil ditambahkan.');
+    }
+
+    /**
+     * Update Main Task (Main WBS).
+     * PIC only!
+     */
+    public function updateMainWbs(Request $request, $projectId, $mainWbsId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+        if ($role !== 'pic' || $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat mengubah Main Task.');
+        }
+
+        $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
+
+        $validated = $request->validate([
+            'name'   => 'required|string|max:255',
+            'weight' => 'nullable|numeric|min:0|max:100',
+            'start'  => 'nullable|date',
+            'end'    => 'nullable|date',
+        ]);
+
+        $mainWbs->name = $validated['name'];
+        if (isset($validated['weight'])) {
+            $mainWbs->percentage = $validated['weight'];
+        }
+        if (!empty($validated['start'])) {
+            $mainWbs->actual_start = Carbon::parse($validated['start']);
+        }
+        if (!empty($validated['end'])) {
+            $mainWbs->actual_end = Carbon::parse($validated['end']);
+        }
+        $mainWbs->save();
+
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        return back()->with('success', 'Main Task berhasil diperbarui.');
+    }
+
+    /**
+     * Delete Main Task (Main WBS) and its descendants.
+     * PIC only!
+     */
+    public function deleteMainWbs(Request $request, $projectId, $mainWbsId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+        if ($role !== 'pic' || $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menghapus Main Task.');
+        }
+
+        $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
+
+        // Delete all SubWbs and Wbs tasks under this MainWbs
+        foreach ($mainWbs->subWbs as $subWbs) {
+            $subWbs->wbsTasks()->delete();
+            $subWbs->delete();
+        }
+        $mainWbs->delete();
+
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        return back()->with('success', 'Main Task berhasil dihapus.');
+    }
+
+    /**
      * Add Sub Task (Sub Main Job) under a Main WBS.
      * PIC only!
      */
@@ -341,6 +463,76 @@ class ProjectController extends Controller
         ]);
 
         return back()->with('success', 'Sub Task berhasil ditambahkan.');
+    }
+
+    /**
+     * Update Sub Task (Sub Main WBS).
+     * PIC only!
+     */
+    public function updateSubWbs(Request $request, $projectId, $subWbsId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+        if ($role !== 'pic' || $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat mengubah Sub Task.');
+        }
+
+        $subWbs = SubWbs::whereHas('mainWbs', function($q) use ($projectId) {
+            $q->where('projects_id', $projectId);
+        })->where('id', $subWbsId)->firstOrFail();
+
+        $validated = $request->validate([
+            'name'   => 'required|string|max:255',
+            'weight' => 'nullable|numeric|min:0|max:100',
+            'start'  => 'nullable|date',
+            'end'    => 'nullable|date',
+        ]);
+
+        $subWbs->name = $validated['name'];
+        if (isset($validated['weight'])) {
+            $subWbs->weight = $validated['weight'];
+        }
+        if (!empty($validated['start'])) {
+            $subWbs->start = Carbon::parse($validated['start']);
+            $subWbs->actual_start = $subWbs->start;
+        }
+        if (!empty($validated['end'])) {
+            $subWbs->end = Carbon::parse($validated['end']);
+            $subWbs->actual_end = $subWbs->end;
+        }
+        $subWbs->save();
+
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        return back()->with('success', 'Sub Task berhasil diperbarui.');
+    }
+
+    /**
+     * Delete Sub Task (Sub Main WBS) and its tasks.
+     * PIC only!
+     */
+    public function deleteSubWbs(Request $request, $projectId, $subWbsId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+        if ($role !== 'pic' || $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menghapus Sub Task.');
+        }
+
+        $subWbs = SubWbs::whereHas('mainWbs', function($q) use ($projectId) {
+            $q->where('projects_id', $projectId);
+        })->where('id', $subWbsId)->firstOrFail();
+
+        $subWbs->wbsTasks()->delete();
+        $subWbs->delete();
+
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        return back()->with('success', 'Sub Task berhasil dihapus.');
     }
 
     /**
@@ -392,6 +584,83 @@ class ProjectController extends Controller
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
         return back()->with('success', 'Task berhasil ditambahkan.');
+    }
+
+    /**
+     * Update Task (Sub-Subtask).
+     * PIC only!
+     */
+    public function updateTask(Request $request, $projectId, $taskId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+        if ($role !== 'pic' || $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat mengubah Task.');
+        }
+
+        $task = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($projectId) {
+            $q->where('projects_id', $projectId);
+        })->where('id', $taskId)->firstOrFail();
+
+        $validated = $request->validate([
+            'name'         => 'required|string|max:255',
+            'divisions_id' => 'nullable|exists:divisions,id',
+            'duration'     => 'nullable|integer|min:0',
+            'start'        => 'nullable|date',
+            'end'          => 'nullable|date',
+            'predecessor'  => 'nullable|string|max:50',
+            'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
+            'lag'          => 'nullable|integer',
+        ]);
+
+        $task->name = $validated['name'];
+        if (isset($validated['divisions_id'])) {
+            $task->divisions_id = $validated['divisions_id'];
+        }
+        if (!empty($validated['start'])) {
+            $task->start = Carbon::parse($validated['start']);
+        }
+        if (!empty($validated['end'])) {
+            $task->end = Carbon::parse($validated['end']);
+        }
+        if (isset($validated['predecessor'])) {
+            $task->predecessor = $validated['predecessor'];
+        }
+        if (isset($validated['dep_type'])) {
+            $task->predecessor_type = $validated['dep_type'];
+        }
+        $task->save();
+
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        return back()->with('success', 'Task berhasil diperbarui.');
+    }
+
+    /**
+     * Delete Task (Sub-Subtask).
+     * PIC only!
+     */
+    public function deleteTask(Request $request, $projectId, $taskId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+        if ($role !== 'pic' || $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menghapus Task.');
+        }
+
+        $task = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($projectId) {
+            $q->where('projects_id', $projectId);
+        })->where('id', $taskId)->firstOrFail();
+
+        $task->delete();
+
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        return back()->with('success', 'Task berhasil dihapus.');
     }
 
     /**
@@ -463,9 +732,18 @@ class ProjectController extends Controller
                 if ($project->project_manager != $user->id || ($user->companies_id && $project->companies_id != $user->companies_id)) {
                     abort(403, 'Akses Ditolak: PIC tidak dapat membuka project milik perusahaan lain.');
                 }
+                if ($project->mainWbs->count() === 0) {
+                    app(ProjectTemplateService::class)->applyTemplateToProject($project);
+                    $project = $query->find($id);
+                }
                 return $project;
             } else {
-                return $query->where('project_manager', $user->id)->first();
+                $project = $query->where('project_manager', $user->id)->first();
+                if ($project && $project->mainWbs->count() === 0) {
+                    app(ProjectTemplateService::class)->applyTemplateToProject($project);
+                    $project = $query->where('project_manager', $user->id)->first();
+                }
+                return $project;
             }
         } elseif ($role === 'worker') {
             if ($id) {
@@ -479,15 +757,16 @@ class ProjectController extends Controller
                 return $query->where('companies_id', $user->companies_id)->first();
             }
         } else {
-            // Admin Utama & Admin Progres can view any project
-            return $id ? $query->find($id) : $query->first();
+            // Admin Utama & Admin Progres can view any project, but MUST specify an id
+            if (!$id) return null;
+            return $query->find($id);
         }
     }
 
     /**
      * Transform DB project model into clean JSON structure expected by React frontend.
      */
-    private function transformProjectData($p)
+    private function transformProjectData($p, $workerDivisionId = null)
     {
         $start   = $p->start;
         $end     = $p->end;
@@ -496,6 +775,79 @@ class ProjectController extends Controller
         if ($hariKe < 0) $hariKe = 0;
         $sisaHari = $end ? $now->diffInDays($end, false) : 0;
         if ($sisaHari < 0) $sisaHari = 0;
+
+        $mainJobs = $p->mainWbs->values()->map(function ($mj, $mjIdx) use ($workerDivisionId) {
+            $mjCode = (string) ($mjIdx + 1);
+
+            $subMainJobs = $mj->subWbs->values()->map(function ($smj, $smjIdx) use ($mjCode, $workerDivisionId) {
+                $smjCode = $mjCode . '.' . ($smjIdx + 1);
+
+                $tasksQuery = $smj->wbsTasks;
+                if ($workerDivisionId) {
+                    $tasksQuery = $tasksQuery->filter(function ($t) use ($workerDivisionId) {
+                        return $t->divisions_id == $workerDivisionId;
+                    });
+                }
+
+                $subtasks = $tasksQuery->values()->map(function ($st, $stIdx) use ($smjCode) {
+                    return [
+                        'id'          => $st->id,
+                        'code'        => $smjCode . '.' . ($stIdx + 1),
+                        'name'        => $st->name,
+                        'duration'    => $st->start && $st->end ? $st->start->diffInDays($st->end) : 0,
+                        'daysLeft'    => $st->end && Carbon::now()->lessThan($st->end) ? Carbon::now()->diffInDays($st->end) : 0,
+                        'startDate'   => $st->start ? $st->start->format('Y-m-d') : '',
+                        'finishDate'  => $st->end ? $st->end->format('Y-m-d') : '',
+                        'progress'    => $st->is_completed ? 100 : 0,
+                        'status'      => $st->status ?? 'Open',
+                        'predecessor' => $st->predecessor ?? '-',
+                        'depType'     => $st->predecessor_type ?? 'FS',
+                        'weight'      => 0,
+                        'checked'     => (bool) $st->is_completed,
+                        'division'    => $st->division?->divisi ?? 'General',
+                    ];
+                })->values()->toArray();
+
+                return [
+                    'id'         => 'smj-' . $smj->id,
+                    'dbId'       => $smj->id,
+                    'code'       => $smjCode,
+                    'name'       => $smj->listName?->name ?? $smj->name ?? '',
+                    'pic'        => $smj->wbsTasks->first()?->division?->divisi ?? 'General',
+                    'startDate'  => $smj->start ? $smj->start->format('Y-m-d') : '',
+                    'finishDate' => $smj->end ? $smj->end->format('Y-m-d') : '',
+                    'progress'   => (int) $smj->progress,
+                    'status'     => $smj->status ?? 'Open',
+                    'weight'     => (float) $smj->weight,
+                    'subtasks'   => $subtasks,
+                ];
+            });
+
+            if ($workerDivisionId) {
+                $subMainJobs = $subMainJobs->filter(function ($smj) {
+                    return count($smj['subtasks']) > 0;
+                });
+            }
+
+            return [
+                'id'          => 'mj-' . $mj->id,
+                'dbId'        => $mj->id,
+                'code'        => $mjCode,
+                'name'        => $mj->listName?->name ?? $mj->name ?? '',
+                'weight'      => (float) $mj->percentage,
+                'startDate'   => $mj->actual_start ? $mj->actual_start->format('Y-m-d') : '',
+                'finishDate'  => $mj->actual_end ? $mj->actual_end->format('Y-m-d') : '',
+                'progress'    => (int) $mj->progress,
+                'status'      => $mj->status ?? 'Open',
+                'subMainJobs' => $subMainJobs->values()->toArray(),
+            ];
+        });
+
+        if ($workerDivisionId) {
+            $mainJobs = $mainJobs->filter(function ($mj) {
+                return count($mj['subMainJobs']) > 0;
+            });
+        }
 
         return [
             'id'              => (string) $p->id,
@@ -512,53 +864,7 @@ class ProjectController extends Controller
             'usedBudget'      => 34560000000,
             'weeklyData'      => [],
             'budgetEntries'   => [],
-            'mainJobs'        => $p->mainWbs->values()->map(function ($mj, $mjIdx) {
-                $mjCode = (string) ($mjIdx + 1);
-                return [
-                    'id'          => 'mj-' . $mj->id,
-                    'dbId'        => $mj->id,
-                    'code'        => $mjCode,
-                    'name'        => $mj->listName?->name ?? $mj->name ?? '',
-                    'weight'      => (float) $mj->percentage,
-                    'startDate'   => $mj->actual_start ? $mj->actual_start->format('Y-m-d') : '',
-                    'finishDate'  => $mj->actual_end ? $mj->actual_end->format('Y-m-d') : '',
-                    'progress'    => (int) $mj->progress,
-                    'status'      => $mj->status ?? 'Open',
-                    'subMainJobs' => $mj->subWbs->values()->map(function ($smj, $smjIdx) use ($mjCode) {
-                        $smjCode = $mjCode . '.' . ($smjIdx + 1);
-                        return [
-                            'id'         => 'smj-' . $smj->id,
-                            'dbId'       => $smj->id,
-                            'code'       => $smjCode,
-                            'name'       => $smj->listName?->name ?? $smj->name ?? '',
-                            'pic'        => $smj->wbsTasks->first()?->division?->divisi ?? 'General',
-                            'startDate'  => $smj->start ? $smj->start->format('Y-m-d') : '',
-                            'finishDate' => $smj->end ? $smj->end->format('Y-m-d') : '',
-                            'progress'   => (int) $smj->progress,
-                            'status'     => $smj->status ?? 'Open',
-                            'weight'     => (float) $smj->weight,
-                            'subtasks'   => $smj->wbsTasks->values()->map(function ($st, $stIdx) use ($smjCode) {
-                                return [
-                                    'id'          => $st->id,
-                                    'code'        => $smjCode . '.' . ($stIdx + 1),
-                                    'name'        => $st->name,
-                                    'duration'    => $st->start && $st->end ? $st->start->diffInDays($st->end) : 0,
-                                    'daysLeft'    => $st->end && Carbon::now()->lessThan($st->end) ? Carbon::now()->diffInDays($st->end) : 0,
-                                    'startDate'   => $st->start ? $st->start->format('Y-m-d') : '',
-                                    'finishDate'  => $st->end ? $st->end->format('Y-m-d') : '',
-                                    'progress'    => $st->is_completed ? 100 : 0,
-                                    'status'      => $st->status ?? 'Open',
-                                    'predecessor' => $st->predecessor ?? '-',
-                                    'depType'     => $st->predecessor_type ?? 'FS',
-                                    'weight'      => 0,
-                                    'checked'     => (bool) $st->is_completed,
-                                    'division'    => $st->division?->divisi ?? 'General',
-                                ];
-                            })->values()->toArray(),
-                        ];
-                    })->values()->toArray(),
-                ];
-            })->values()->toArray(),
+            'mainJobs'        => $mainJobs->values()->toArray(),
         ];
     }
 }

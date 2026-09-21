@@ -44,6 +44,7 @@ export default function TasksPage() {
   const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({ 'smj-1': true, 'smj-1-1': true });
   
   // Modals
+  const [showAddMainJobModal, setShowAddMainJobModal] = useState(false);
   const [showAddTaskModal, setShowAddTaskModal] = useState<{ smjId: string; smjDbId?: number; task?: SubSubtask } | null>(null);
   const [showAddSubMainJobModal, setShowAddSubMainJobModal] = useState<{ mjId: string; mjDbId?: number; mjName: string } | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -51,23 +52,152 @@ export default function TasksPage() {
   const toggleMJ = (id: string) => setExpandedMJ(p => ({ ...p, [id]: !p[id] }));
   const toggleSMJ = (id: string) => setExpandedSMJ(p => ({ ...p, [id]: !p[id] }));
 
+  // Add Main Task (Main Job / Level 1 WBS)
+  const handleSaveMainJob = (name: string, weight: number, start?: string, end?: string) => {
+    if (projectData.id && name) {
+      router.post(`/projects/${projectData.id}/main-wbs`, {
+        name,
+        weight,
+        start: start || null,
+        end: end || null,
+      }, {
+        preserveScroll: true,
+        onError: () => setToastMsg('Gagal menambahkan Main Task ke server.'),
+      });
+    }
+
+    setProjectData(prev => {
+      const newData = { ...prev };
+      const nextCode = (newData.mainJobs.length + 1).toString();
+      const newMJ: MainJob = {
+        id: `mj-${Date.now()}`,
+        code: nextCode,
+        name: name,
+        weight: weight,
+        startDate: start || new Date().toISOString().slice(0, 10),
+        finishDate: end || new Date().toISOString().slice(0, 10),
+        progress: 0,
+        status: 'Open',
+        subMainJobs: [],
+      };
+      newData.mainJobs = [...newData.mainJobs, newMJ];
+      return recalculateSchedule(recalculateProgress(newData));
+    });
+
+    setToastMsg(`Main Task "${name}" berhasil ditambahkan.`);
+    setShowAddMainJobModal(false);
+  };
+
+  // Delete Main Task (Main Job)
+  const handleDeleteMainJob = (mjId: string, mjDbId: number | undefined, mjName: string) => {
+    if (!confirm(`Hapus Main Task "${mjName}" beserta seluruh Sub Task dan pekerjaannya?`)) return;
+    const targetDbId = mjDbId || (mjId.startsWith('mj-') ? mjId.replace('mj-', '') : mjId);
+    if (projectData.id && targetDbId) {
+      router.delete(`/projects/${projectData.id}/main-wbs/${targetDbId}`, {
+        preserveScroll: true,
+        onError: () => setToastMsg('Gagal menghapus Main Task dari server.'),
+      });
+    }
+    setProjectData(prev => {
+      const newData = { ...prev };
+      newData.mainJobs = newData.mainJobs.filter(mj => mj.id !== mjId);
+      return recalculateSchedule(recalculateProgress(newData));
+    });
+    setToastMsg(`Main Task "${mjName}" berhasil dihapus.`);
+  };
+
+  // Add Sub Task (Sub Main Job under Main Job)
+  const handleSaveSubMainJob = (mjId: string, name: string, weight: number, mjDbId?: number) => {
+    if (projectData.id && name) {
+      router.post(`/projects/${projectData.id}/sub-wbs`, {
+        main_wbs_id: mjDbId || (mjId.startsWith('mj-') ? mjId.replace('mj-', '') : mjId),
+        name: name,
+        weight: weight,
+      }, {
+        preserveScroll: true,
+        onError: () => setToastMsg('Gagal menambahkan Sub Task ke server.'),
+      });
+    }
+
+    setProjectData(prev => {
+      const newData = { ...prev };
+      newData.mainJobs = newData.mainJobs.map(mj => {
+        if (mj.id !== mjId) return mj;
+        const newCode = `${mj.code}.${mj.subMainJobs.length + 1}`;
+        const newSMJ: SubMainJob = {
+          id: `smj-${Date.now()}`,
+          code: newCode,
+          name: name,
+          pic: 'Internal',
+          startDate: mj.startDate || new Date().toISOString().slice(0, 10),
+          finishDate: mj.finishDate || new Date().toISOString().slice(0, 10),
+          progress: 0,
+          status: 'Open',
+          weight: weight,
+          subtasks: [],
+        };
+        return { ...mj, subMainJobs: [...mj.subMainJobs, newSMJ] };
+      });
+      return recalculateSchedule(recalculateProgress(newData));
+    });
+
+    setToastMsg(`Sub Task "${name}" berhasil ditambahkan.`);
+    setShowAddSubMainJobModal(null);
+  };
+
+  // Delete Sub Task (Sub Main Job)
+  const handleDeleteSubMainJob = (mjId: string, smjId: string, smjDbId: number | undefined, smjName: string) => {
+    if (!confirm(`Hapus Sub Task "${smjName}" beserta seluruh task di dalamnya?`)) return;
+    const targetDbId = smjDbId || (smjId.startsWith('smj-') ? smjId.replace('smj-', '') : smjId);
+    if (projectData.id && targetDbId) {
+      router.delete(`/projects/${projectData.id}/sub-wbs/${targetDbId}`, {
+        preserveScroll: true,
+        onError: () => setToastMsg('Gagal menghapus Sub Task dari server.'),
+      });
+    }
+    setProjectData(prev => {
+      const newData = { ...prev };
+      newData.mainJobs = newData.mainJobs.map(mj => {
+        if (mj.id !== mjId) return mj;
+        return { ...mj, subMainJobs: mj.subMainJobs.filter(smj => smj.id !== smjId) };
+      });
+      return recalculateSchedule(recalculateProgress(newData));
+    });
+    setToastMsg(`Sub Task "${smjName}" berhasil dihapus.`);
+  };
+
   // Add or Edit Sub-Subtask (Task)
   const handleSaveSubtask = (smjId: string, taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => {
     // Send to backend if project id exists
     if (projectData.id && taskData.name) {
-      router.post(`/projects/${projectData.id}/tasks`, {
-        sub_wbs_id: taskData.smjDbId || smjId.replace('smj-', ''),
-        name: taskData.name,
-        divisions_id: taskData.divisionId || null,
-        duration: taskData.duration || 1,
-        start: taskData.startDate || null,
-        predecessor: taskData.predecessor || null,
-        dep_type: taskData.depType || 'FS',
-        lag: taskData.lag || 0,
-      }, {
-        preserveScroll: true,
-        onError: () => setToastMsg('Gagal menyimpan task ke server.'),
-      });
+      if (taskData.id) {
+        router.put(`/projects/${projectData.id}/tasks/${taskData.id}`, {
+          name: taskData.name,
+          divisions_id: taskData.divisionId || null,
+          duration: taskData.duration || 1,
+          start: taskData.startDate || null,
+          predecessor: taskData.predecessor || null,
+          dep_type: taskData.depType || 'FS',
+          lag: taskData.lag || 0,
+        }, {
+          preserveScroll: true,
+          onError: () => setToastMsg('Gagal memperbarui task di server.'),
+        });
+      } else {
+        router.post(`/projects/${projectData.id}/tasks`, {
+          sub_wbs_id: taskData.smjDbId || smjId.replace('smj-', ''),
+          name: taskData.name,
+          divisions_id: taskData.divisionId || null,
+          duration: taskData.duration || 1,
+          start: taskData.startDate || null,
+          predecessor: taskData.predecessor || null,
+          dep_type: taskData.depType || 'FS',
+          lag: taskData.lag || 0,
+        }, {
+          preserveScroll: true,
+          onError: () => setToastMsg('Gagal menyimpan task ke server.'),
+        });
+      }
     }
 
     setProjectData(prev => {
@@ -113,47 +243,14 @@ export default function TasksPage() {
     setShowAddTaskModal(null);
   };
 
-  // Add Sub Task (Sub Main Job under Main Job)
-  const handleSaveSubMainJob = (mjId: string, name: string, weight: number, mjDbId?: number) => {
-    if (projectData.id && name) {
-      router.post(`/projects/${projectData.id}/sub-wbs`, {
-        main_wbs_id: mjDbId || mjId.replace('mj-', ''),
-        name: name,
-        weight: weight,
-      }, {
-        preserveScroll: true,
-        onError: () => setToastMsg('Gagal menambahkan Sub Task ke server.'),
-      });
-    }
-
-    setProjectData(prev => {
-      const newData = { ...prev };
-      newData.mainJobs = newData.mainJobs.map(mj => {
-        if (mj.id !== mjId) return mj;
-        const newCode = `${mj.code}.${mj.subMainJobs.length + 1}`;
-        const newSMJ: SubMainJob = {
-          id: `smj-${Date.now()}`,
-          code: newCode,
-          name: name,
-          pic: 'Internal',
-          startDate: mj.startDate || new Date().toISOString().slice(0, 10),
-          finishDate: mj.finishDate || new Date().toISOString().slice(0, 10),
-          progress: 0,
-          status: 'Open',
-          weight: weight,
-          subtasks: [],
-        };
-        return { ...mj, subMainJobs: [...mj.subMainJobs, newSMJ] };
-      });
-      return recalculateSchedule(recalculateProgress(newData));
-    });
-
-    setToastMsg(`Sub Task "${name}" berhasil ditambahkan.`);
-    setShowAddSubMainJobModal(null);
-  };
-
   const handleDeleteSubtask = (smjId: string, taskId: string, taskName: string) => {
     if (!confirm(`Hapus tugas "${taskName}"?`)) return;
+    if (projectData.id && taskId) {
+      router.delete(`/projects/${projectData.id}/tasks/${taskId}`, {
+        preserveScroll: true,
+        onError: () => setToastMsg('Gagal menghapus task dari server.'),
+      });
+    }
     setProjectData(prev => {
       const newData = { ...prev };
       newData.mainJobs = newData.mainJobs.map(mj => ({
@@ -227,7 +324,22 @@ export default function TasksPage() {
     setToastMsg(wasChecked ? `Tugas "${taskName}" ditandai belum selesai.` : `Tugas "${taskName}" ditandai selesai ✓`);
   };
 
-  const filteredMJs = projectData.mainJobs.filter(mj => {
+  const filteredMJs = projectData.mainJobs.map(mj => {
+    if (!isWorker) return mj;
+    const workerDiv = (user?.division ?? pageProps?.division ?? '').trim().toLowerCase();
+    
+    // Filter SMJs and STs to only show worker's own tasks
+    const filteredSmjs = mj.subMainJobs.map(smj => {
+      const filteredSts = smj.subtasks.filter(st => {
+        const targetDiv = (st.division || smj.pic || '').trim().toLowerCase();
+        return workerDiv !== '' && workerDiv === targetDiv;
+      });
+      return { ...smj, subtasks: filteredSts };
+    }).filter(smj => smj.subtasks.length > 0);
+
+    return { ...mj, subMainJobs: filteredSmjs };
+  }).filter(mj => {
+    if (isWorker && mj.subMainJobs.length === 0) return false;
     if (search && !mj.name.toLowerCase().includes(search.toLowerCase()) &&
         !mj.subMainJobs.some(smj => smj.name.toLowerCase().includes(search.toLowerCase()) ||
           smj.subtasks.some(st => st.name.toLowerCase().includes(search.toLowerCase())))) return false;
@@ -265,9 +377,21 @@ export default function TasksPage() {
             <span className="text-[12px] text-neutral-500 hidden sm:inline">
               Role: <strong className="text-neutral-800">{user?.displayRole || user?.role}</strong>
               {isAdmin && <span className="ml-1 text-warning font-semibold">(Read-Only)</span>}
-              {isPIC && <span className="ml-1 text-emerald-600 font-semibold">(PIC - Bisa Tambah Task & Sub Task)</span>}
+              {isPIC && <span className="ml-1 text-emerald-600 font-semibold">(PIC - Bisa Tambah Main Task, Sub Task & Task)</span>}
               {isWorker && <span className="ml-1 text-blue-600 font-semibold">· Divisi: {user?.division || 'Internal'}</span>}
             </span>
+
+            {isPIC && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowAddMainJobModal(true)}
+                icon={Plus}
+                className="text-[12px] h-[34px]"
+              >
+                Add Main Task
+              </Button>
+            )}
             
             <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
               <button
@@ -304,7 +428,7 @@ export default function TasksPage() {
         <Info size={16} className="text-brand flex-shrink-0 mt-0.5" />
         <div className="text-[12.5px] text-neutral-700 flex-1">
           <span className="font-semibold text-brand">Otorisasi Sesuai Aturan: </span>
-          {isPIC && "Sebagai PIC, Anda berwenang penuh untuk menambah Sub Task, menambah Task, serta mengedit jadwal di proyek ini."}
+          {isPIC && "Sebagai PIC, Anda berwenang penuh untuk menambah Main Task, menambah Sub Task, menambah Task, serta mengedit jadwal di proyek ini."}
           {isWorker && `Sebagai Pekerja dari divisi "${user?.division || 'Internal'}", Anda hanya diizinkan untuk mencentang tugas yang ditujukan ke divisi Anda.`}
           {isAdmin && "Sebagai Admin, Anda dapat memantau seluruh progres tugas secara transparan dalam mode baca (Read-Only)."}
         </div>
@@ -375,24 +499,33 @@ export default function TasksPage() {
                   </div>
                   <span className="text-[12px] font-bold text-neutral-800 w-9 text-right">{mj.progress}%</span>
 
-                  {/* PIC can add Sub Task under this Main Job */}
+                  {/* PIC can add Sub Task & delete Main Task */}
                   {isPIC && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowAddSubMainJobModal({
-                          mjId: mj.id,
-                          mjDbId: (mj as any).dbId,
-                          mjName: mj.name,
-                        });
-                      }}
-                      className="py-1 px-2.5 text-[11px] h-7 ml-1 bg-white hover:bg-neutral-50 border-neutral-300"
-                      icon={Plus}
-                    >
-                      Add Sub Task
-                    </Button>
+                    <div className="flex items-center gap-1.5 ml-1" onClick={e => e.stopPropagation()}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowAddSubMainJobModal({
+                            mjId: mj.id,
+                            mjDbId: (mj as any).dbId,
+                            mjName: mj.name,
+                          });
+                        }}
+                        className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300"
+                        icon={Plus}
+                      >
+                        Add Sub Task
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMainJob(mj.id, (mj as any).dbId, mj.name)}
+                        className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors"
+                        title="Hapus Main Task"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -411,6 +544,7 @@ export default function TasksPage() {
                       isAdmin={isAdmin}
                       onOpenAddModal={() => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId })}
                       onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, task })}
+                      onDeleteSubMainJob={() => handleDeleteSubMainJob(mj.id, smj.id, (smj as any).dbId, smj.name)}
                       onDeleteTask={(taskId, taskName) => handleDeleteSubtask(smj.id, taskId, taskName)}
                       onCheck={handleCheck}
                     />
@@ -521,6 +655,14 @@ export default function TasksPage() {
         />
       )}
 
+      {/* Modal Add Main Task (Main Job) */}
+      {showAddMainJobModal && isPIC && (
+        <AddMainTaskModal
+          onClose={() => setShowAddMainJobModal(false)}
+          onSave={handleSaveMainJob}
+        />
+      )}
+
       {/* Modal Add Sub Task (Sub Main Job under Main Job) */}
       {showAddSubMainJobModal && isPIC && (
         <AddSubMainJobModal
@@ -551,7 +693,7 @@ export default function TasksPage() {
 }
 
 function SubMainJobSection({
-  smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteTask, onCheck
+  smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onCheck
 }: {
   smj: SubMainJob;
   expanded: boolean;
@@ -561,6 +703,7 @@ function SubMainJobSection({
   isAdmin: boolean;
   onOpenAddModal: () => void;
   onOpenEditModal: (task: SubSubtask) => void;
+  onDeleteSubMainJob: () => void;
   onDeleteTask: (taskId: string, taskName: string) => void;
   onCheck: (id: string, auth: boolean, name: string) => void;
 }) {
@@ -585,17 +728,27 @@ function SubMainJobSection({
           <StatusBadge status={smj.status} size="xs" />
           <span className="text-[11.5px] font-bold text-neutral-700 w-8 text-right">{smj.progress}%</span>
           
-          {/* Only PIC can add tasks under this Sub Main Job */}
+          {/* Only PIC can add tasks / delete sub tasks */}
           {isPIC && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onOpenAddModal}
-              className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300"
-              icon={Plus}
-            >
-              Add Task
-            </Button>
+            <div className="flex items-center gap-1.5 ml-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenAddModal}
+                className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300"
+                icon={Plus}
+              >
+                Add Task
+              </Button>
+              <button
+                type="button"
+                onClick={onDeleteSubMainJob}
+                className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors"
+                title="Hapus Sub Task"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -672,13 +825,21 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
           </span>
           {!canCheck && <Lock size={11} className="text-neutral-300" title="Anda tidak berhak mengubah tugas ini" />}
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-neutral-400">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1 text-[11px] text-neutral-400">
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[10px] font-semibold text-neutral-600">
             <Shield size={9} />
             Divisi: {divisi}
           </span>
-          <span>{st.startDate} → {st.finishDate}</span>
-          <span>Durasi: {st.duration}h</span>
+          <span className="inline-flex items-center gap-1 font-semibold text-neutral-700 bg-neutral-50 px-2 py-0.5 rounded border border-neutral-200">
+            <Calendar size={11} className="text-brand" />
+            Jadwal: {st.startDate || '—'} s/d {st.finishDate || '—'}
+          </span>
+          <span className="text-neutral-500 font-medium">Durasi: {st.duration} hari</span>
+          {st.daysLeft !== undefined && st.daysLeft > 0 && !isChecked && (
+            <span className="text-amber-600 font-semibold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[10px]">
+              Sisa {st.daysLeft} hari
+            </span>
+          )}
           {st.predecessor && (
             <span className="font-medium text-neutral-500">
               Pred: {st.predecessor} ({st.depType || 'FS'}{st.lag ? ` +${st.lag}d` : ''})
@@ -761,6 +922,90 @@ function AddSubMainJobModal({ mjName, onClose, onSave }: { mjName: string; onClo
           </Button>
           <Button variant="primary" size="sm" type="submit">
             Simpan Sub Task
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function AddMainTaskModal({ onClose, onSave }: { onClose: () => void; onSave: (name: string, weight: number, start?: string, end?: string) => void }) {
+  const [name, setName] = useState('');
+  const [weight, setWeight] = useState('5');
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState(new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onSave(name.trim(), parseFloat(weight) || 5, startDate, endDate);
+  };
+
+  return (
+    <Modal
+      title="Tambah Main Task Baru (Kelompok Utama WBS)"
+      subtitle="Menambahkan kelompok pekerjaan tingkat 1 ke proyek"
+      onClose={onClose}
+      size="sm"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Nama Main Task <span className="text-danger">*</span>
+          </label>
+          <input
+            type="text"
+            required
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Contoh: COMMISSIONING & HANDOVER"
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white"
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Bobot Pekerjaan (%)
+          </label>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            value={weight}
+            onChange={e => setWeight(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Tanggal Mulai</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Tanggal Selesai</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+          <Button variant="ghost" size="sm" type="button" onClick={onClose}>
+            Batal
+          </Button>
+          <Button variant="primary" size="sm" type="submit">
+            Simpan Main Task
           </Button>
         </div>
       </form>
