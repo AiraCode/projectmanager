@@ -692,7 +692,8 @@ class ProjectController extends Controller
      * Rules:
      * - Admin Utama & Admin Progres: 403 Forbidden (Read-only)
      * - Worker: can ONLY toggle tasks for their own company and their own division
-     * - PIC: can toggle tasks in their own project
+     * - PIC: CANNOT toggle tasks, only adds/manages tasks & schedule
+     * - Worker: can toggle ONLY tasks assigned to their division
      */
     public function toggleTask(Request $request, $projectId, $taskId)
     {
@@ -701,6 +702,10 @@ class ProjectController extends Controller
 
         if ($role === 'admin_utama' || $role === 'admin_progres') {
             abort(403, 'Akses Ditolak: Admin hanya dapat melihat (read-only) dan tidak boleh mengubah status tugas.');
+        }
+
+        if ($role === 'pic') {
+            abort(403, 'Akses Ditolak: PIC hanya berwenang menambah dan mengelola jadwal tugas. Centang checklist hanya dapat dilakukan oleh Pekerja (Worker) divisi terkait.');
         }
 
         $task = Wbs::with('parentSubWbs.mainWbs.project')->where('id', $taskId)->firstOrFail();
@@ -716,10 +721,6 @@ class ProjectController extends Controller
             }
             if ($user->divisions_id && $task->divisions_id != $user->divisions_id) {
                 abort(403, 'Akses Ditolak: Anda hanya berwenang mencentang tugas divisi Anda sendiri.');
-            }
-        } elseif ($role === 'pic') {
-            if ($project->project_manager != $user->id) {
-                abort(403, 'Akses Ditolak: Anda bukan PIC dari project ini.');
             }
         }
 
