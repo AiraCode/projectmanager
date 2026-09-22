@@ -257,6 +257,8 @@ class ProjectTemplateService
                     'list_main_wbs_names_id' => $listMain->id,
                     'name'                   => $mjData['name'],
                     'percentage'             => $mjData['weight'],
+                    'start'                  => $project->start ?? Carbon::now(),
+                    'end'                    => $project->end ?? Carbon::now()->addMonths(6),
                     'actual_start'           => $project->start ?? Carbon::now(),
                     'actual_end'             => $project->end ?? Carbon::now()->addMonths(6),
                     'progress'               => 0,
@@ -302,5 +304,7 @@ class ProjectTemplateService
                 }
             }
         });
+
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
     }
 }

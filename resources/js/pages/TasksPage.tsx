@@ -47,40 +47,69 @@ export default function TasksPage() {
   const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({ 'smj-1': true, 'smj-1-1': true });
   
   // Modals
-  const [showAddMainJobModal, setShowAddMainJobModal] = useState(false);
+  const [showMainJobModal, setShowMainJobModal] = useState<{
+    mode: 'create' | 'edit';
+    id?: string;
+    dbId?: number;
+    name?: string;
+    weight?: number;
+    startDate?: string;
+    finishDate?: string;
+  } | null>(null);
   const [showAddTaskModal, setShowAddTaskModal] = useState<{ smjId: string; smjDbId?: number; parentSmj?: SubMainJob; task?: SubSubtask } | null>(null);
-  const [showAddSubMainJobModal, setShowAddSubMainJobModal] = useState<{ mjId: string; mjDbId?: number; mjName: string } | null>(null);
+  const [showAddSubMainJobModal, setShowAddSubMainJobModal] = useState<{ mjId: string; mjDbId?: number; mjName: string; parentWeight?: number; currentSubCount?: number } | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const toggleMJ = (id: string) => setExpandedMJ(p => ({ ...p, [id]: !p[id] }));
   const toggleSMJ = (id: string) => setExpandedSMJ(p => ({ ...p, [id]: !p[id] }));
 
-  // Add Main Task (Main Job / Level 1 WBS)
-  const handleSaveMainJob = (name: string, weight: number, start?: string, end?: string) => {
+  // Add / Edit Main Task (Main Job / Level 1 WBS)
+  const handleSaveMainJob = (name: string, weight: number, start?: string, end?: string, targetId?: string, targetDbId?: number) => {
     if (!projectData.id || !name) return;
-    
-    router.post(`/projects/${projectData.id}/main-wbs`, {
-      name,
-      weight,
-      start: start || null,
-      end: end || null,
-    }, {
-      preserveScroll: true,
-      onSuccess: () => {
-        setToastMsg(`Main Task "${name}" successfully added.`);
-        setShowAddMainJobModal(false);
-      },
-      onError: (errors) => {
-        console.error('Error adding Main Task:', errors);
-        const errText = Object.values(errors).flat().join(', ');
-        setToastMsg(`Failed to add Main Task: ${errText || 'Please check your input'}`);
-      },
-    });
+
+    if (targetId) {
+      const cleanDbId = targetDbId || (targetId.startsWith('mj-') ? parseInt(targetId.replace('mj-', '')) : parseInt(targetId));
+      router.put(`/projects/${projectData.id}/main-wbs/${cleanDbId}`, {
+        name,
+        weight,
+        start: start || null,
+        end: end || null,
+      }, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setToastMsg(`Main Task "${name}" updated successfully.`);
+          setShowMainJobModal(null);
+        },
+        onError: (errors) => {
+          console.error('Error updating Main Task:', errors);
+          const errText = Object.values(errors).flat().join(', ');
+          setToastMsg(`Failed to update Main Task: ${errText || 'Please check your input'}`);
+        },
+      });
+    } else {
+      router.post(`/projects/${projectData.id}/main-wbs`, {
+        name,
+        weight,
+        start: start || null,
+        end: end || null,
+      }, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setToastMsg(`Main Task "${name}" added successfully.`);
+          setShowMainJobModal(null);
+        },
+        onError: (errors) => {
+          console.error('Error adding Main Task:', errors);
+          const errText = Object.values(errors).flat().join(', ');
+          setToastMsg(`Failed to add Main Task: ${errText || 'Please check your input'}`);
+        },
+      });
+    }
   };
 
   // Delete Main Task (Main Job)
   const handleDeleteMainJob = (mjId: string, mjDbId: number | undefined, mjName: string) => {
-    if (!confirm(`Delete Main Task "${mjName}" along with all its Sub Tasks and associated jobs?`)) return;
+    if (!confirm(`Delete Main Task "${mjName}" along with all its Sub Tasks and task items?`)) return;
     const targetDbId = mjDbId || (mjId.startsWith('mj-') ? mjId.replace('mj-', '') : mjId);
     if (projectData.id && targetDbId) {
       router.delete(`/projects/${projectData.id}/main-wbs/${targetDbId}`, {
@@ -91,7 +120,7 @@ export default function TasksPage() {
             newData.mainJobs = newData.mainJobs.filter(mj => mj.id !== mjId);
             return recalculateSchedule(recalculateProgress(newData));
           });
-          setToastMsg(`Main Task "${mjName}" successfully deleted.`);
+          setToastMsg(`Main Task "${mjName}" deleted successfully.`);
         },
         onError: () => setToastMsg('Failed to delete Main Task from server.'),
       });
@@ -99,18 +128,17 @@ export default function TasksPage() {
   };
 
   // Add Sub Task (Sub Main Job under Main Job)
-  const handleSaveSubMainJob = (mjId: string, name: string, weight: number, mjDbId?: number) => {
+  const handleSaveSubMainJob = (mjId: string, name: string, mjDbId?: number) => {
     if (!projectData.id || !name) return;
-    
+
     const cleanMainId = mjDbId || (mjId.startsWith('mj-') ? parseInt(mjId.replace('mj-', '')) : parseInt(mjId));
     router.post(`/projects/${projectData.id}/sub-wbs`, {
       main_wbs_id: cleanMainId,
       name: name,
-      weight: weight,
     }, {
       preserveScroll: true,
       onSuccess: () => {
-        setToastMsg(`Sub Task "${name}" successfully added.`);
+        setToastMsg(`Sub Task "${name}" added successfully.`);
         setShowAddSubMainJobModal(null);
       },
       onError: (errors) => {
@@ -137,7 +165,7 @@ export default function TasksPage() {
             });
             return recalculateSchedule(recalculateProgress(newData));
           });
-          setToastMsg(`Sub Task "${smjName}" successfully deleted.`);
+          setToastMsg(`Sub Task "${smjName}" deleted successfully.`);
         },
         onError: () => setToastMsg('Failed to delete Sub Task from server.'),
       });
@@ -145,14 +173,13 @@ export default function TasksPage() {
   };
 
   // Add or Edit Sub-Subtask (Task)
-  const handleSaveSubtask = (smjId: string, taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number; weight?: number }) => {
+  const handleSaveSubtask = (smjId: string, taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => {
     if (!projectData.id || !taskData.name) return;
-    
+
     const cleanSubWbsId = taskData.smjDbId || (smjId.startsWith('smj-') ? parseInt(smjId.replace('smj-', '')) : parseInt(smjId));
     const payload = {
       sub_wbs_id: cleanSubWbsId,
       name: taskData.name,
-      weight: taskData.weight !== undefined ? Number(taskData.weight) : undefined,
       divisions_id: taskData.divisionId || null,
       duration: taskData.duration || 1,
       start: taskData.startDate || null,
@@ -178,7 +205,6 @@ export default function TasksPage() {
                     return {
                       ...st,
                       name: taskData.name || st.name,
-                      weight: taskData.weight !== undefined ? Number(taskData.weight) : st.weight,
                     };
                   })
                 };
@@ -186,7 +212,7 @@ export default function TasksPage() {
             }));
             return recalculateSchedule(recalculateProgress(newData));
           });
-          setToastMsg(`Task "${taskData.name}" successfully updated.`);
+          setToastMsg(`Task "${taskData.name}" updated successfully.`);
           setShowAddTaskModal(null);
         },
         onError: (errors) => {
@@ -199,7 +225,7 @@ export default function TasksPage() {
       router.post(`/projects/${projectData.id}/tasks`, payload, {
         preserveScroll: true,
         onSuccess: () => {
-          setToastMsg(`Task "${taskData.name}" successfully added.`);
+          setToastMsg(`Task "${taskData.name}" added successfully.`);
           setShowAddTaskModal(null);
         },
         onError: (errors) => {
@@ -368,7 +394,7 @@ export default function TasksPage() {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => setShowAddMainJobModal(true)}
+                onClick={() => setShowMainJobModal({ mode: 'create' })}
                 icon={Plus}
                 className="text-[12px] h-[34px]"
               >
@@ -471,7 +497,7 @@ export default function TasksPage() {
                   </div>
                   <span className="text-[15px] sm:text-[16px] font-black text-neutral-900 w-12 text-right">{mj.progress}%</span>
 
-                  {/* PIC can add Sub Task & delete Main Task */}
+                  {/* PIC can add Sub Task, edit Main Task & delete Main Task */}
                   {isPIC && (
                     <div className="flex items-center gap-1.5 ml-1" onClick={e => e.stopPropagation()}>
                       <Button
@@ -482,6 +508,8 @@ export default function TasksPage() {
                             mjId: mj.id,
                             mjDbId: (mj as any).dbId,
                             mjName: mj.name,
+                            parentWeight: mj.weight,
+                            currentSubCount: mj.subMainJobs.length,
                           });
                         }}
                         className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300"
@@ -489,6 +517,22 @@ export default function TasksPage() {
                       >
                         Add Sub Task
                       </Button>
+                      <button
+                        type="button"
+                        onClick={() => setShowMainJobModal({
+                          mode: 'edit',
+                          id: mj.id,
+                          dbId: (mj as any).dbId,
+                          name: mj.name,
+                          weight: mj.weight,
+                          startDate: mj.startDate,
+                          finishDate: mj.finishDate
+                        })}
+                        className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors"
+                        title="Edit Main Task (Name & Weight)"
+                      >
+                        <Edit2 size={13} />
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteMainJob(mj.id, (mj as any).dbId, mj.name)}
@@ -634,11 +678,19 @@ export default function TasksPage() {
         />
       )}
 
-      {/* Modal Add Main Task (Main Job) */}
-      {showAddMainJobModal && (
-        <AddMainTaskModal
-          onClose={() => setShowAddMainJobModal(false)}
-          onSave={handleSaveMainJob}
+      {/* Modal Add / Edit Main Task (Main Job) */}
+      {showMainJobModal && (
+        <MainJobModal
+          initialData={showMainJobModal.mode === 'edit' ? showMainJobModal : undefined}
+          onClose={() => setShowMainJobModal(null)}
+          onSave={(name, weight, start, end) => handleSaveMainJob(
+            name,
+            weight,
+            start,
+            end,
+            showMainJobModal.mode === 'edit' ? showMainJobModal.id : undefined,
+            showMainJobModal.mode === 'edit' ? showMainJobModal.dbId : undefined
+          )}
         />
       )}
 
@@ -646,8 +698,10 @@ export default function TasksPage() {
       {showAddSubMainJobModal && (
         <AddSubMainJobModal
           mjName={showAddSubMainJobModal.mjName}
+          parentWeight={showAddSubMainJobModal.parentWeight}
+          currentSubCount={showAddSubMainJobModal.currentSubCount}
           onClose={() => setShowAddSubMainJobModal(null)}
-          onSave={(name, weight) => handleSaveSubMainJob(showAddSubMainJobModal.mjId, name, weight, showAddSubMainJobModal.mjDbId)}
+          onSave={(name) => handleSaveSubMainJob(showAddSubMainJobModal.mjId, name, showAddSubMainJobModal.mjDbId)}
         />
       )}
 
@@ -852,15 +906,29 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
   );
 }
 
-function AddSubMainJobModal({ mjName, onClose, onSave }: { mjName: string; onClose: () => void; onSave: (name: string, weight: number) => void }) {
+function AddSubMainJobModal({
+  mjName,
+  parentWeight = 0,
+  currentSubCount = 0,
+  onClose,
+  onSave
+}: {
+  mjName: string;
+  parentWeight?: number;
+  currentSubCount?: number;
+  onClose: () => void;
+  onSave: (name: string) => void;
+}) {
   const [name, setName] = useState('');
-  const [weight, setWeight] = useState('10');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    onSave(name.trim(), parseFloat(weight) || 10);
+    onSave(name.trim());
   };
+
+  const nextSubCount = currentSubCount + 1;
+  const estimatedWeight = nextSubCount > 0 ? Math.round((parentWeight / nextSubCount) * 100) / 100 : 0;
 
   return (
     <Modal
@@ -879,31 +947,31 @@ function AddSubMainJobModal({ mjName, onClose, onSave }: { mjName: string; onClo
             required
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="e.g. DOCUMENT REVIEW & PERMITTING"
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white"
+            placeholder="e.g. DOCUMENT REVIEW & PERMITS"
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
             autoFocus
           />
         </div>
 
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Job Weight (%)
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="100"
-            value={weight}
-            onChange={e => setWeight(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-          />
+        {/* Informative Auto-Weight Indicator */}
+        <div className="p-3 rounded-lg bg-blue-50/80 border border-blue-200 text-[12px] text-blue-900 flex items-start gap-2.5">
+          <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-bold">Auto-Calculated Weight</span>
+            <p className="text-[11.5px] text-blue-700 leading-relaxed">
+              Sub Task weight is automatically divided equally from Main Task weight ({parentWeight}%).
+              {nextSubCount > 0 && (
+                <> Upon saving, each Sub Task will be allocated <strong>{estimatedWeight}%</strong> (total {nextSubCount} Sub Tasks).</>
+              )}
+            </p>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
           <Button variant="ghost" size="sm" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" type="submit">
+          <Button variant="primary" size="sm" type="submit" disabled={!name.trim()}>
             Save Sub Task
           </Button>
         </div>
@@ -912,22 +980,38 @@ function AddSubMainJobModal({ mjName, onClose, onSave }: { mjName: string; onClo
   );
 }
 
-function AddMainTaskModal({ onClose, onSave }: { onClose: () => void; onSave: (name: string, weight: number, start?: string, end?: string) => void }) {
-  const [name, setName] = useState('');
-  const [weight, setWeight] = useState('5');
-  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
+function MainJobModal({
+  initialData,
+  onClose,
+  onSave
+}: {
+  initialData?: {
+    id?: string;
+    dbId?: number;
+    name?: string;
+    weight?: number;
+    startDate?: string;
+    finishDate?: string;
+  };
+  onClose: () => void;
+  onSave: (name: string, weight: number, start?: string, end?: string) => void;
+}) {
+  const isEdit = !!initialData?.id;
+  const [name, setName] = useState(initialData?.name || '');
+  const [weight, setWeight] = useState(initialData?.weight !== undefined ? initialData.weight.toString() : '5');
+  const [startDate, setStartDate] = useState(initialData?.startDate || new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState(initialData?.finishDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    onSave(name.trim(), parseFloat(weight) || 5, startDate, endDate);
+    onSave(name.trim(), parseFloat(weight) || 0, startDate, endDate);
   };
 
   return (
     <Modal
-      title="Add New Main Task (Primary WBS Group)"
-      subtitle="Add tier-1 job group to the project"
+      title={isEdit ? "Edit Main Task (Primary WBS Group)" : "Add New Main Task (Primary WBS Group)"}
+      subtitle={isEdit ? `Modify Level 1 primary job group: ${initialData?.name}` : "Add a Level 1 primary job group to the project"}
       onClose={onClose}
       size="sm"
     >
@@ -942,24 +1026,28 @@ function AddMainTaskModal({ onClose, onSave }: { onClose: () => void; onSave: (n
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="e.g. COMMISSIONING & HANDOVER"
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white"
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
             autoFocus
           />
         </div>
 
         <div>
           <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Job Weight (%)
+            Weight Allocation (%) <span className="text-danger">*</span>
           </label>
           <input
             type="number"
             min="0"
             max="100"
-            step="0.1"
+            step="0.01"
+            required
             value={weight}
             onChange={e => setWeight(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-bold"
           />
+          <span className="text-[11px] text-neutral-400 mt-1 block">
+            This weight will be automatically divided equally across all Sub Tasks inside it.
+          </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -987,8 +1075,8 @@ function AddMainTaskModal({ onClose, onSave }: { onClose: () => void; onSave: (n
           <Button variant="ghost" size="sm" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" type="submit">
-            Save Main Task
+          <Button variant="primary" size="sm" type="submit" disabled={!name.trim()}>
+            {isEdit ? "Update Main Task" : "Save Main Task"}
           </Button>
         </div>
       </form>
@@ -1013,44 +1101,32 @@ function AddSubtaskModal({
   onSave: (taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => void;
   initialData?: SubSubtask;
 }) {
+  const isEdit = !!initialData?.id;
   const [name, setName] = useState(initialData?.name || '');
   const [startDate, setStartDate] = useState(initialData?.startDate || new Date().toISOString().slice(0, 10));
   const [duration, setDuration] = useState(initialData?.duration?.toString() || '5');
-  const [divisionId, setDivisionId] = useState<string>(divisions[0]?.id?.toString() || '');
+  const [divisionId, setDivisionId] = useState<string>(
+    initialData?.division
+      ? (divisions.find(d => d.divisi.toLowerCase() === initialData.division.toLowerCase())?.id?.toString() || divisions[0]?.id?.toString() || '')
+      : (divisions[0]?.id?.toString() || '')
+  );
   const [predecessor, setPredecessor] = useState(initialData?.predecessor || '');
   const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
   const [lag, setLag] = useState(initialData?.lag?.toString() || '0');
 
-  // Calculate sibling task weights
-  const otherTasksWeight = parentSmj?.subtasks
-    ? parentSmj.subtasks
-        .filter(t => t.id !== initialData?.id)
-        .reduce((sum, t) => sum + (Number(t.weight) || 0), 0)
-    : 0;
-
-  const defaultWeight = initialData?.weight !== undefined
-    ? initialData.weight.toString()
-    : (Math.max(0, Math.round((100 - otherTasksWeight) * 100) / 100) || 10).toString();
-
-  const [weight, setWeight] = useState(defaultWeight);
-
-  const currentWeightNum = parseFloat(weight) || 0;
-  const totalWeight = Math.round((otherTasksWeight + currentWeightNum) * 100) / 100;
-  const isOverWeight = totalWeight > 100;
-  const isUnderWeight = totalWeight < 100;
-  const isExactWeight = totalWeight === 100;
+  const parentWeight = parentSmj?.weight || 0;
+  const currentTaskCount = parentSmj?.subtasks?.length || 0;
+  const nextTaskCount = isEdit ? currentTaskCount : currentTaskCount + 1;
+  const estimatedTaskWeight = nextTaskCount > 0 ? Math.round((parentWeight / nextTaskCount) * 100) / 100 : 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    if (isOverWeight) return; // Strict validation: cannot save if > 100%
-    if (currentWeightNum <= 0) return;
 
     onSave({
       id: initialData?.id,
       smjDbId,
-      name,
-      weight: currentWeightNum,
+      name: name.trim(),
       divisionId: divisionId ? parseInt(divisionId) : undefined,
       startDate,
       duration: parseInt(duration) || 1,
@@ -1062,8 +1138,8 @@ function AddSubtaskModal({
 
   return (
     <Modal
-      title={initialData ? "Edit Task (Name & Weight)" : "Add New Task (Sub-task Item)"}
-      subtitle={initialData ? `Editing: ${initialData.code} — ${initialData.name}` : "Add a specific project task item"}
+      title={isEdit ? "Edit Task (Sub-task Item)" : "Add New Task (Sub-task Item)"}
+      subtitle={isEdit ? `Editing: ${initialData.code} — ${initialData.name}` : "Add specific project task breakdown item"}
       onClose={onClose}
       size="md"
     >
@@ -1077,79 +1153,38 @@ function AddSubtaskModal({
             required
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="e.g. Prepare and review vendor documentation..."
+            placeholder="e.g. Preparation and review of vendor documents..."
             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
             autoFocus
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
-              Task Weight (%) <span className="text-danger">*</span>
-            </label>
-            <input
-              type="number"
-              min="0.01"
-              max="100"
-              step="0.01"
-              required
-              value={weight}
-              onChange={e => setWeight(e.target.value)}
-              className={`w-full px-3 py-2 rounded-lg border text-[13px] outline-none bg-white font-bold transition-all ${
-                isOverWeight
-                  ? 'border-danger focus:border-danger ring-2 ring-danger/15 text-danger'
-                  : 'border-neutral-200 focus:border-brand text-neutral-900'
-              }`}
-            />
-            <span className="text-[10.5px] text-neutral-400 mt-1 block">
-              Weight of other tasks in this Sub Task: {Math.round(otherTasksWeight * 100) / 100}%
-            </span>
-          </div>
-
-          <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Responsible Division</label>
-            <select
-              value={divisionId}
-              onChange={e => setDivisionId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            >
-              {divisions.map(d => (
-                <option key={d.id} value={d.id}>{d.divisi}</option>
-              ))}
-            </select>
-          </div>
+        <div>
+          <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Responsible Division</label>
+          <select
+            value={divisionId}
+            onChange={e => setDivisionId(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+          >
+            {divisions.map(d => (
+              <option key={d.id} value={d.id}>{d.divisi}</option>
+            ))}
+          </select>
         </div>
 
-        {/* Real-time Weight Indicator */}
-        {isOverWeight && (
-          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-danger text-[12px] flex items-start gap-2.5 animate-fadeIn">
-            <AlertCircle size={17} className="flex-shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold">Total task weight exceeds 100% (currently {totalWeight}%).</span>
-              <p className="text-[11px] text-red-600 mt-0.5">Adjust task weight before saving.</p>
-            </div>
+        {/* Informative Auto-Weight Indicator */}
+        <div className="p-3 rounded-lg bg-blue-50/80 border border-blue-200 text-[12px] text-blue-900 flex items-start gap-2.5">
+          <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-bold">Auto-Calculated Weight</span>
+            <p className="text-[11.5px] text-blue-700 leading-relaxed">
+              Task weight is automatically divided equally from Sub Task weight ({parentWeight}%) to all tasks in this Sub Task.
+              {nextTaskCount > 0 && (
+                <> Each Task will be allocated <strong>{estimatedTaskWeight}%</strong> (total {nextTaskCount} Tasks).</>
+              )}
+            </p>
           </div>
-        )}
-
-        {isUnderWeight && (
-          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[12px] flex items-start gap-2.5">
-            <AlertTriangle size={17} className="flex-shrink-0 mt-0.5 text-amber-600" />
-            <div>
-              <span className="font-bold">Current total weight is {totalWeight}%.</span>
-              <p className="text-[11px] text-amber-700 mt-0.5">
-                {Math.round((100 - totalWeight) * 100) / 100}% remaining unallocated. You may still save if more tasks will be added later.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {isExactWeight && (
-          <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-[12px] flex items-center gap-2.5">
-            <CheckCircle2 size={17} className="flex-shrink-0 text-success" />
-            <span className="font-bold">Total weight allocation is exactly 100%.</span>
-          </div>
-        )}
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -1206,10 +1241,9 @@ function AddSubtaskModal({
             variant="primary"
             size="sm"
             type="submit"
-            disabled={isOverWeight || currentWeightNum <= 0}
-            className={isOverWeight ? 'opacity-50 cursor-not-allowed' : ''}
+            disabled={!name.trim()}
           >
-            Save Task
+            {isEdit ? "Update Task" : "Save Task"}
           </Button>
         </div>
       </form>

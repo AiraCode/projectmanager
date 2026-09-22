@@ -367,6 +367,8 @@ class ProjectController extends Controller
             'list_main_wbs_names_id' => $listMain->id,
             'name'                   => $validated['name'],
             'percentage'             => $validated['weight'] ?? 5.0,
+            'start'                  => $start,
+            'end'                    => $end,
             'actual_start'           => $start,
             'actual_end'             => $end,
             'progress'               => 0,
@@ -375,7 +377,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Main Task created successfully.');
+        return back()->with('success', 'Main Task added successfully.');
     }
 
     /**
@@ -389,7 +391,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Access Denied: Only the PIC of this project can update this Main Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can modify Main Tasks.');
         }
 
         $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
@@ -406,10 +408,12 @@ class ProjectController extends Controller
             $mainWbs->percentage = $validated['weight'];
         }
         if (!empty($validated['start'])) {
-            $mainWbs->actual_start = Carbon::parse($validated['start']);
+            $mainWbs->start = Carbon::parse($validated['start']);
+            $mainWbs->actual_start = $mainWbs->start;
         }
         if (!empty($validated['end'])) {
-            $mainWbs->actual_end = Carbon::parse($validated['end']);
+            $mainWbs->end = Carbon::parse($validated['end']);
+            $mainWbs->actual_end = $mainWbs->end;
         }
         $mainWbs->save();
 
@@ -429,14 +433,14 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Access Denied: Only the PIC of this project can delete this Main Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can delete Main Tasks.');
         }
 
         $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
 
-        // Delete all SubWbs and Wbs tasks under this MainWbs
-        foreach ($mainWbs->subWbs as $subWbs) {
-            $subWbs->wbsTasks()->delete();
+        // Delete all SubWbs and Wbs tasks under this MainWbs safely
+        foreach ($mainWbs->subWbs()->withTrashed()->get() as $subWbs) {
+            $subWbs->wbsTasks()->withTrashed()->delete();
             $subWbs->delete();
         }
         $mainWbs->delete();
@@ -469,7 +473,6 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'main_wbs_id' => 'required|exists:main_wbs,id',
             'name'        => 'required|string|max:255',
-            'weight'      => 'nullable|numeric|min:0|max:100',
         ]);
 
         $mainWbs = MainWbs::findOrFail($validated['main_wbs_id']);
@@ -490,16 +493,18 @@ class ProjectController extends Controller
             'name'                   => $validated['name'],
             'predecessor'            => '-',
             'predecessor_type'       => 'FS',
-            'start'                  => $mainWbs->actual_start ?? Carbon::now(),
-            'end'                    => $mainWbs->actual_end ?? Carbon::now()->addMonths(1),
-            'actual_start'           => $mainWbs->actual_start ?? Carbon::now(),
-            'actual_end'             => $mainWbs->actual_end ?? Carbon::now()->addMonths(1),
+            'start'                  => $mainWbs->start ?? $mainWbs->actual_start ?? Carbon::now(),
+            'end'                    => $mainWbs->end ?? $mainWbs->actual_end ?? Carbon::now()->addMonths(1),
+            'actual_start'           => $mainWbs->start ?? $mainWbs->actual_start ?? Carbon::now(),
+            'actual_end'             => $mainWbs->end ?? $mainWbs->actual_end ?? Carbon::now()->addMonths(1),
             'progress'               => 0,
             'status'                 => 'Open',
-            'weight'                 => $validated['weight'] ?? 5,
+            'weight'                 => 0, // Auto-calculated below by ProgressService
         ]);
 
-        return back()->with('success', 'Sub Task created successfully.');
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        return back()->with('success', 'Sub Task added successfully.');
     }
 
     /**
@@ -513,7 +518,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Access Denied: Only the PIC of this project can update this Sub Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can modify Sub Tasks.');
         }
 
         $subWbs = SubWbs::whereHas('mainWbs', function($q) use ($projectId) {
@@ -521,16 +526,12 @@ class ProjectController extends Controller
         })->where('id', $subWbsId)->firstOrFail();
 
         $validated = $request->validate([
-            'name'   => 'required|string|max:255',
-            'weight' => 'nullable|numeric|min:0|max:100',
-            'start'  => 'nullable|date',
-            'end'    => 'nullable|date',
+            'name'  => 'required|string|max:255',
+            'start' => 'nullable|date',
+            'end'   => 'nullable|date',
         ]);
 
         $subWbs->name = $validated['name'];
-        if (isset($validated['weight'])) {
-            $subWbs->weight = $validated['weight'];
-        }
         if (!empty($validated['start'])) {
             $subWbs->start = Carbon::parse($validated['start']);
             $subWbs->actual_start = $subWbs->start;
@@ -557,14 +558,14 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Access Denied: Only the PIC of this project can delete this Sub Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can delete Sub Tasks.');
         }
 
         $subWbs = SubWbs::whereHas('mainWbs', function($q) use ($projectId) {
             $q->where('projects_id', $projectId);
         })->where('id', $subWbsId)->firstOrFail();
 
-        $subWbs->wbsTasks()->delete();
+        $subWbs->wbsTasks()->withTrashed()->delete();
         $subWbs->delete();
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
@@ -583,7 +584,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Access Denied: Only the PIC of this project can add a Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can add Tasks.');
         }
 
         if ($request->has('sub_wbs_id')) {
@@ -595,7 +596,6 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'sub_wbs_id'   => 'required|exists:sub_wbs,id',
             'name'         => 'required|string|max:255',
-            'weight'       => 'nullable|numeric|min:0|max:100',
             'divisions_id' => 'nullable|exists:divisions,id',
             'duration'     => 'nullable|integer|min:0',
             'start'        => 'nullable|date',
@@ -618,7 +618,7 @@ class ProjectController extends Controller
             'sub_wbs_id'   => $subWbs->id,
             'divisions_id' => $divisionId,
             'name'         => $validated['name'],
-            'weight'       => isset($validated['weight']) ? (float) $validated['weight'] : 100.0,
+            'weight'       => 0, // Auto-calculated below by ProgressService
             'vendor'       => 'INTERNAL',
             'start'        => $startDate,
             'end'          => $endDate,
@@ -629,7 +629,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Task created successfully.');
+        return back()->with('success', 'Task added successfully.');
     }
 
     /**
@@ -643,7 +643,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Access Denied: Only the PIC of this project can update this Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can modify Tasks.');
         }
 
         $task = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($projectId) {
@@ -652,7 +652,6 @@ class ProjectController extends Controller
 
         $validated = $request->validate([
             'name'         => 'required|string|max:255',
-            'weight'       => 'nullable|numeric|min:0|max:100',
             'divisions_id' => 'nullable|exists:divisions,id',
             'duration'     => 'nullable|integer|min:0',
             'start'        => 'nullable|date',
@@ -663,9 +662,6 @@ class ProjectController extends Controller
         ]);
 
         $task->name = $validated['name'];
-        if (isset($validated['weight'])) {
-            $task->weight = $validated['weight'];
-        }
         if (isset($validated['divisions_id'])) {
             $task->divisions_id = $validated['divisions_id'];
         }
@@ -696,7 +692,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Access Denied: Only the PIC of this project can delete this Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can delete Tasks.');
         }
 
         $task = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($projectId) {
@@ -858,7 +854,7 @@ class ProjectController extends Controller
                         'status'      => $st->status ?? 'Open',
                         'predecessor' => $st->predecessor ?? '',
                         'depType'     => 'FS',
-                        'weight'      => (float) ($st->weight ?? 100),
+                        'weight'      => (float) ($st->weight ?? 0),
                         'checked'     => (bool) $st->is_completed,
                         'division'    => $st->division?->divisi ?? 'General',
                     ];
@@ -891,8 +887,8 @@ class ProjectController extends Controller
                 'code'        => $mjCode,
                 'name'        => $mj->listName?->name ?? $mj->name ?? '',
                 'weight'      => (float) $mj->percentage,
-                'startDate'   => $mj->actual_start ? $mj->actual_start->format('Y-m-d') : '',
-                'finishDate'  => $mj->actual_end ? $mj->actual_end->format('Y-m-d') : '',
+                'startDate'   => $mj->start ? $mj->start->format('Y-m-d') : ($mj->actual_start ? $mj->actual_start->format('Y-m-d') : ''),
+                'finishDate'  => $mj->end ? $mj->end->format('Y-m-d') : ($mj->actual_end ? $mj->actual_end->format('Y-m-d') : ''),
                 'progress'    => (int) $mj->progress,
                 'status'      => $mj->status ?? 'Open',
                 'subMainJobs' => $subMainJobs->values()->toArray(),

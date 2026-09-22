@@ -6,6 +6,14 @@ import { exportToCSV } from '@/utils/exportEngine';
 import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState, formatDateDisplay } from '@/components/ui';
 
 const KATEGORI = ['Material', 'Jasa', 'Mesin', 'Peralatan', 'Logistik', 'Lainnya'];
+const KATEGORI_LABELS: Record<string, string> = {
+  'Material': 'Material',
+  'Jasa': 'Services',
+  'Mesin': 'Machinery',
+  'Peralatan': 'Equipment',
+  'Logistik': 'Logistics',
+  'Lainnya': 'Other',
+};
 const SATUAN = ['kg', 'sak', 'batang', 'unit', 'LS', 'pcs', 'm', 'm²', 'm³', 'set'];
 
 interface EntryForm {
@@ -193,7 +201,7 @@ export default function BudgetPage() {
   })).filter(k => k.total > 0);
 
   const handleExportCSV = () => {
-    const headers = ['Tanggal', 'Code WBS', 'Sub Task WBS', 'Kategori', 'Nama Item', 'Spesifikasi', 'QTY', 'Satuan', 'Harga Satuan (Rp)', 'Harga Total (Rp)', 'Referensi', 'Lokasi', 'Keterangan'];
+    const headers = ['Date', 'WBS Code', 'WBS Sub-task', 'Category', 'Item Name', 'Specification', 'Qty', 'Unit', 'Unit Price (Rp)', 'Total Price (Rp)', 'Reference', 'Location', 'Remarks'];
     const rows = filtered.map(e => [
       e.tanggal,
       e.codeSubWbs,
@@ -303,7 +311,7 @@ export default function BudgetPage() {
               return (
                 <div key={k.name} className="p-3 rounded-lg bg-neutral-50 border border-neutral-100 space-y-1.5">
                   <div className="flex justify-between items-center text-[12.5px]">
-                    <span className="font-semibold text-neutral-700">{k.name}</span>
+                    <span className="font-semibold text-neutral-700">{KATEGORI_LABELS[k.name] || k.name}</span>
                     <span className="font-bold text-neutral-900">{formatRupiah(k.total)}</span>
                   </div>
                   <ProgressBar value={catPct} size="xs" color="brand" showLabel={false} />
@@ -360,7 +368,7 @@ export default function BudgetPage() {
                   </td>
                   <td className="px-3.5 py-2.5">
                     <span className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
-                      {e.kategori}
+                      {KATEGORI_LABELS[e.kategori] || e.kategori}
                     </span>
                   </td>
                   <td className="px-3.5 py-2.5 max-w-[200px]">
@@ -528,7 +536,7 @@ export default function BudgetPage() {
                 onChange={e => setForm(p => ({ ...p, kategori: e.target.value }))}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               >
-                {KATEGORI.map(k => <option key={k} value={k}>{k}</option>)}
+                {KATEGORI.map(k => <option key={k} value={k}>{KATEGORI_LABELS[k] || k}</option>)}
               </select>
             </div>
           </div>

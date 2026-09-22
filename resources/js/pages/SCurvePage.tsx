@@ -373,7 +373,7 @@ export default function SCurvePage() {
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
       <PageHeader
         title={`S-Curve Analysis ${project?.name || projectData?.name ? `· ${project?.name || projectData?.name}` : ''}`}
-        subtitle={userRole === 'admin_progres' ? 'Mode Khusus Admin Progres — Pemantauan grafik S-Curve kemajuan kumulatif' : 'Planned vs. Actual cumulative progress tracking over project lifecycle'}
+        subtitle={userRole === 'admin_progres' ? 'Admin Progres View — Cumulative S-Curve progress monitoring' : 'Planned vs. Actual cumulative progress tracking over project lifecycle'}
         actions={
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">

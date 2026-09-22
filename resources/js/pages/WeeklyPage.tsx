@@ -56,7 +56,7 @@ export default function WeeklyPage() {
   const handleSave = (weekNo: number) => {
     const val = parseFloat(editing[weekNo]);
     if (isNaN(val) || val < 0) {
-      setToastMsg('Masukkan nilai yang valid (angka 0 atau lebih).');
+      setToastMsg('Please enter a valid value (0 or greater).');
       return;
     }
 

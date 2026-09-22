@@ -16,6 +16,8 @@ class MainWbs extends Model
         'list_main_wbs_names_id',
         'name',
         'percentage',
+        'start',
+        'end',
         'actual_start',
         'actual_end',
         'progress',
@@ -24,6 +26,8 @@ class MainWbs extends Model
 
     protected $casts = [
         'percentage' => 'decimal:2',
+        'start' => 'datetime',
+        'end' => 'datetime',
         'actual_start' => 'datetime',
         'actual_end' => 'datetime',
     ];
