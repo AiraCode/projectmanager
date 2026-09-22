@@ -30,10 +30,23 @@ Route::middleware('auth')->group(function () {
     // ── Single project dashboard ──
     Route::get('/projects/{id}', [ProjectController::class, 'dashboard'])->name('projects.show');
 
-    // ── Tasks management ──
+    // ── Tasks & WBS management (PIC only for mutations) ──
     Route::get('/tasks', [ProjectController::class, 'tasks'])->name('tasks.index');
+
+    // Main Tasks (Main WBS)
+    Route::post('/projects/{id}/main-wbs', [ProjectController::class, 'addMainWbs'])->name('projects.mainwbs.store');
+    Route::put('/projects/{id}/main-wbs/{mainWbsId}', [ProjectController::class, 'updateMainWbs'])->name('projects.mainwbs.update');
+    Route::delete('/projects/{id}/main-wbs/{mainWbsId}', [ProjectController::class, 'deleteMainWbs'])->name('projects.mainwbs.destroy');
+
+    // Sub Tasks (Sub Main WBS)
     Route::post('/projects/{id}/sub-wbs', [ProjectController::class, 'addSubWbs'])->name('projects.subwbs.store');
+    Route::put('/projects/{id}/sub-wbs/{subWbsId}', [ProjectController::class, 'updateSubWbs'])->name('projects.subwbs.update');
+    Route::delete('/projects/{id}/sub-wbs/{subWbsId}', [ProjectController::class, 'deleteSubWbs'])->name('projects.subwbs.destroy');
+
+    // Tasks (Sub-Subtasks)
     Route::post('/projects/{id}/tasks', [ProjectController::class, 'addTask'])->name('projects.tasks.store');
+    Route::put('/projects/{id}/tasks/{taskId}', [ProjectController::class, 'updateTask'])->name('projects.tasks.update');
+    Route::delete('/projects/{id}/tasks/{taskId}', [ProjectController::class, 'deleteTask'])->name('projects.tasks.destroy');
     Route::post('/projects/{id}/tasks/{taskId}/toggle', [ProjectController::class, 'toggleTask'])->name('projects.tasks.toggle');
 
     // ── S-Curve (Admin Progres ONLY access point, and others) ──

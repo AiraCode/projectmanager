@@ -228,18 +228,17 @@ export default function ProjectPage() {
         </div>
         <div className="flex-1 text-[13px] text-neutral-700 space-y-1">
           <div className="font-bold text-brand text-[13.5px]">
-            Fixed Company Master Template (17 Main Jobs)
+            Master Template WBS Project (17 Main Tasks Awal Tersedia Otomatis)
           </div>
           <p className="leading-relaxed text-neutral-600 text-[12.5px]">
-            This project is instantiated from the company standard workflow.
-            The <strong>17 Main Jobs</strong>, <strong>Sub Main Jobs</strong>, and <strong>fixed PIC assignments</strong> are predefined and loaded automatically upon project creation.
-            Admin does not re-enter or re-assign these structures; project-specific work is entered at the <strong>Sub-Subtask</strong> level in Task Management.
+            Setiap project baru secara otomatis memuat 17 Main Task (Main Job) standar perusahaan lengkap dengan Sub Task awal.
+            Sebagai PIC, Anda memiliki fleksibilitas penuh untuk <strong>menambah Main Task baru</strong>, <strong>menambah Sub Task</strong>, maupun <strong>menambah Task (Sub-Subtask)</strong> serta mengubah dan menyesuaikan rincian pekerjaan proyek.
           </p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-[11.5px] font-semibold text-neutral-500">
-            <span>✓ 17 Fixed Main Jobs</span>
-            <span>✓ Predefined Sub Main Jobs</span>
-            <span>✓ Fixed Department PICs</span>
-            <span>✓ Dynamic Sub-Subtasks</span>
+            <span>✓ 17 Main Tasks Standar Otomatis</span>
+            <span>✓ PIC Bebas Tambah Main Task Baru</span>
+            <span>✓ PIC Bebas Tambah & Sesuaikan Sub Task</span>
+            <span>✓ Dynamic Task Management</span>
           </div>
         </div>
       </div>
@@ -249,9 +248,19 @@ export default function ProjectPage() {
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <Layers size={16} className="text-neutral-500" />
-            <span className="text-[14px] font-bold text-neutral-800 tracking-tight">Main Job Breakdown ({p.mainJobs.length} Fixed Jobs)</span>
+            <span className="text-[14px] font-bold text-neutral-800 tracking-tight">Main Job Breakdown ({p.mainJobs?.length || 17} Main Jobs)</span>
           </div>
-          <span className="text-[12px] text-neutral-400">Click a Main Job to inspect Sub Main Jobs</span>
+          <div className="flex items-center gap-2">
+            {isPIC && (
+              <a
+                href={`/tasks?project_id=${p.id}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[12px] font-semibold bg-brand text-white hover:bg-brand-dark transition-colors shadow-xs"
+              >
+                <Plus size={13} /> Kelola & Tambah Task
+              </a>
+            )}
+            <span className="text-[12px] text-neutral-400 hidden sm:inline">Klik Main Job untuk melihat Sub Main Job</span>
+          </div>
         </div>
 
         <div className="space-y-2.5">
