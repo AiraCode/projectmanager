@@ -99,6 +99,55 @@ class DatabaseSeeder extends Seeder
             'divisions_id' => null,
         ]);
 
+        $pic5 = User::create([
+            'username' => 'PIC 5 (Test Create Project)',
+            'email' => 'pic5@jeker.id',
+            'password' => Hash::make('admin123'),
+            'roles_id' => $rolePic->id,
+            'companies_id' => null,
+            'divisions_id' => null,
+        ]);
+        $pic6 = User::create([
+            'username' => 'PIC 6 (Test Create Project)',
+            'email' => 'pic6@jeker.id',
+            'password' => Hash::make('admin123'),
+            'roles_id' => $rolePic->id,
+            'companies_id' => null,
+            'divisions_id' => null,
+        ]);
+        $pic7 = User::create([
+            'username' => 'PIC 7 (Test Create Project)',
+            'email' => 'pic7@jeker.id',
+            'password' => Hash::make('admin123'),
+            'roles_id' => $rolePic->id,
+            'companies_id' => null,
+            'divisions_id' => null,
+        ]);
+        $pic8 = User::create([
+            'username' => 'PIC 8 (Test Create Project)',
+            'email' => 'pic8@jeker.id',
+            'password' => Hash::make('admin123'),
+            'roles_id' => $rolePic->id,
+            'companies_id' => null,
+            'divisions_id' => null,
+        ]);
+        $pic9 = User::create([
+            'username' => 'PIC 9 (Test Create Project)',
+            'email' => 'pic9@jeker.id',
+            'password' => Hash::make('admin123'),
+            'roles_id' => $rolePic->id,
+            'companies_id' => null,
+            'divisions_id' => null,
+        ]);
+        $pic10 = User::create([
+            'username' => 'PIC 10 (Test Create Project)',
+            'email' => 'pic10@jeker.id',
+            'password' => Hash::make('admin123'),
+            'roles_id' => $rolePic->id,
+            'companies_id' => null,
+            'divisions_id' => null,
+        ]);
+
         // Workers for testing auth scopes
         foreach ($divisions as $name => $division) {
             User::create([
