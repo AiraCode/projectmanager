@@ -59,7 +59,7 @@ class ProjectTemplateAndSyncTest extends TestCase
         $response->assertStatus(200);
 
         $response->assertInertia(fn ($page) => 
-            $page->component('ProjectPage')
+            $page->component('ProjectDetailPage')
                 ->has('project.mainJobs', 17)
         );
     }

@@ -42,7 +42,7 @@ class ProjectController extends Controller
             }
             // PIC has no project yet (e.g. pic4): let them create one!
             $companies = Company::select('id', 'name')->get();
-            return Inertia::render('ProjectsPage', [
+            return Inertia::render('ProjectsListPage', [
                 'projects'  => [],
                 'canCreate' => true,
                 'companies' => $companies,
@@ -64,7 +64,7 @@ class ProjectController extends Controller
             ];
         });
 
-        return Inertia::render('ProjectsPage', [
+        return Inertia::render('ProjectsListPage', [
             'projects'  => $projects,
             'canCreate' => false, // Admin Utama and Admin Progres CANNOT create project!
             'userRole'  => $role,
@@ -115,7 +115,7 @@ class ProjectController extends Controller
             return redirect()->route('projects.index');
         }
 
-        return Inertia::render('ProjectPage', [
+        return Inertia::render('ProjectDetailPage', [
             'project'  => $this->transformProjectData($project),
             'userRole' => $role,
         ]);

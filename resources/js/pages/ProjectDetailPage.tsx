@@ -11,7 +11,7 @@ interface CompanyOption {
   code: string | null;
 }
 
-export default function ProjectPage() {
+export default function ProjectDetailPage() {
   const { user, refreshUser } = useAuth();
   const pageProps = usePage().props as any;
   const project = pageProps?.project;

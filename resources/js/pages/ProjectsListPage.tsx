@@ -19,7 +19,7 @@ interface CompanyItem {
   name: string;
 }
 
-export default function ProjectsPage() {
+export default function ProjectsListPage() {
   const { projects = [], canCreate = false, companies = [], auth } = usePage().props as any;
   const role = auth?.user?.role ?? '';
   const isAdminProgres = role === 'admin_progres';
@@ -180,16 +180,6 @@ export default function ProjectsPage() {
                     <span className="text-[12px] font-bold text-brand">{project.progress}%</span>
                   </div>
                   <ProgressBar value={project.progress} size="sm" showLabel={false} />
-                </div>
-
-                {/* Open button */}
-                <div className="flex items-center justify-between pt-0.5">
-                  <span className="text-[11px] text-neutral-400 font-medium group-hover:text-brand transition-colors">
-                    {isAdminProgres ? 'Buka S-Curve →' : 'Buka Dashboard →'}
-                  </span>
-                  <div className="w-6 h-6 rounded-md bg-neutral-100 group-hover:bg-brand group-hover:text-white flex items-center justify-center transition-colors">
-                    <ChevronRight size={13} className="text-neutral-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-                  </div>
                 </div>
               </Card>
             </Link>

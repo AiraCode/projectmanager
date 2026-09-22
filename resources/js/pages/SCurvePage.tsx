@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { usePage } from '@inertiajs/react';
 import { Project, PROJECT } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
@@ -33,14 +33,22 @@ export default function SCurvePage() {
   // Identify dynamic current week based on today's date
   const todayStr = new Date().toISOString().slice(0, 10);
   const currentWeekIdx = useMemo(() => {
+    if (!weeks || weeks.length === 0) return -1;
     const idx = weeks.findIndex(w => todayStr >= w.startDate && todayStr <= w.endDate);
     if (idx !== -1) return idx;
     if (weeks.length > 0 && todayStr < weeks[0].startDate) return 0;
     return Math.max(0, weeks.length - 1);
   }, [weeks, todayStr]);
 
-  const currentWeek = weeks[currentWeekIdx];
-  const currentLabel = currentWeek ? `W${currentWeek.week}` : (weeks[0] ? `W${weeks[0].week}` : 'W1');
+  const currentWeek = currentWeekIdx >= 0 ? weeks[currentWeekIdx] : undefined;
+  const currentLabel = currentWeek ? `W${currentWeek.week}` : '';
+
+  // Dynamic XAxis interval based on total project weeks
+  const xAxisInterval = useMemo(() => {
+    if (weeks.length <= 16) return 0;
+    if (weeks.length <= 26) return 1;
+    return 'preserveStartEnd';
+  }, [weeks.length]);
 
   const chartData = weeks.map((w, idx) => ({
     name: `W${w.week}`,
@@ -50,7 +58,7 @@ export default function SCurvePage() {
     'Actual (Weekly)': idx <= currentWeekIdx && w.actual > 0 ? w.actual : null,
   }));
 
-  const elapsedWeeks = weeks.slice(0, currentWeekIdx + 1);
+  const elapsedWeeks = currentWeekIdx >= 0 ? weeks.slice(0, currentWeekIdx + 1) : [];
   const latestActual = elapsedWeeks.filter(w => w.actualCumulative > 0).at(-1);
   const realisasiValue = latestActual
     ? latestActual.actualCumulative
@@ -105,7 +113,7 @@ export default function SCurvePage() {
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
       <PageHeader
-        title={`S-Curve Analysis ${project?.name ? `· ${project.name}` : ''}`}
+        title={`S-Curve Analysis ${project?.name || projectData?.name ? `· ${project?.name || projectData?.name}` : ''}`}
         subtitle={userRole === 'admin_progres' ? 'Mode Khusus Admin Progres — Pemantauan grafik S-Curve kemajuan kumulatif' : 'Planned vs. Actual cumulative progress tracking over project lifecycle'}
         actions={
           <div className="flex items-center gap-2">
@@ -143,13 +151,13 @@ export default function SCurvePage() {
         {[
           {
             label: 'Target S-Curve',
-            value: `${(weeks.at(-1)?.plannedCumulative ?? 100).toFixed(1)}%`,
-            sub: `Target at completion (W${weeks.length})`,
+            value: `${(weeks.length > 0 ? (weeks.at(-1)?.plannedCumulative ?? 100) : 0).toFixed(1)}%`,
+            sub: weeks.length > 0 ? `Target at completion (W${weeks.length})` : 'Belum ada jadwal',
           },
           {
             label: 'Realisasi Kumulatif',
             value: `${realisasiValue.toFixed(1)}%`,
-            sub: `Reported as of ${currentLabel}`,
+            sub: currentLabel ? `Reported as of ${currentLabel}` : 'Belum ada periode berjalan',
           },
           {
             label: 'Deviasi Progres',
@@ -159,7 +167,7 @@ export default function SCurvePage() {
           },
           {
             label: 'Reported Periods',
-            value: `${Math.min(weeks.length, currentWeekIdx + 1)} Minggu`,
+            value: `${weeks.length > 0 && currentWeekIdx >= 0 ? Math.min(weeks.length, currentWeekIdx + 1) : 0} Minggu`,
             sub: `of ${weeks.length} project weeks`,
           },
         ].map(({ label, value, sub, accent }) => (
@@ -197,50 +205,60 @@ export default function SCurvePage() {
           </div>
         </div>
 
-        <div className="w-full h-80 sm:h-96">
-          <ResponsiveContainer width="100%" height="100%">
-            {viewMode === 'cumulative' ? (
-              <ComposedChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: -10 }}>
-                <defs>
-                  <linearGradient id="planGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1E46D9" stopOpacity={0.12} />
-                    <stop offset="95%" stopColor="#1E46D9" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="actGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#16A34A" stopOpacity={0.12} />
-                    <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F3F6" />
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} interval={6} />
-                <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickFormatter={v => `${v}%`} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-                {currentLabel && (
-                  <ReferenceLine
-                    x={currentLabel}
-                    stroke="#DC2626"
-                    strokeWidth={1.5}
-                    strokeDasharray="4 4"
-                    label={{ value: 'Current Timeline', position: 'top', fontSize: 10, fill: '#DC2626', fontWeight: 600 }}
-                  />
-                )}
-                <Area type="monotone" dataKey="Plan. Cumulative" stroke="#1E46D9" strokeWidth={2.5} fill="url(#planGrad)" dot={false} activeDot={{ r: 4 }} />
-                <Area type="monotone" dataKey="Act. Cumulative" stroke="#16A34A" strokeWidth={2.5} fill="url(#actGrad)" dot={false} connectNulls={false} activeDot={{ r: 4 }} />
-              </ComposedChart>
-            ) : (
-              <ComposedChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: -10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F3F6" />
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} interval={6} />
-                <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickFormatter={v => `${v}%`} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-                <Bar dataKey="Planned (Weekly)" fill="#1E46D9" opacity={0.75} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Actual (Weekly)" fill="#16A34A" opacity={0.85} radius={[2, 2, 0, 0]} />
-              </ComposedChart>
-            )}
-          </ResponsiveContainer>
-        </div>
+        {weeks.length === 0 ? (
+          <div className="w-full h-72 flex flex-col items-center justify-center text-center p-6 bg-neutral-50/50 rounded-xl border border-dashed border-neutral-200">
+            <TrendingUp size={36} className="text-neutral-300 mb-2" />
+            <div className="text-[14px] font-bold text-neutral-700">Belum Ada Data S-Curve</div>
+            <div className="text-[12px] text-neutral-500 max-w-sm mt-1">
+              Project ini belum memiliki jadwal pekerjaan mingguan yang ditentukan. Buat atau perbarui jadwal pelaksanaan pekerjaan untuk melihat grafik S-Curve.
+            </div>
+          </div>
+        ) : (
+          <div className="w-full h-80 sm:h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              {viewMode === 'cumulative' ? (
+                <ComposedChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: -10 }}>
+                  <defs>
+                    <linearGradient id="planGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#1E46D9" stopOpacity={0.12} />
+                      <stop offset="95%" stopColor="#1E46D9" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="actGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#16A34A" stopOpacity={0.12} />
+                      <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F3F6" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} interval={xAxisInterval} />
+                  <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickFormatter={v => `${v}%`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                  {currentLabel && (
+                    <ReferenceLine
+                      x={currentLabel}
+                      stroke="#DC2626"
+                      strokeWidth={1.5}
+                      strokeDasharray="4 4"
+                      label={{ value: 'Current Timeline', position: 'top', fontSize: 10, fill: '#DC2626', fontWeight: 600 }}
+                    />
+                  )}
+                  <Area type="monotone" dataKey="Plan. Cumulative" stroke="#1E46D9" strokeWidth={2.5} fill="url(#planGrad)" dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="Act. Cumulative" stroke="#16A34A" strokeWidth={2.5} fill="url(#actGrad)" dot={false} connectNulls={false} activeDot={{ r: 4 }} />
+                </ComposedChart>
+              ) : (
+                <ComposedChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F3F6" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} interval={xAxisInterval} />
+                  <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickFormatter={v => `${v}%`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                  <Bar dataKey="Planned (Weekly)" fill="#1E46D9" opacity={0.75} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="Actual (Weekly)" fill="#16A34A" opacity={0.85} radius={[2, 2, 0, 0]} />
+                </ComposedChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        )}
       </Card>
 
       {/* Supporting Data Table Section */}
@@ -274,7 +292,14 @@ export default function SCurvePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 text-[12.5px]">
-                  {weeks.map((w, i) => {
+                  {weeks.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-neutral-400">
+                        Belum ada data jadwal pelaksanaan mingguan untuk project ini.
+                      </td>
+                    </tr>
+                  ) : (
+                    weeks.map((w, i) => {
                     const variance = w.actualCumulative > 0 ? w.actualCumulative - w.plannedCumulative : null;
                     const isCurrent = `W${w.week}` === currentLabel;
                     return (
@@ -322,8 +347,9 @@ export default function SCurvePage() {
                         </td>
                       </tr>
                     );
-                  })}
-                </tbody>
+                  })
+                )}
+              </tbody>
               </table>
             </div>
           </Card>
