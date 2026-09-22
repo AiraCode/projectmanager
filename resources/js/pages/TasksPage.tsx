@@ -237,11 +237,10 @@ export default function TasksPage() {
 
   // Checklist authorization:
   // - Admin (Utama & Progres): FALSE (strictly read-only)
-  // - PIC: TRUE (can toggle tasks in their project)
+  // - PIC: FALSE (PIC CANNOT check tasks, only manages and adds tasks)
   // - Worker: TRUE only if worker's division matches the task's division
   const isAuthorizedToCheck = (taskDivision: string) => {
-    if (isAdmin) return false;
-    if (isPIC) return true;
+    if (isAdmin || isPIC) return false;
     if (isWorker) {
       const workerDiv = (user?.division ?? pageProps?.division ?? '').trim().toLowerCase();
       const targetDiv = (taskDivision ?? '').trim().toLowerCase();
@@ -254,6 +253,8 @@ export default function TasksPage() {
     if (!authorized) {
       if (isAdmin) {
         setToastMsg('Aksi Dibatasi: Role Admin bersifat Read-Only dan tidak boleh mencentang tugas.');
+      } else if (isPIC) {
+        setToastMsg('Aksi Dibatasi: Role PIC hanya dapat menambah dan mengatur jadwal tugas. Eksekusi centang checklist hanya dapat dilakukan oleh Pekerja (Worker) divisi terkait.');
       } else if (isWorker) {
         setToastMsg(`Aksi Dibatasi: Anda terdaftar di divisi "${user?.division || pageProps?.division || 'Pekerja'}". Anda hanya berwenang mencentang tugas divisi Anda.`);
       } else {
@@ -347,7 +348,7 @@ export default function TasksPage() {
             <span className="text-[12px] text-neutral-500 hidden sm:inline">
               Role: <strong className="text-neutral-800">{user?.displayRole || user?.role}</strong>
               {isAdmin && <span className="ml-1 text-warning font-semibold">(Read-Only)</span>}
-              {isPIC && <span className="ml-1 text-emerald-600 font-semibold">(PIC - Bisa Tambah Main Task, Sub Task & Task)</span>}
+              {isPIC && <span className="ml-1 text-emerald-600 font-semibold">(PIC - Kelola & Tambah Task)</span>}
               {isWorker && <span className="ml-1 text-blue-600 font-semibold">· Divisi: {user?.division || 'Internal'}</span>}
             </span>
 
