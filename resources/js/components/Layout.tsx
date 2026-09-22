@@ -33,8 +33,6 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     return () => document.removeEventListener('mousedown', handle);
   }, []);
 
-  const handleLogout = () => { router.post('/logout'); };
-
   // While user data is still loading / not available, show nothing
   if (!user) return null;
 
@@ -97,10 +95,23 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   const pageProps = usePage().props as any;
   const activeProjectId = pageProps?.project?.id;
 
+  useEffect(() => {
+    if (activeProjectId && typeof window !== 'undefined') {
+      localStorage.setItem('jeker_last_project_id', String(activeProjectId));
+    }
+  }, [activeProjectId]);
+
+  const handleLogout = () => {
+    if (typeof window !== 'undefined') localStorage.removeItem('jeker_last_project_id');
+    router.post('/logout');
+  };
+
   const getNavUrl = (basePath: string) => {
-    if (!activeProjectId || basePath === '/projects') return basePath;
-    if (basePath === '/dashboard') return `/projects/${activeProjectId}`;
-    return `${basePath}?project_id=${activeProjectId}`;
+    if (basePath === '/projects') return basePath;
+    const resolvedId = activeProjectId || (typeof window !== 'undefined' ? localStorage.getItem('jeker_last_project_id') : null);
+    if (!resolvedId) return basePath;
+    if (basePath === '/dashboard') return `/projects/${resolvedId}`;
+    return `${basePath}?project_id=${resolvedId}`;
   };
 
   return (

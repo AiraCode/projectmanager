@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { usePage } from '@inertiajs/react';
+import { usePage, router } from '@inertiajs/react';
 import { Building2, User, Calendar, Target, CheckCircle2, Layers, ShieldCheck, Plus, Lock, AlertCircle, Check } from 'lucide-react';
 import { PROJECT, MainJob } from '@/data/mockData';
 import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast } from '@/components/ui';
@@ -97,63 +97,38 @@ export default function ProjectPage() {
     }
   };
 
-  const handleCreateProject = async (e: FormEvent) => {
+  const handleCreateProject = (e: FormEvent) => {
     e.preventDefault();
     setFormError('');
 
-    if (!projectName.trim() || !companyId || !pmName.trim() || !startDate) {
+    if (!projectName.trim() || !companyId || !startDate) {
       setFormError('Please fill in all required project information.');
       return;
     }
 
     setIsSubmitting(true);
-    try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          company_id: companyId,
-          name: projectName.trim(),
-          project_manager: pmName.trim(),
-          start_date: startDate,
-          end_date: endDate || null,
-          total_budget: Number(budget) || 0,
-          description: description.trim() || null,
-        }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok) {
+    router.post('/projects', {
+      title: projectName.trim(),
+      company_id: companyId || null,
+      company_name: newCompanyName.trim() || null,
+      start: startDate,
+      end: endDate || startDate,
+    }, {
+      onSuccess: () => {
         setToast({
-          message: `Project "${projectName}" created! Fixed 17 Main Jobs & Sub Main Jobs template loaded automatically.`,
+          message: `Project "${projectName}" created! Standard WBS template loaded automatically.`,
           type: 'success',
         });
         setShowCreateModal(false);
-        await refreshUser();
-        // Update active project view to new project
-        const comp = companies.find(c => String(c.id) === String(companyId))?.name || 'PT Indoprima Nusantara';
-        setProjectData(prev => ({
-          ...prev,
-          name: projectName,
-          company: comp,
-          projectManager: pmName,
-          startDate: startDate,
-          endDate: endDate,
-          totalBudget: Number(budget),
-          overallProgress: 0,
-        }));
-      } else {
-        setFormError(data.message || data.errors?.admin_id?.[0] || 'Failed to create project.');
-      }
-    } catch {
-      setFormError('Failed to communicate with server.');
-    } finally {
-      setIsSubmitting(false);
-    }
+        setIsSubmitting(false);
+      },
+      onError: (errors) => {
+        const errText = Object.values(errors).flat().join(', ');
+        setFormError(errText || 'Failed to create project.');
+        setIsSubmitting(false);
+      },
+      onFinish: () => setIsSubmitting(false),
+    });
   };
 
   const p = projectData;

@@ -166,19 +166,21 @@ export function Button({
 }
 
 export function Modal({
-  isOpen,
+  isOpen = true,
   onClose,
   title,
   subtitle,
   children,
-  maxWidth = 'max-w-lg',
+  maxWidth,
+  size = 'md',
 }: {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
   maxWidth?: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -196,13 +198,19 @@ export function Modal({
 
   if (!isOpen) return null;
 
+  const resolvedMaxWidth = maxWidth || (
+    size === 'sm' ? 'max-w-md' :
+    size === 'lg' ? 'max-w-3xl' :
+    size === 'xl' ? 'max-w-5xl' : 'max-w-xl'
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="fixed inset-0 bg-neutral-900/40 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
-      <div className={`relative bg-white rounded-xl shadow-2xl border border-neutral-200 w-full ${maxWidth} z-10 modal-enter overflow-hidden flex flex-col max-h-[90vh]`}>
+      <div className={`relative bg-white rounded-xl shadow-2xl border border-neutral-200 w-full ${resolvedMaxWidth} z-10 modal-enter overflow-hidden flex flex-col max-h-[90vh]`}>
         <div className="flex items-start justify-between p-5 border-b border-neutral-100 flex-shrink-0">
           <div>
             <h2 className="text-[16px] font-bold text-neutral-900 tracking-tight">{title}</h2>

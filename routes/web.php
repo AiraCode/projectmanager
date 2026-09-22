@@ -65,5 +65,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/projects/{id}/timeline', [ProjectController::class, 'timeline'])->name('projects.timeline');
         Route::get('/projects/{id}/weekly',   [ProjectController::class, 'weekly'])->name('projects.weekly');
         Route::get('/projects/{id}/budget',   [ProjectController::class, 'budget'])->name('projects.budget');
+
+        // Weekly Progress mutations
+        Route::post('/projects/{id}/weekly', [ProjectController::class, 'saveWeeklyProgress'])->name('projects.weekly.store');
+
+        // Budget Realization mutations
+        Route::post('/projects/{id}/budget', [ProjectController::class, 'storeBudgetEntry'])->name('projects.budget.store');
+        Route::delete('/projects/{id}/budget/{entryId}', [ProjectController::class, 'deleteBudgetEntry'])->name('projects.budget.destroy');
     });
 });

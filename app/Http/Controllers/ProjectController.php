@@ -12,6 +12,8 @@ use App\Models\MainWbs;
 use App\Models\ListSubWbsName;
 use App\Models\SubWbs;
 use App\Models\Wbs;
+use App\Models\BudgetEntry;
+use App\Models\WeeklyProgress;
 use App\Services\ProgressService;
 use App\Services\ProjectTemplateService;
 use Illuminate\Support\Facades\Auth;
@@ -141,12 +143,18 @@ class ProjectController extends Controller
 
         $divisions = Division::select('id', 'divisi')->get();
         $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
+        
+        $availableProjects = [];
+        if ($role === 'worker') {
+            $availableProjects = Project::where('companies_id', $user->companies_id)->select('id', 'title')->get();
+        }
 
         return Inertia::render('TasksPage', [
-            'project'   => $this->transformProjectData($project, $workerDivisionId),
-            'userRole'  => $role,
-            'division'  => $user->division?->divisi ?? null,
-            'divisions' => $divisions,
+            'project'           => $this->transformProjectData($project, $workerDivisionId),
+            'availableProjects' => $availableProjects,
+            'userRole'          => $role,
+            'division'          => $user->division?->divisi ?? null,
+            'divisions'         => $divisions,
         ]);
     }
 
@@ -435,6 +443,12 @@ class ProjectController extends Controller
             abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menambah Sub Task.');
         }
 
+        if ($request->has('main_wbs_id')) {
+            $rawMain = $request->input('main_wbs_id');
+            $cleanMainId = is_string($rawMain) ? (int) str_replace('mj-', '', $rawMain) : (int) $rawMain;
+            $request->merge(['main_wbs_id' => $cleanMainId]);
+        }
+
         $validated = $request->validate([
             'main_wbs_id' => 'required|exists:main_wbs,id',
             'name'        => 'required|string|max:255',
@@ -442,9 +456,15 @@ class ProjectController extends Controller
         ]);
 
         $mainWbs = MainWbs::findOrFail($validated['main_wbs_id']);
+        $listMainId = $mainWbs->list_main_wbs_names_id;
+        if (!$listMainId) {
+            $firstListMain = ListMainWbsName::firstOrCreate(['name' => $mainWbs->name]);
+            $listMainId = $firstListMain->id;
+        }
+
         $listSub = ListSubWbsName::create([
             'name'                         => $validated['name'],
-            'list_main_wbs_names_copy1_id' => $mainWbs->list_main_wbs_names_id,
+            'list_main_wbs_names_copy1_id' => $listMainId,
         ]);
 
         SubWbs::create([
@@ -549,6 +569,12 @@ class ProjectController extends Controller
             abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menambah Task.');
         }
 
+        if ($request->has('sub_wbs_id')) {
+            $rawSub = $request->input('sub_wbs_id');
+            $cleanSubId = is_string($rawSub) ? (int) str_replace('smj-', '', $rawSub) : (int) $rawSub;
+            $request->merge(['sub_wbs_id' => $cleanSubId]);
+        }
+
         $validated = $request->validate([
             'sub_wbs_id'   => 'required|exists:sub_wbs,id',
             'name'         => 'required|string|max:255',
@@ -579,6 +605,7 @@ class ProjectController extends Controller
             'end'          => $endDate,
             'is_completed' => false,
             'status'       => 'Open',
+            'predecessor'  => $validated['predecessor'] ?? null,
         ]);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
@@ -627,9 +654,6 @@ class ProjectController extends Controller
         }
         if (isset($validated['predecessor'])) {
             $task->predecessor = $validated['predecessor'];
-        }
-        if (isset($validated['dep_type'])) {
-            $task->predecessor_type = $validated['dep_type'];
         }
         $task->save();
 
@@ -722,7 +746,9 @@ class ProjectController extends Controller
             'company', 
             'mainWbs.listName', 
             'mainWbs.subWbs.listName', 
-            'mainWbs.subWbs.wbsTasks.division'
+            'mainWbs.subWbs.wbsTasks.division',
+            'budgetEntries',
+            'weeklyProgress',
         ]);
 
         if ($role === 'pic') {
@@ -757,9 +783,15 @@ class ProjectController extends Controller
                 return $query->where('companies_id', $user->companies_id)->first();
             }
         } else {
-            // Admin Utama & Admin Progres can view any project, but MUST specify an id
-            if (!$id) return null;
-            return $query->find($id);
+            // Admin Utama & Admin Progres can view any project
+            if ($id) {
+                return $query->find($id);
+            }
+            // If no specific project id is requested, Admin Utama defaults to first available project
+            if ($role === 'admin_utama') {
+                return $query->first();
+            }
+            return null;
         }
     }
 
@@ -800,8 +832,8 @@ class ProjectController extends Controller
                         'finishDate'  => $st->end ? $st->end->format('Y-m-d') : '',
                         'progress'    => $st->is_completed ? 100 : 0,
                         'status'      => $st->status ?? 'Open',
-                        'predecessor' => $st->predecessor ?? '-',
-                        'depType'     => $st->predecessor_type ?? 'FS',
+                        'predecessor' => $st->predecessor ?? '',
+                        'depType'     => 'FS',
                         'weight'      => 0,
                         'checked'     => (bool) $st->is_completed,
                         'division'    => $st->division?->divisi ?? 'General',
@@ -849,22 +881,170 @@ class ProjectController extends Controller
             });
         }
 
+        $budgetEntries = ($p->budgetEntries ?? collect())->map(function ($b) {
+            return [
+                'id'          => (string) $b->id,
+                'tanggal'     => $b->tanggal ? $b->tanggal->format('Y-m-d') : '',
+                'codeSubWbs'  => $b->code_sub_wbs ?? '—',
+                'subTaskWbs'  => $b->sub_task_wbs ?? $b->nama_item,
+                'kategori'    => $b->kategori,
+                'lokasi'      => $b->lokasi ?? '',
+                'namaItem'    => $b->nama_item,
+                'spesifikasi' => $b->spesifikasi ?? '',
+                'qty'         => (float) $b->qty,
+                'satuan'      => $b->satuan,
+                'hargaSatuan' => (float) $b->harga_satuan,
+                'hargaTotal'  => (float) $b->harga_total,
+                'referensi'   => $b->referensi ?? '',
+                'keterangan'  => $b->keterangan ?? '',
+            ];
+        })->values()->toArray();
+
+        $realizedBudget = array_sum(array_column($budgetEntries, 'hargaTotal'));
+        $totalBudget = 45000000000;
+        $usedBudget = $realizedBudget > 0 ? $realizedBudget : 0;
+
+        $savedWeeklyActuals = ($p->weeklyProgress ?? collect())->mapWithKeys(function ($wp) {
+            return [(int) $wp->week_number => (float) $wp->actual_progress];
+        })->toArray();
+
         return [
-            'id'              => (string) $p->id,
-            'name'            => $p->title,
-            'company'         => $p->company?->name ?? '—',
-            'projectManager'  => $p->manager?->username ?? $p->manager?->name ?? '—',
-            'startDate'       => $p->start ? $p->start->format('Y-m-d') : '',
-            'endDate'         => $p->end ? $p->end->format('Y-m-d') : '',
-            'status'          => $p->status ?? 'Open',
-            'overallProgress' => (int) $p->progress,
-            'hariKe'          => (int) $hariKe,
-            'sisaHari'        => (int) $sisaHari,
-            'totalBudget'     => 45000000000,
-            'usedBudget'      => 34560000000,
-            'weeklyData'      => [],
-            'budgetEntries'   => [],
-            'mainJobs'        => $mainJobs->values()->toArray(),
+            'id'                  => (string) $p->id,
+            'name'                => $p->title,
+            'company'             => $p->company?->name ?? '—',
+            'projectManager'      => $p->manager?->username ?? $p->manager?->name ?? '—',
+            'startDate'           => $p->start ? $p->start->format('Y-m-d') : '',
+            'endDate'             => $p->end ? $p->end->format('Y-m-d') : '',
+            'status'              => $p->status ?? 'Open',
+            'overallProgress'     => (int) $p->progress,
+            'hariKe'              => (int) $hariKe,
+            'sisaHari'            => (int) $sisaHari,
+            'totalBudget'         => $totalBudget,
+            'usedBudget'          => $usedBudget,
+            'weeklyData'          => [],
+            'savedWeeklyActuals'  => $savedWeeklyActuals,
+            'budgetEntries'       => $budgetEntries,
+            'mainJobs'            => $mainJobs->values()->toArray(),
         ];
+    }
+
+    /**
+     * Store a budget realization entry for a project.
+     */
+    public function storeBudgetEntry(Request $request, $projectId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+
+        if ($role === 'worker' || $role === 'admin_progres') {
+            abort(403, 'Akses Ditolak: Anda tidak berwenang menambahkan realisasi anggaran.');
+        }
+
+        if ($role === 'pic' && $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Anda bukan PIC dari project ini.');
+        }
+
+        $validated = $request->validate([
+            'tanggal'       => 'required|date',
+            'code_sub_wbs'  => 'nullable|string|max:50',
+            'sub_task_wbs'  => 'nullable|string|max:255',
+            'kategori'      => 'required|string|max:100',
+            'lokasi'        => 'nullable|string|max:100',
+            'nama_item'     => 'required|string|max:255',
+            'spesifikasi'   => 'nullable|string|max:255',
+            'qty'           => 'required|numeric|min:0.01',
+            'satuan'        => 'required|string|max:50',
+            'harga_satuan'  => 'required|numeric|min:0',
+            'referensi'     => 'nullable|string|max:255',
+            'keterangan'    => 'nullable|string',
+        ]);
+
+        $qty = (float) $validated['qty'];
+        $hargaSatuan = (float) $validated['harga_satuan'];
+        $hargaTotal = $qty * $hargaSatuan;
+
+        BudgetEntry::create([
+            'projects_id'  => $project->id,
+            'tanggal'      => Carbon::parse($validated['tanggal']),
+            'code_sub_wbs' => $validated['code_sub_wbs'] ?? null,
+            'sub_task_wbs' => $validated['sub_task_wbs'] ?? $validated['nama_item'],
+            'kategori'     => $validated['kategori'],
+            'lokasi'       => $validated['lokasi'] ?? null,
+            'nama_item'    => $validated['nama_item'],
+            'spesifikasi'  => $validated['spesifikasi'] ?? null,
+            'qty'          => $qty,
+            'satuan'       => $validated['satuan'],
+            'harga_satuan' => $hargaSatuan,
+            'harga_total'  => $hargaTotal,
+            'referensi'    => $validated['referensi'] ?? null,
+            'keterangan'   => $validated['keterangan'] ?? null,
+        ]);
+
+        return back()->with('success', "Transaksi budget untuk \"{$validated['nama_item']}\" berhasil disimpan.");
+    }
+
+    /**
+     * Delete a budget realization entry.
+     */
+    public function deleteBudgetEntry(Request $request, $projectId, $entryId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+
+        if ($role === 'worker' || $role === 'admin_progres') {
+            abort(403, 'Akses Ditolak: Anda tidak berwenang menghapus realisasi anggaran.');
+        }
+
+        if ($role === 'pic' && $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Anda bukan PIC dari project ini.');
+        }
+
+        $entry = BudgetEntry::where('projects_id', $project->id)->where('id', $entryId)->firstOrFail();
+        $itemName = $entry->nama_item;
+        $entry->delete();
+
+        return back()->with('success', "Transaksi \"{$itemName}\" berhasil dihapus.");
+    }
+
+    /**
+     * Save/update weekly actual progress.
+     */
+    public function saveWeeklyProgress(Request $request, $projectId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+
+        if ($role === 'worker' || $role === 'admin_progres') {
+            abort(403, 'Akses Ditolak: Anda tidak berwenang memperbarui progres mingguan.');
+        }
+
+        if ($role === 'pic' && $project->project_manager != $user->id) {
+            abort(403, 'Akses Ditolak: Anda bukan PIC dari project ini.');
+        }
+
+        $validated = $request->validate([
+            'week'   => 'required|integer|min:1',
+            'actual' => 'required|numeric|min:0|max:100',
+            'notes'  => 'nullable|string',
+        ]);
+
+        WeeklyProgress::updateOrCreate(
+            [
+                'projects_id' => $project->id,
+                'week_number' => $validated['week'],
+            ],
+            [
+                'actual_progress' => $validated['actual'],
+                'notes'           => $validated['notes'] ?? null,
+            ]
+        );
+
+        return back()->with('success', "Actual progress untuk W{$validated['week']} berhasil disimpan.");
     }
 }

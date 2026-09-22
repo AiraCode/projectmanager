@@ -73,9 +73,10 @@ export function recalculateWeeklyData(project: Project): Project {
     plannedCumulative += weekPlanned;
     plannedCumulative = parseFloat(plannedCumulative.toFixed(2));
 
-    // Preserve existing actual values if they exist
+    // Preserve existing actual values if they exist or read from DB savedWeeklyActuals
     const existingWeek = newProject.weeklyData?.find(ew => ew.week === w.week);
-    const actualValue = existingWeek?.actual || 0; 
+    const savedActual = (newProject as any).savedWeeklyActuals?.[w.week];
+    const actualValue = savedActual !== undefined ? Number(savedActual) : (existingWeek?.actual || 0);
     
     actualCumulative += actualValue;
     actualCumulative = parseFloat(actualCumulative.toFixed(2));

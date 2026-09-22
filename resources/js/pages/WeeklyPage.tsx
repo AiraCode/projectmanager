@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { usePage } from '@inertiajs/react';
+import { usePage, router } from '@inertiajs/react';
 import { Project, PROJECT, WeekData } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { PageHeader, Card, Button, Toast } from '@/components/ui';
-import { Info, ChevronLeft, ChevronRight, Check, Calendar, TrendingUp } from 'lucide-react';
+import { Info, ChevronLeft, ChevronRight, Check, Calendar, TrendingUp, Edit3, X, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 10;
 
@@ -21,9 +21,12 @@ export default function WeeklyPage() {
       setProjectData(recalculateWeeklyData(project));
     }
   }, [project]);
+
   const weeks = projectData.weeklyData;
-  const [page, setPage] = useState(0); // Start at beginning for dynamically generated
+  const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<Record<number, string>>({});
+  const [editMode, setEditMode] = useState<Record<number, boolean>>({});
+  const [saving, setSaving] = useState<Record<number, boolean>>({});
   const [saved, setSaved] = useState<Record<number, boolean>>({});
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -37,25 +40,65 @@ export default function WeeklyPage() {
     setEditing(p => ({ ...p, [weekNo]: val }));
   };
 
+  const startEdit = (weekNo: number, currentActual: number) => {
+    setEditing(p => ({ ...p, [weekNo]: String(currentActual || '') }));
+    setEditMode(p => ({ ...p, [weekNo]: true }));
+  };
+
+  const cancelEdit = (weekNo: number) => {
+    setEditMode(p => ({ ...p, [weekNo]: false }));
+  };
+
   const handleSave = (weekNo: number) => {
     const val = parseFloat(editing[weekNo]);
     if (isNaN(val) || val < 0) {
-      setToastMsg('Masukkan nilai yang valid.');
+      setToastMsg('Masukkan nilai yang valid (angka 0 atau lebih).');
       return;
     }
 
-    setProjectData(prev => {
-      const newData = { ...prev };
-      const weekIndex = newData.weeklyData.findIndex(w => w.week === weekNo);
-      if (weekIndex !== -1) {
-        newData.weeklyData[weekIndex].actual = val;
-      }
-      return recalculateWeeklyData(newData);
-    });
-
-    setSaved(p => ({ ...p, [weekNo]: true }));
-    setToastMsg(`Actual progress untuk W${weekNo} berhasil disimpan sebesar ${val}%.`);
-    setTimeout(() => setSaved(p => ({ ...p, [weekNo]: false })), 2000);
+    if (projectData.id) {
+      setSaving(p => ({ ...p, [weekNo]: true }));
+      router.post(`/projects/${projectData.id}/weekly`, {
+        week: weekNo,
+        actual: val,
+      }, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setProjectData(prev => {
+            const newData = { ...prev };
+            const weekIndex = newData.weeklyData.findIndex(w => w.week === weekNo);
+            if (weekIndex !== -1) {
+              newData.weeklyData[weekIndex].actual = val;
+            }
+            return recalculateWeeklyData(newData);
+          });
+          setSaved(p => ({ ...p, [weekNo]: true }));
+          setEditMode(p => ({ ...p, [weekNo]: false }));
+          setSaving(p => ({ ...p, [weekNo]: false }));
+          setToastMsg(`Actual progress W${weekNo} sebesar ${val}% berhasil disimpan.`);
+          setTimeout(() => setSaved(p => ({ ...p, [weekNo]: false })), 2000);
+        },
+        onError: (errors) => {
+          const errText = Object.values(errors).flat().join(', ');
+          setToastMsg(`Gagal menyimpan: ${errText || 'Terjadi kesalahan'}`);
+          setSaving(p => ({ ...p, [weekNo]: false }));
+        },
+        onFinish: () => setSaving(p => ({ ...p, [weekNo]: false })),
+      });
+    } else {
+      setProjectData(prev => {
+        const newData = { ...prev };
+        const weekIndex = newData.weeklyData.findIndex(w => w.week === weekNo);
+        if (weekIndex !== -1) {
+          newData.weeklyData[weekIndex].actual = val;
+        }
+        return recalculateWeeklyData(newData);
+      });
+      setSaved(p => ({ ...p, [weekNo]: true }));
+      setEditMode(p => ({ ...p, [weekNo]: false }));
+      setToastMsg(`Actual progress W${weekNo} sebesar ${val}% berhasil disimpan.`);
+      setTimeout(() => setSaved(p => ({ ...p, [weekNo]: false })), 2000);
+    }
   };
 
   const totalPlanned = weeks.reduce((a, w) => a + w.planned, 0);
@@ -193,7 +236,7 @@ export default function WeeklyPage() {
 
                     {/* Actual */}
                     <td className="px-4 py-3">
-                      {hasActual ? (
+                      {hasActual && !editMode[w.week] ? (
                         <div className="flex items-center gap-2">
                           <div className="w-14 h-1.5 bg-neutral-200 rounded-full overflow-hidden">
                             <div
@@ -202,16 +245,36 @@ export default function WeeklyPage() {
                             />
                           </div>
                           <span className="font-semibold text-success">{w.actual.toFixed(2)}%</span>
+                          <button
+                            onClick={() => startEdit(w.week, w.actual)}
+                            className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors ml-1"
+                            title="Edit actual progress"
+                          >
+                            <Edit3 size={12} />
+                          </button>
                         </div>
                       ) : (
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={editVal ?? ''}
-                          onChange={e => handleEdit(w.week, e.target.value)}
-                          className="w-20 px-2 py-1 rounded border border-neutral-200 text-[12px] outline-none focus:border-brand bg-white text-center shadow-xs"
-                        />
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            placeholder="0.00"
+                            value={editVal ?? ''}
+                            onChange={e => handleEdit(w.week, e.target.value)}
+                            className="w-20 px-2 py-1 rounded border border-neutral-200 text-[12px] outline-none focus:border-brand bg-white text-center shadow-xs"
+                          />
+                          {editMode[w.week] && (
+                            <button
+                              onClick={() => cancelEdit(w.week)}
+                              className="p-1 rounded text-neutral-400 hover:text-danger hover:bg-red-50 transition-colors"
+                              title="Batal edit"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
 
@@ -238,10 +301,11 @@ export default function WeeklyPage() {
 
                     {/* Action */}
                     <td className="px-4 py-3 text-center">
-                      {!hasActual && editVal !== undefined && editVal !== '' ? (
+                      {(!hasActual || editMode[w.week]) && editVal !== undefined && editVal !== '' ? (
                         <Button
                           variant={saved[w.week] ? 'secondary' : 'primary'}
                           size="sm"
+                          loading={saving[w.week]}
                           onClick={() => handleSave(w.week)}
                           className="py-1 px-2.5 text-[11px]"
                         >

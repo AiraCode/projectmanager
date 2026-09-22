@@ -15,14 +15,17 @@ export default function TasksPage() {
   const pageProps = usePage().props as any;
   const project = pageProps?.project;
   const divisions = pageProps?.divisions || [];
+  const availableProjects = pageProps?.availableProjects || [];
   
   // Role checks:
   // - PIC: can add/edit/delete tasks and sub-tasks, toggle checklist in their project
   // - Worker: can ONLY check/uncheck tasks assigned to their division
   // - Admin (Utama / Progres): strictly read-only, NO modification allowed
-  const isPIC    = user?.isPIC || user?.role === 'pic' || user?.role === 'PIC';
-  const isWorker = user?.isWorker || user?.role === 'worker' || user?.role === 'Worker';
-  const isAdmin  = user?.isAdminUtama || user?.isAdminProgres || user?.role === 'admin_utama' || user?.role === 'admin_progres' || user?.role === 'Admin';
+  const authUser = pageProps?.auth?.user || user;
+  const rawRole = (pageProps?.userRole || authUser?.role || authUser?.rawRole || '').toString().toLowerCase();
+  const isPIC    = authUser?.isPIC === true || rawRole === 'pic';
+  const isWorker = authUser?.isWorker === true || rawRole === 'worker';
+  const isAdmin  = authUser?.isAdminUtama === true || authUser?.isAdminProgres === true || rawRole === 'admin_utama' || rawRole === 'admin_progres' || rawRole === 'admin';
   
   const [projectData, setProjectData] = useState<Project>(() => {
     if (!project || !project.mainJobs) {
@@ -54,38 +57,25 @@ export default function TasksPage() {
 
   // Add Main Task (Main Job / Level 1 WBS)
   const handleSaveMainJob = (name: string, weight: number, start?: string, end?: string) => {
-    if (projectData.id && name) {
-      router.post(`/projects/${projectData.id}/main-wbs`, {
-        name,
-        weight,
-        start: start || null,
-        end: end || null,
-      }, {
-        preserveScroll: true,
-        onError: () => setToastMsg('Gagal menambahkan Main Task ke server.'),
-      });
-    }
-
-    setProjectData(prev => {
-      const newData = { ...prev };
-      const nextCode = (newData.mainJobs.length + 1).toString();
-      const newMJ: MainJob = {
-        id: `mj-${Date.now()}`,
-        code: nextCode,
-        name: name,
-        weight: weight,
-        startDate: start || new Date().toISOString().slice(0, 10),
-        finishDate: end || new Date().toISOString().slice(0, 10),
-        progress: 0,
-        status: 'Open',
-        subMainJobs: [],
-      };
-      newData.mainJobs = [...newData.mainJobs, newMJ];
-      return recalculateSchedule(recalculateProgress(newData));
+    if (!projectData.id || !name) return;
+    
+    router.post(`/projects/${projectData.id}/main-wbs`, {
+      name,
+      weight,
+      start: start || null,
+      end: end || null,
+    }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setToastMsg(`Main Task "${name}" berhasil ditambahkan.`);
+        setShowAddMainJobModal(false);
+      },
+      onError: (errors) => {
+        console.error('Error adding Main Task:', errors);
+        const errText = Object.values(errors).flat().join(', ');
+        setToastMsg(`Gagal menambahkan Main Task: ${errText || 'Periksa input Anda'}`);
+      },
     });
-
-    setToastMsg(`Main Task "${name}" berhasil ditambahkan.`);
-    setShowAddMainJobModal(false);
   };
 
   // Delete Main Task (Main Job)
@@ -95,54 +85,40 @@ export default function TasksPage() {
     if (projectData.id && targetDbId) {
       router.delete(`/projects/${projectData.id}/main-wbs/${targetDbId}`, {
         preserveScroll: true,
+        onSuccess: () => {
+          setProjectData(prev => {
+            const newData = { ...prev };
+            newData.mainJobs = newData.mainJobs.filter(mj => mj.id !== mjId);
+            return recalculateSchedule(recalculateProgress(newData));
+          });
+          setToastMsg(`Main Task "${mjName}" berhasil dihapus.`);
+        },
         onError: () => setToastMsg('Gagal menghapus Main Task dari server.'),
       });
     }
-    setProjectData(prev => {
-      const newData = { ...prev };
-      newData.mainJobs = newData.mainJobs.filter(mj => mj.id !== mjId);
-      return recalculateSchedule(recalculateProgress(newData));
-    });
-    setToastMsg(`Main Task "${mjName}" berhasil dihapus.`);
   };
 
   // Add Sub Task (Sub Main Job under Main Job)
   const handleSaveSubMainJob = (mjId: string, name: string, weight: number, mjDbId?: number) => {
-    if (projectData.id && name) {
-      router.post(`/projects/${projectData.id}/sub-wbs`, {
-        main_wbs_id: mjDbId || (mjId.startsWith('mj-') ? mjId.replace('mj-', '') : mjId),
-        name: name,
-        weight: weight,
-      }, {
-        preserveScroll: true,
-        onError: () => setToastMsg('Gagal menambahkan Sub Task ke server.'),
-      });
-    }
-
-    setProjectData(prev => {
-      const newData = { ...prev };
-      newData.mainJobs = newData.mainJobs.map(mj => {
-        if (mj.id !== mjId) return mj;
-        const newCode = `${mj.code}.${mj.subMainJobs.length + 1}`;
-        const newSMJ: SubMainJob = {
-          id: `smj-${Date.now()}`,
-          code: newCode,
-          name: name,
-          pic: 'Internal',
-          startDate: mj.startDate || new Date().toISOString().slice(0, 10),
-          finishDate: mj.finishDate || new Date().toISOString().slice(0, 10),
-          progress: 0,
-          status: 'Open',
-          weight: weight,
-          subtasks: [],
-        };
-        return { ...mj, subMainJobs: [...mj.subMainJobs, newSMJ] };
-      });
-      return recalculateSchedule(recalculateProgress(newData));
+    if (!projectData.id || !name) return;
+    
+    const cleanMainId = mjDbId || (mjId.startsWith('mj-') ? parseInt(mjId.replace('mj-', '')) : parseInt(mjId));
+    router.post(`/projects/${projectData.id}/sub-wbs`, {
+      main_wbs_id: cleanMainId,
+      name: name,
+      weight: weight,
+    }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setToastMsg(`Sub Task "${name}" berhasil ditambahkan.`);
+        setShowAddSubMainJobModal(null);
+      },
+      onError: (errors) => {
+        console.error('Error adding Sub Task:', errors);
+        const errText = Object.values(errors).flat().join(', ');
+        setToastMsg(`Gagal menambahkan Sub Task: ${errText || 'Periksa input Anda'}`);
+      },
     });
-
-    setToastMsg(`Sub Task "${name}" berhasil ditambahkan.`);
-    setShowAddSubMainJobModal(null);
   };
 
   // Delete Sub Task (Sub Main Job)
@@ -152,95 +128,65 @@ export default function TasksPage() {
     if (projectData.id && targetDbId) {
       router.delete(`/projects/${projectData.id}/sub-wbs/${targetDbId}`, {
         preserveScroll: true,
+        onSuccess: () => {
+          setProjectData(prev => {
+            const newData = { ...prev };
+            newData.mainJobs = newData.mainJobs.map(mj => {
+              if (mj.id !== mjId) return mj;
+              return { ...mj, subMainJobs: mj.subMainJobs.filter(smj => smj.id !== smjId) };
+            });
+            return recalculateSchedule(recalculateProgress(newData));
+          });
+          setToastMsg(`Sub Task "${smjName}" berhasil dihapus.`);
+        },
         onError: () => setToastMsg('Gagal menghapus Sub Task dari server.'),
       });
     }
-    setProjectData(prev => {
-      const newData = { ...prev };
-      newData.mainJobs = newData.mainJobs.map(mj => {
-        if (mj.id !== mjId) return mj;
-        return { ...mj, subMainJobs: mj.subMainJobs.filter(smj => smj.id !== smjId) };
-      });
-      return recalculateSchedule(recalculateProgress(newData));
-    });
-    setToastMsg(`Sub Task "${smjName}" berhasil dihapus.`);
   };
 
   // Add or Edit Sub-Subtask (Task)
   const handleSaveSubtask = (smjId: string, taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => {
-    // Send to backend if project id exists
-    if (projectData.id && taskData.name) {
-      if (taskData.id) {
-        router.put(`/projects/${projectData.id}/tasks/${taskData.id}`, {
-          name: taskData.name,
-          divisions_id: taskData.divisionId || null,
-          duration: taskData.duration || 1,
-          start: taskData.startDate || null,
-          predecessor: taskData.predecessor || null,
-          dep_type: taskData.depType || 'FS',
-          lag: taskData.lag || 0,
-        }, {
-          preserveScroll: true,
-          onError: () => setToastMsg('Gagal memperbarui task di server.'),
-        });
-      } else {
-        router.post(`/projects/${projectData.id}/tasks`, {
-          sub_wbs_id: taskData.smjDbId || smjId.replace('smj-', ''),
-          name: taskData.name,
-          divisions_id: taskData.divisionId || null,
-          duration: taskData.duration || 1,
-          start: taskData.startDate || null,
-          predecessor: taskData.predecessor || null,
-          dep_type: taskData.depType || 'FS',
-          lag: taskData.lag || 0,
-        }, {
-          preserveScroll: true,
-          onError: () => setToastMsg('Gagal menyimpan task ke server.'),
-        });
-      }
-    }
+    if (!projectData.id || !taskData.name) return;
+    
+    const cleanSubWbsId = taskData.smjDbId || (smjId.startsWith('smj-') ? parseInt(smjId.replace('smj-', '')) : parseInt(smjId));
+    const payload = {
+      sub_wbs_id: cleanSubWbsId,
+      name: taskData.name,
+      divisions_id: taskData.divisionId || null,
+      duration: taskData.duration || 1,
+      start: taskData.startDate || null,
+      predecessor: taskData.predecessor || null,
+      dep_type: taskData.depType || 'FS',
+      lag: taskData.lag || 0,
+    };
 
-    setProjectData(prev => {
-      const newData = { ...prev };
-      newData.mainJobs = newData.mainJobs.map(mj => ({
-        ...mj,
-        subMainJobs: mj.subMainJobs.map(smj => {
-          if (smj.id !== smjId) return smj;
-          
-          let updatedSubtasks = [...smj.subtasks];
-          if (taskData.id) {
-            // Edit local
-            updatedSubtasks = updatedSubtasks.map(st => st.id === taskData.id ? { ...st, ...taskData } as SubSubtask : st);
-          } else {
-            // Add local
-            const newId = `st-${Date.now()}`;
-            const newCode = `${smj.code}.${updatedSubtasks.length + 1}`;
-            
-            const newTask: SubSubtask = {
-              id: newId,
-              code: newCode,
-              name: taskData.name!,
-              startDate: taskData.startDate!,
-              finishDate: taskData.startDate!,
-              duration: Number(taskData.duration || 1),
-              daysLeft: Number(taskData.duration || 1),
-              progress: 0,
-              status: 'Open',
-              predecessor: taskData.predecessor,
-              depType: taskData.depType as DependencyType,
-              lag: Number(taskData.lag || 0),
-              weight: 0.1,
-              checked: false,
-            };
-            updatedSubtasks.push(newTask);
-          }
-          return { ...smj, subtasks: updatedSubtasks };
-        })
-      }));
-      return recalculateSchedule(recalculateProgress(newData));
-    });
-    setToastMsg(`Task "${taskData.name}" berhasil ${taskData.id ? 'diperbarui' : 'ditambahkan'}.`);
-    setShowAddTaskModal(null);
+    if (taskData.id) {
+      router.put(`/projects/${projectData.id}/tasks/${taskData.id}`, payload, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setToastMsg(`Task "${taskData.name}" berhasil diperbarui.`);
+          setShowAddTaskModal(null);
+        },
+        onError: (errors) => {
+          console.error('Error updating task:', errors);
+          const errText = Object.values(errors).flat().join(', ');
+          setToastMsg(`Gagal memperbarui task: ${errText || 'Periksa input Anda'}`);
+        },
+      });
+    } else {
+      router.post(`/projects/${projectData.id}/tasks`, payload, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setToastMsg(`Task "${taskData.name}" berhasil ditambahkan.`);
+          setShowAddTaskModal(null);
+        },
+        onError: (errors) => {
+          console.error('Error adding task:', errors);
+          const errText = Object.values(errors).flat().join(', ');
+          setToastMsg(`Gagal menyimpan task: ${errText || 'Periksa input Anda'}`);
+        },
+      });
+    }
   };
 
   const handleDeleteSubtask = (smjId: string, taskId: string, taskName: string) => {
@@ -248,34 +194,36 @@ export default function TasksPage() {
     if (projectData.id && taskId) {
       router.delete(`/projects/${projectData.id}/tasks/${taskId}`, {
         preserveScroll: true,
+        onSuccess: () => {
+          setProjectData(prev => {
+            const newData = { ...prev };
+            newData.mainJobs = newData.mainJobs.map(mj => ({
+              ...mj,
+              subMainJobs: mj.subMainJobs.map(smj => {
+                if (smj.id !== smjId) return smj;
+                return { ...smj, subtasks: smj.subtasks.filter(st => st.id !== taskId) };
+              })
+            }));
+            return recalculateSchedule(recalculateProgress(newData));
+          });
+          setToastMsg(`Task "${taskName}" berhasil dihapus.`);
+        },
         onError: () => setToastMsg('Gagal menghapus task dari server.'),
       });
     }
-    setProjectData(prev => {
-      const newData = { ...prev };
-      newData.mainJobs = newData.mainJobs.map(mj => ({
-        ...mj,
-        subMainJobs: mj.subMainJobs.map(smj => {
-          if (smj.id !== smjId) return smj;
-          return { ...smj, subtasks: smj.subtasks.filter(st => st.id !== taskId) };
-        })
-      }));
-      return recalculateSchedule(recalculateProgress(newData));
-    });
-    setToastMsg(`Task "${taskName}" berhasil dihapus.`);
   };
 
   // Checklist authorization:
   // - Admin (Utama & Progres): FALSE (strictly read-only)
-  // - PIC: TRUE (manages all tasks in their project)
+  // - PIC: TRUE (can toggle tasks in their project)
   // - Worker: TRUE only if worker's division matches the task's division
   const isAuthorizedToCheck = (taskDivision: string) => {
     if (isAdmin) return false;
     if (isPIC) return true;
     if (isWorker) {
-      const workerDiv = (user?.division ?? '').trim().toLowerCase();
+      const workerDiv = (user?.division ?? pageProps?.division ?? '').trim().toLowerCase();
       const targetDiv = (taskDivision ?? '').trim().toLowerCase();
-      return workerDiv !== '' && workerDiv === targetDiv;
+      return workerDiv !== '' && (workerDiv === targetDiv || targetDiv === 'general' || targetDiv === 'internal');
     }
     return false;
   };
@@ -285,7 +233,7 @@ export default function TasksPage() {
       if (isAdmin) {
         setToastMsg('Aksi Dibatasi: Role Admin bersifat Read-Only dan tidak boleh mencentang tugas.');
       } else if (isWorker) {
-        setToastMsg(`Aksi Dibatasi: Anda terdaftar di divisi "${user?.division}". Anda hanya berwenang mencentang tugas divisi Anda.`);
+        setToastMsg(`Aksi Dibatasi: Anda terdaftar di divisi "${user?.division || pageProps?.division || 'Pekerja'}". Anda hanya berwenang mencentang tugas divisi Anda.`);
       } else {
         setToastMsg('Anda tidak memiliki izin mencentang tugas ini.');
       }
@@ -380,6 +328,18 @@ export default function TasksPage() {
               {isPIC && <span className="ml-1 text-emerald-600 font-semibold">(PIC - Bisa Tambah Main Task, Sub Task & Task)</span>}
               {isWorker && <span className="ml-1 text-blue-600 font-semibold">· Divisi: {user?.division || 'Internal'}</span>}
             </span>
+
+            {isWorker && availableProjects.length > 1 && (
+              <select
+                className="bg-white border border-neutral-200 text-[12px] font-semibold text-neutral-800 rounded-md px-2 py-1"
+                value={projectData.id?.replace('p-', '')}
+                onChange={(e) => router.get(`/tasks?project_id=${e.target.value}`)}
+              >
+                {availableProjects.map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
+              </select>
+            )}
 
             {isPIC && (
               <Button
@@ -542,7 +502,10 @@ export default function TasksPage() {
                       isAuthorizedToCheck={isAuthorizedToCheck}
                       isPIC={isPIC}
                       isAdmin={isAdmin}
-                      onOpenAddModal={() => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId })}
+                      onOpenAddModal={() => {
+                        setExpandedSMJ(p => ({ ...p, [smj.id]: true }));
+                        setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId });
+                      }}
                       onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, task })}
                       onDeleteSubMainJob={() => handleDeleteSubMainJob(mj.id, smj.id, (smj as any).dbId, smj.name)}
                       onDeleteTask={(taskId, taskName) => handleDeleteSubtask(smj.id, taskId, taskName)}
@@ -656,7 +619,7 @@ export default function TasksPage() {
       )}
 
       {/* Modal Add Main Task (Main Job) */}
-      {showAddMainJobModal && isPIC && (
+      {showAddMainJobModal && (
         <AddMainTaskModal
           onClose={() => setShowAddMainJobModal(false)}
           onSave={handleSaveMainJob}
@@ -664,7 +627,7 @@ export default function TasksPage() {
       )}
 
       {/* Modal Add Sub Task (Sub Main Job under Main Job) */}
-      {showAddSubMainJobModal && isPIC && (
+      {showAddSubMainJobModal && (
         <AddSubMainJobModal
           mjName={showAddSubMainJobModal.mjName}
           onClose={() => setShowAddSubMainJobModal(null)}
@@ -673,7 +636,7 @@ export default function TasksPage() {
       )}
 
       {/* Modal Add / Edit Task (Sub-Subtask) */}
-      {showAddTaskModal && isPIC && (
+      {showAddTaskModal && (
         <AddSubtaskModal
           smjId={showAddTaskModal.smjId}
           smjDbId={showAddTaskModal.smjDbId}

@@ -102,11 +102,28 @@ export default function LoginPage() {
 
           {/* Demo credentials hint */}
           <div className="mb-6 p-3.5 rounded-lg bg-brand-light border border-brand-border">
-            <div className="text-[12px] font-semibold text-brand mb-1.5">Demo accounts (Sessions 1 & 2)</div>
-            <div className="text-[11.5px] text-neutral-600 space-y-1">
-              <div><span className="font-medium text-neutral-800">Admin 1 (Owner):</span> <code className="bg-white/80 px-1 py-0.5 rounded text-brand font-mono">admin@jeker.id</code> / <span className="text-neutral-500">admin123</span></div>
-              <div><span className="font-medium text-neutral-800">Admin 2 (New Project):</span> <code className="bg-white/80 px-1 py-0.5 rounded text-brand font-mono">admin2@jeker.id</code> / <span className="text-neutral-500">admin123</span></div>
-              <div><span className="font-medium text-neutral-800">PIC Engineering:</span> <code className="bg-white/80 px-1 py-0.5 rounded text-brand font-mono">engineering@jeker.id</code> / <span className="text-neutral-500">pic123</span></div>
+            <div className="text-[12px] font-semibold text-brand mb-1.5 flex items-center justify-between">
+              <span>Akun Demo (Klik untuk isi cepat):</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {[
+                { role: 'Admin Utama (Owner)', email: 'admin@jeker.id', pw: 'admin123' },
+                { role: 'Admin Progres', email: 'admin2@jeker.id', pw: 'admin123' },
+                { role: 'PIC Engineering', email: 'engineering@jeker.id', pw: 'pic123' },
+              ].map((acc) => (
+                <button
+                  key={acc.email}
+                  type="button"
+                  onClick={() => {
+                    setEmail(acc.email);
+                    setPassword(acc.pw);
+                    setError('');
+                  }}
+                  className="px-2.5 py-1 rounded bg-white hover:bg-brand hover:text-white border border-brand-border text-[11px] font-medium text-brand transition-colors shadow-2xs"
+                >
+                  {acc.role}
+                </button>
+              ))}
             </div>
           </div>
 

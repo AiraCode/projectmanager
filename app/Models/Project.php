@@ -42,4 +42,14 @@ class Project extends Model
     {
         return $this->hasMany(MainWbs::class, 'projects_id');
     }
+
+    public function budgetEntries()
+    {
+        return $this->hasMany(BudgetEntry::class, 'projects_id')->orderBy('tanggal', 'desc')->orderBy('id', 'desc');
+    }
+
+    public function weeklyProgress()
+    {
+        return $this->hasMany(WeeklyProgress::class, 'projects_id')->orderBy('week_number', 'asc');
+    }
 }

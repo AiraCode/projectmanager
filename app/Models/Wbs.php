@@ -25,6 +25,7 @@ class Wbs extends Model
         'end',
         'is_completed',
         'status',
+        'predecessor',
     ];
 
     protected $casts = [

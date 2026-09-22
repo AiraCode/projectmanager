@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { usePage } from '@inertiajs/react';
-import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X, Download } from 'lucide-react';
+import { usePage, router } from '@inertiajs/react';
+import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X, Download, Loader2 } from 'lucide-react';
 import { PROJECT, BudgetEntry } from '@/data/mockData';
 import { exportToCSV } from '@/utils/exportEngine';
 import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState } from '@/components/ui';
@@ -39,15 +39,17 @@ export default function BudgetPage() {
   });
 
   useEffect(() => {
-    if (project && project.budgetEntries?.length) {
-      setEntries(project.budgetEntries);
+    if (currentProject && currentProject.budgetEntries) {
+      setEntries(currentProject.budgetEntries);
     }
-  }, [project]);
+  }, [currentProject?.budgetEntries]);
 
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<EntryForm>(EMPTY_FORM);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const totalBudget = currentProject.totalBudget || 45000000000;
   const totalUsed = entries.reduce((a, e) => a + e.hargaTotal, 0);
@@ -81,31 +83,82 @@ export default function BudgetPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.namaItem.trim() || numQty <= 0 || numHargaSatuan <= 0) return;
-    const newEntry: BudgetEntry = {
-      id: `b-${Date.now()}`,
-      tanggal: form.tanggal,
-      codeSubWbs: form.codeSubWbs || '—',
-      subTaskWbs: form.subTaskWbs || form.namaItem,
-      kategori: form.kategori,
-      lokasi: form.lokasi,
-      namaItem: form.namaItem,
-      spesifikasi: form.spesifikasi,
-      qty: numQty,
-      satuan: form.satuan,
-      hargaSatuan: numHargaSatuan,
-      hargaTotal,
-      referensi: form.referensi,
-      keterangan: form.keterangan,
-    };
-    setEntries(p => [newEntry, ...p]);
-    setForm(EMPTY_FORM);
-    setShowModal(false);
-    setToastMsg(`Transaksi budget untuk "${newEntry.namaItem}" berhasil disimpan.`);
+
+    if (currentProject?.id) {
+      setSubmitting(true);
+      router.post(`/projects/${currentProject.id}/budget`, {
+        tanggal: form.tanggal,
+        code_sub_wbs: form.codeSubWbs || null,
+        sub_task_wbs: form.subTaskWbs || form.namaItem,
+        kategori: form.kategori,
+        lokasi: form.lokasi || null,
+        nama_item: form.namaItem,
+        spesifikasi: form.spesifikasi || null,
+        qty: numQty,
+        satuan: form.satuan,
+        harga_satuan: numHargaSatuan,
+        referensi: form.referensi || null,
+        keterangan: form.keterangan || null,
+      }, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setToastMsg(`Transaksi budget untuk "${form.namaItem}" berhasil disimpan.`);
+          setForm(EMPTY_FORM);
+          setShowModal(false);
+          setSubmitting(false);
+        },
+        onError: (errors) => {
+          const errText = Object.values(errors).flat().join(', ');
+          setToastMsg(`Gagal menyimpan transaksi: ${errText || 'Periksa input Anda'}`);
+          setSubmitting(false);
+        },
+        onFinish: () => setSubmitting(false),
+      });
+    } else {
+      const newEntry: BudgetEntry = {
+        id: `b-${Date.now()}`,
+        tanggal: form.tanggal,
+        codeSubWbs: form.codeSubWbs || '—',
+        subTaskWbs: form.subTaskWbs || form.namaItem,
+        kategori: form.kategori,
+        lokasi: form.lokasi,
+        namaItem: form.namaItem,
+        spesifikasi: form.spesifikasi,
+        qty: numQty,
+        satuan: form.satuan,
+        hargaSatuan: numHargaSatuan,
+        hargaTotal,
+        referensi: form.referensi,
+        keterangan: form.keterangan,
+      };
+      setEntries(p => [newEntry, ...p]);
+      setForm(EMPTY_FORM);
+      setShowModal(false);
+      setToastMsg(`Transaksi budget untuk "${newEntry.namaItem}" berhasil disimpan.`);
+    }
   };
 
   const handleDelete = (id: string, name: string) => {
-    setEntries(p => p.filter(e => e.id !== id));
-    setToastMsg(`Transaksi "${name}" dihapus.`);
+    if (!confirm(`Hapus transaksi "${name}"?`)) return;
+
+    if (currentProject?.id && !id.startsWith('b-')) {
+      setDeletingId(id);
+      router.delete(`/projects/${currentProject.id}/budget/${id}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setToastMsg(`Transaksi "${name}" berhasil dihapus.`);
+          setDeletingId(null);
+        },
+        onError: () => {
+          setToastMsg(`Gagal menghapus transaksi dari server.`);
+          setDeletingId(null);
+        },
+        onFinish: () => setDeletingId(null),
+      });
+    } else {
+      setEntries(p => p.filter(e => e.id !== id));
+      setToastMsg(`Transaksi "${name}" dihapus.`);
+    }
   };
 
   // Breakdown by category
@@ -307,10 +360,17 @@ export default function BudgetPage() {
                   <td className="px-3.5 py-2.5 text-center">
                     <button
                       onClick={() => handleDelete(e.id, e.namaItem)}
-                      className="p-1.5 rounded-md hover:bg-danger-light text-neutral-400 hover:text-danger transition-colors"
+                      disabled={deletingId === e.id}
+                      className={`p-1.5 rounded-md hover:bg-danger-light text-neutral-400 hover:text-danger transition-colors ${
+                        deletingId === e.id ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                       title="Hapus baris transaksi"
                     >
-                      <Trash2 size={13} />
+                      {deletingId === e.id ? (
+                        <Loader2 size={13} className="animate-spin text-danger" />
+                      ) : (
+                        <Trash2 size={13} />
+                      )}
                     </button>
                   </td>
                 </tr>
@@ -506,10 +566,10 @@ export default function BudgetPage() {
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
-            <Button variant="outline" size="sm" type="button" onClick={() => setShowModal(false)}>
+            <Button variant="outline" size="sm" type="button" onClick={() => setShowModal(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button variant="primary" size="sm" type="submit">
+            <Button variant="primary" size="sm" type="submit" loading={submitting}>
               Save Transaction
             </Button>
           </div>
