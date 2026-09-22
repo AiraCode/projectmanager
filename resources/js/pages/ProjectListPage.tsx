@@ -40,7 +40,7 @@ export default function ProjectListPage() {
   const handleCreateProject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setErrorMsg('Nama project wajib diisi.');
+      setErrorMsg('Project name is required.');
       return;
     }
 
@@ -55,7 +55,7 @@ export default function ProjectListPage() {
       end: endDate,
     }, {
       onError: (errors) => {
-        setErrorMsg(Object.values(errors)[0] as string || 'Gagal membuat project.');
+        setErrorMsg(Object.values(errors)[0] as string || 'Failed to create project.');
         setSubmitting(false);
       },
       onFinish: () => {
@@ -67,8 +67,8 @@ export default function ProjectListPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-7 max-w-7xl mx-auto space-y-4 sm:space-y-5">
       <PageHeader
-        title="Semua Proyek"
-        subtitle="Pilih proyek untuk melihat detail dan progresnya."
+        title="All Projects"
+        subtitle="Select a project to view its details and progress."
         actions={
           <div className="flex items-center gap-2">
             {/* PIC without project gets the Create button */}
@@ -79,7 +79,7 @@ export default function ProjectListPage() {
                 icon={Plus}
                 onClick={() => setShowCreateModal(true)}
               >
-                Buat Project Baru
+                Create New Project
               </Button>
             )}
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-brand-light text-brand border border-brand-border shadow-2xs">
@@ -95,7 +95,7 @@ export default function ProjectListPage() {
         <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-3 text-[12.5px] text-amber-800">
           <ShieldAlert size={16} className="text-amber-600 flex-shrink-0" />
           <span>
-            <strong>Role Admin Progres:</strong> Pemantauan khusus grafik <strong>S-Curve</strong>. Mengklik proyek di bawah akan langsung membuka grafik S-Curve.
+            <strong>Progress Admin Role:</strong> Dedicated monitoring for <strong>S-Curve</strong> charts. Clicking a project below will directly open its S-Curve.
           </span>
         </div>
       )}
@@ -106,12 +106,12 @@ export default function ProjectListPage() {
             <FolderOpen size={26} />
           </div>
           <h3 className="text-[15px] font-bold text-neutral-800 mb-1">
-            {canCreate && isPIC ? "Anda Belum Memiliki Project" : "Belum Ada Project"}
+            {canCreate && isPIC ? "You Don't Have Any Projects Yet" : "No Projects Found"}
           </h3>
           <p className="text-[13px] text-neutral-500 max-w-md mb-4">
             {canCreate && isPIC
-              ? "Sebagai PIC yang baru terdaftar, Anda dapat membuat project perdana untuk perusahaan Anda. Template WBS 3-tingkat akan otomatis dimuat!"
-              : "Saat ini belum ada project yang terdaftar di dalam sistem."}
+              ? "As a newly registered PIC, you can create the first project for your company. A standard 3-tier WBS template will be automatically initialized!"
+              : "There are currently no projects registered in the system."}
           </p>
           {canCreate && isPIC && (
             <Button
@@ -120,7 +120,7 @@ export default function ProjectListPage() {
               icon={Plus}
               onClick={() => setShowCreateModal(true)}
             >
-              Buat Project Sekarang
+              Create Project Now
             </Button>
           )}
         </div>
@@ -156,7 +156,7 @@ export default function ProjectListPage() {
                       <div className="flex items-center gap-1.5 text-[12px] text-neutral-500 font-medium mb-3">
                         <Calendar size={13} className="text-brand flex-shrink-0" />
                         <span>
-                          {formatDateDisplay(project.start_date)} s/d {formatDateDisplay(project.end_date)}
+                          {formatDateDisplay(project.start_date)} to {formatDateDisplay(project.end_date)}
                         </span>
                       </div>
                     )}
@@ -176,10 +176,10 @@ export default function ProjectListPage() {
         </div>
       )}
 
-      {/* Modal Buat Project Baru (Khusus PIC) */}
+      {/* Modal Create Project (PIC Only) */}
       {showCreateModal && canCreate && isPIC && (
         <Modal
-          title="Buat Project Baru (PIC)"
+          title="Create New Project (PIC)"
           onClose={() => setShowCreateModal(false)}
           size="md"
         >
@@ -192,13 +192,13 @@ export default function ProjectListPage() {
 
             <div>
               <label className="block text-[12.5px] font-bold text-neutral-700 mb-1">
-                Nama / Judul Project <span className="text-danger">*</span>
+                Project Name / Title <span className="text-danger">*</span>
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="Contoh: EXPANSION PLANT PHASE 2"
+                placeholder="e.g. EXPANSION PLANT PHASE 2"
                 className="w-full px-3.5 py-2.5 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
                 required
               />
@@ -207,7 +207,7 @@ export default function ProjectListPage() {
             {/* Company selection */}
             <div>
               <label className="block text-[12.5px] font-bold text-neutral-700 mb-1">
-                Perusahaan (Company) <span className="text-danger">*</span>
+                Company <span className="text-danger">*</span>
               </label>
               {companies.length > 0 ? (
                 <div className="space-y-2">
@@ -219,13 +219,13 @@ export default function ProjectListPage() {
                     }}
                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
                   >
-                    <option value="">-- Pilih Perusahaan Terdaftar --</option>
+                    <option value="">-- Select Registered Company --</option>
                     {companies.map((c: CompanyItem) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
 
-                  <div className="text-[11px] text-neutral-400 text-center font-medium">atau daftarkan perusahaan baru:</div>
+                  <div className="text-[11px] text-neutral-400 text-center font-medium">or register a new company:</div>
                   <input
                     type="text"
                     value={newCompanyName}
@@ -233,7 +233,7 @@ export default function ProjectListPage() {
                       setNewCompanyName(e.target.value);
                       if (e.target.value) setCompanyId('');
                     }}
-                    placeholder="Nama perusahaan baru jika belum ada di list"
+                    placeholder="New company name if not listed"
                     className="w-full px-3.5 py-2.5 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
                   />
                 </div>
@@ -242,7 +242,7 @@ export default function ProjectListPage() {
                   type="text"
                   value={newCompanyName}
                   onChange={e => setNewCompanyName(e.target.value)}
-                  placeholder="Masukkan nama perusahaan Anda"
+                  placeholder="Enter your company name"
                   className="w-full px-3.5 py-2.5 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
                   required
                 />
@@ -252,7 +252,7 @@ export default function ProjectListPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                  Tanggal Mulai <span className="text-danger">*</span>
+                  Start Date <span className="text-danger">*</span>
                 </label>
                 <input
                   type="date"
@@ -264,7 +264,7 @@ export default function ProjectListPage() {
               </div>
               <div>
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                  Target Selesai <span className="text-danger">*</span>
+                  Target Finish Date <span className="text-danger">*</span>
                 </label>
                 <input
                   type="date"
@@ -279,7 +279,7 @@ export default function ProjectListPage() {
             <div className="p-3 bg-brand/5 border border-brand/20 rounded-lg flex items-start gap-2 text-[11.5px] text-neutral-600">
               <Sparkles size={14} className="text-brand flex-shrink-0 mt-0.5" />
               <span>
-                Saat dibuat, sistem akan otomatis menginisialisasi 3 Main Jobs WBS (Business Development, Factory Layout & Process Design, dan Sipil Works) beserta sub-tugasnya.
+                Upon creation, the system will automatically initialize the 17-job industrial WBS template along with all sub-tasks and division assignments.
               </span>
             </div>
 
@@ -291,7 +291,7 @@ export default function ProjectListPage() {
                 onClick={() => setShowCreateModal(false)}
                 disabled={submitting}
               >
-                Batal
+                Cancel
               </Button>
               <Button
                 type="submit"
@@ -299,7 +299,7 @@ export default function ProjectListPage() {
                 size="sm"
                 loading={submitting}
               >
-                Simpan & Buka Project
+                Save & Open Project
               </Button>
             </div>
           </form>

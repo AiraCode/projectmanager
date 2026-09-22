@@ -127,14 +127,14 @@ export default function BudgetPage() {
       }, {
         preserveScroll: true,
         onSuccess: () => {
-          setToastMsg(`Transaksi budget untuk "${form.namaItem}" berhasil disimpan.`);
+          setToastMsg(`Budget transaction for "${form.namaItem}" successfully saved.`);
           setForm(EMPTY_FORM);
           setShowModal(false);
           setSubmitting(false);
         },
         onError: (errors) => {
           const errText = Object.values(errors).flat().join(', ');
-          setToastMsg(`Gagal menyimpan transaksi: ${errText || 'Periksa input Anda'}`);
+          setToastMsg(`Failed to save transaction: ${errText || 'Please check your input'}`);
           setSubmitting(false);
         },
         onFinish: () => setSubmitting(false),
@@ -159,30 +159,30 @@ export default function BudgetPage() {
       setEntries(p => [newEntry, ...p]);
       setForm(EMPTY_FORM);
       setShowModal(false);
-      setToastMsg(`Transaksi budget untuk "${newEntry.namaItem}" berhasil disimpan.`);
+      setToastMsg(`Budget transaction for "${newEntry.namaItem}" successfully saved.`);
     }
   };
 
   const handleDelete = (id: string, name: string) => {
-    if (!confirm(`Hapus transaksi "${name}"?`)) return;
+    if (!confirm(`Delete transaction "${name}"?`)) return;
 
     if (currentProject?.id && !id.startsWith('b-')) {
       setDeletingId(id);
       router.delete(`/projects/${currentProject.id}/budget/${id}`, {
         preserveScroll: true,
         onSuccess: () => {
-          setToastMsg(`Transaksi "${name}" berhasil dihapus.`);
+          setToastMsg(`Transaction "${name}" successfully deleted.`);
           setDeletingId(null);
         },
         onError: () => {
-          setToastMsg(`Gagal menghapus transaksi dari server.`);
+          setToastMsg(`Failed to delete transaction from server.`);
           setDeletingId(null);
         },
         onFinish: () => setDeletingId(null),
       });
     } else {
       setEntries(p => p.filter(e => e.id !== id));
-      setToastMsg(`Transaksi "${name}" dihapus.`);
+      setToastMsg(`Transaction "${name}" deleted.`);
     }
   };
 
@@ -216,7 +216,7 @@ export default function BudgetPage() {
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
       <PageHeader
         title="Budget Realization"
-        subtitle="Realisasi Anggaran Proyek — Expenditure tracking tied to WBS structure"
+        subtitle="Project Budget Realization — Expenditure tracking tied to WBS structure"
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -244,7 +244,7 @@ export default function BudgetPage() {
         <Card className="p-4">
           <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">
             <DollarSign size={14} className="text-brand" />
-            <span>Total Anggaran</span>
+            <span>Total Budget</span>
           </div>
           <div className="text-[20px] sm:text-[22px] font-bold text-neutral-900">{formatRupiah(totalBudget)}</div>
           <div className="text-[11px] text-neutral-500 mt-1 font-mono truncate">{formatRupiahFull(totalBudget)}</div>
@@ -253,22 +253,22 @@ export default function BudgetPage() {
         <Card className="p-4">
           <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">
             <TrendingDown size={14} className="text-danger" />
-            <span>Realisasi Terpakai</span>
+            <span>Realized Spending</span>
           </div>
           <div className="text-[20px] sm:text-[22px] font-bold text-neutral-900">{formatRupiah(totalUsed)}</div>
-          <div className="text-[11px] text-neutral-500 mt-1">{usedPct}% dari pagu anggaran</div>
+          <div className="text-[11px] text-neutral-500 mt-1">{usedPct}% of allocated budget</div>
         </Card>
 
         <Card className="p-4">
           <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">
             <ShieldCheck size={14} className="text-success" />
-            <span>Sisa Anggaran</span>
+            <span>Remaining Budget</span>
           </div>
           <div className={`text-[20px] sm:text-[22px] font-bold ${remaining >= 0 ? 'text-success' : 'text-danger'}`}>
             {formatRupiah(Math.abs(remaining))}
           </div>
           <div className="text-[11px] text-neutral-500 mt-1 font-medium">
-            {remaining >= 0 ? 'Available balance' : 'Peringatan: Over budget!'}
+            {remaining >= 0 ? 'Available balance' : 'Warning: Over budget!'}
           </div>
         </Card>
 
@@ -277,7 +277,7 @@ export default function BudgetPage() {
             Budget Health
           </div>
           <div className="flex items-baseline justify-between">
-            <span className="text-[20px] sm:text-[22px] font-bold text-neutral-900">{100 - usedPct}% Sisa</span>
+            <span className="text-[20px] sm:text-[22px] font-bold text-neutral-900">{100 - usedPct}% Left</span>
             <span className={`text-[11px] font-bold uppercase ${
               budgetColor === 'brand' ? 'text-brand' : budgetColor === 'warning' ? 'text-warning' : 'text-danger'
             }`}>
@@ -295,7 +295,7 @@ export default function BudgetPage() {
         <Card className="p-5">
           <div className="text-[13px] font-bold text-neutral-800 tracking-tight mb-3.5 flex items-center gap-2">
             <Tag size={15} className="text-brand" />
-            <span>Expenditure by Category (Kategori Biaya)</span>
+            <span>Expenditure by Category</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {byKategori.map(k => {
@@ -337,16 +337,16 @@ export default function BudgetPage() {
           <table className="w-full min-w-[1050px]">
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-50 text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
-                <th className="px-3.5 py-3 text-left">Tanggal</th>
-                <th className="px-3.5 py-3 text-left">Code WBS</th>
-                <th className="px-3.5 py-3 text-left">Sub Task WBS</th>
-                <th className="px-3.5 py-3 text-left">Kategori</th>
-                <th className="px-3.5 py-3 text-left">Nama Item & Spesifikasi</th>
-                <th className="px-3.5 py-3 text-right">QTY</th>
-                <th className="px-3.5 py-3 text-left">Sat.</th>
-                <th className="px-3.5 py-3 text-right">Harga Satuan</th>
-                <th className="px-3.5 py-3 text-right">Harga Total</th>
-                <th className="px-3.5 py-3 text-left">Referensi</th>
+                <th className="px-3.5 py-3 text-left">Date</th>
+                <th className="px-3.5 py-3 text-left">WBS Code</th>
+                <th className="px-3.5 py-3 text-left">WBS Subtask</th>
+                <th className="px-3.5 py-3 text-left">Category</th>
+                <th className="px-3.5 py-3 text-left">Item Name & Specification</th>
+                <th className="px-3.5 py-3 text-right">Qty</th>
+                <th className="px-3.5 py-3 text-left">Unit</th>
+                <th className="px-3.5 py-3 text-right">Unit Price</th>
+                <th className="px-3.5 py-3 text-right">Total Price</th>
+                <th className="px-3.5 py-3 text-left">Reference</th>
                 <th className="px-3.5 py-3 text-center">Action</th>
               </tr>
             </thead>
@@ -389,7 +389,7 @@ export default function BudgetPage() {
                       className={`p-1.5 rounded-md hover:bg-danger-light text-neutral-400 hover:text-danger transition-colors ${
                         deletingId === e.id ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
-                      title="Hapus baris transaksi"
+                      title="Delete transaction row"
                     >
                       {deletingId === e.id ? (
                         <Loader2 size={13} className="animate-spin text-danger" />
@@ -404,7 +404,7 @@ export default function BudgetPage() {
             {entries.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-neutral-200 bg-neutral-50 font-bold text-neutral-800 text-[13px]">
-                  <td colSpan={8} className="px-3.5 py-3 text-right">Total Realisasi Anggaran:</td>
+                  <td colSpan={8} className="px-3.5 py-3 text-right">Total Realized Budget:</td>
                   <td className="px-3.5 py-3 text-right text-brand font-mono whitespace-nowrap">
                     {formatRupiahFull(totalUsed)}
                   </td>
@@ -419,14 +419,14 @@ export default function BudgetPage() {
           entries.length === 0 ? (
             <EmptyState
               icon={DollarSign}
-              title="Belum Ada Transaksi Anggaran"
-              description="Project ini belum memiliki catatan realisasi anggaran pengeluaran."
+              title="No Budget Transactions Yet"
+              description="This project does not have any expenditure transactions recorded yet."
             />
           ) : (
             <EmptyState
               icon={Search}
-              title="Tidak Ada Transaksi yang Cocok"
-              description={`Tidak ada data anggaran yang cocok dengan kata kunci "${search}". Coba periksa kata kunci pencarian Anda.`}
+              title="No Matching Transactions"
+              description={`No budget records match the keyword "${search}". Please check your search terms.`}
               action={
                 <Button variant="outline" size="sm" onClick={() => setSearch('')}>
                   Clear Search
@@ -441,15 +441,15 @@ export default function BudgetPage() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="New Budget Transaction (Realisasi Budget)"
+        title="New Budget Transaction"
         subtitle="Record new project expenditure linked to WBS element"
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleSubmit} className="space-y-2.5">
-          {/* Row 1: Tanggal & Tugas WBS */}
+          {/* Row 1: Date & WBS Task */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
-              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Tanggal</label>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Date</label>
               <input
                 type="date"
                 required
@@ -459,13 +459,13 @@ export default function BudgetPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Tugas WBS Terkait</label>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Associated WBS Task</label>
               <select
                 required
                 value={form.codeSubWbs}
                 onChange={e => {
                   const selected = allTasks.find(t => t.code === e.target.value);
-                  setForm(p => ({
+                  setForm(p => ({ 
                     ...p, 
                     codeSubWbs: selected?.code || '',
                     subTaskWbs: selected?.name || ''
@@ -473,7 +473,7 @@ export default function BudgetPage() {
                 }}
                 className="w-full max-w-full truncate px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               >
-                <option value="" disabled>Pilih Tugas dari WBS...</option>
+                <option value="" disabled>Select Task from WBS...</option>
                 {currentProject.mainJobs.map((mj: any) => {
                   const items: { code: string; name: string }[] = [];
                   (mj.subMainJobs || []).forEach((smj: any) => {
@@ -511,18 +511,18 @@ export default function BudgetPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div className="sm:col-span-2">
               <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">
-                Nama Item <span className="text-danger">*</span>
+                Item Name <span className="text-danger">*</span>
               </label>
               <input
                 required
-                placeholder="e.g. Semen Gresik 50kg"
+                placeholder="e.g. Portland Composite Cement 50kg"
                 value={form.namaItem}
                 onChange={e => setForm(p => ({ ...p, namaItem: e.target.value }))}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Kategori Biaya</label>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Cost Category</label>
               <select
                 value={form.kategori}
                 onChange={e => setForm(p => ({ ...p, kategori: e.target.value }))}
@@ -536,7 +536,7 @@ export default function BudgetPage() {
           {/* Row 3: Spesifikasi & Lokasi */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Spesifikasi</label>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Specification</label>
               <input
                 placeholder="e.g. Portland Composite Cement"
                 value={form.spesifikasi}
@@ -545,9 +545,9 @@ export default function BudgetPage() {
               />
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Lokasi Penyimpanan</label>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Storage / Location</label>
               <input
-                placeholder="e.g. Gudang Proyek B"
+                placeholder="e.g. Project Warehouse B"
                 value={form.lokasi}
                 onChange={e => setForm(p => ({ ...p, lokasi: e.target.value }))}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
@@ -559,7 +559,7 @@ export default function BudgetPage() {
           <div className="grid grid-cols-3 gap-2.5">
             <div>
               <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">
-                QTY <span className="text-danger">*</span>
+                Qty <span className="text-danger">*</span>
               </label>
               <input
                 type="number"
@@ -572,7 +572,7 @@ export default function BudgetPage() {
               />
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Satuan</label>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Unit</label>
               <select
                 value={form.satuan}
                 onChange={e => setForm(p => ({ ...p, satuan: e.target.value }))}
@@ -583,7 +583,7 @@ export default function BudgetPage() {
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">
-                Harga Satuan (Rp) <span className="text-danger">*</span>
+                Unit Price (Rp) <span className="text-danger">*</span>
               </label>
               <input
                 type="number"
@@ -602,7 +602,7 @@ export default function BudgetPage() {
           <div className="p-2.5 rounded-lg bg-brand-light/60 border border-brand-border flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-[12px] text-neutral-700 font-medium">
               <Calculator size={15} className="text-brand" />
-              <span>Harga Total (QTY × Harga Satuan):</span>
+              <span>Total Price (Qty × Unit Price):</span>
             </div>
             <span className="text-[14px] font-bold text-brand font-mono">
               {formatRupiahFull(hargaTotal)}
@@ -611,21 +611,21 @@ export default function BudgetPage() {
 
           {/* Row 5: Referensi Dokumen */}
           <div>
-            <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Referensi Dokumen</label>
+            <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Document Reference</label>
             <input
-              placeholder="e.g. PO-2024-08-0112 / No. Kwitansi"
+              placeholder="e.g. PO-2024-08-0112 / Receipt No."
               value={form.referensi}
               onChange={e => setForm(p => ({ ...p, referensi: e.target.value }))}
               className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
             />
           </div>
 
-          {/* Row 6: Keterangan (Multi-line textarea) */}
+          {/* Row 6: Notes (Multi-line textarea) */}
           <div>
-            <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Keterangan</label>
+            <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Notes</label>
             <textarea
               rows={4}
-              placeholder="Catatan tambahan atau keterangan detail transaksi (tekan Enter untuk baris baru)..."
+              placeholder="Additional notes or transaction details (press Enter for a new line)..."
               value={form.keterangan}
               onChange={e => setForm(p => ({ ...p, keterangan: e.target.value }))}
               className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white resize-none"

@@ -20,7 +20,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     if (!email || !password) {
-      setError('Email dan password wajib diisi.');
+      setError('Email and password are required.');
       return;
     }
     setLoading(true);
@@ -28,7 +28,7 @@ export default function LoginPage() {
     router.post('/login', { email, password }, {
       onError: (err) => {
         setLoading(false);
-        setError(err.email || 'Email atau password tidak sesuai.');
+        setError(err.email || 'Invalid email or password.');
       },
       onFinish: () => setLoading(false)
     });
@@ -75,7 +75,7 @@ export default function LoginPage() {
           </h1>
 
           <p className="text-slate-300/85 text-[15px] lg:text-[15.5px] leading-relaxed max-w-lg font-normal">
-            Platform terpadu untuk monitoring proyek industri, evaluasi deviasi kurva S mingguan, pengawasan struktur pekerjaan (WBS), dan pengendalian realisasi anggaran secara real-time.
+            Unified platform for industrial project monitoring, weekly S-curve deviation analysis, Work Breakdown Structure (WBS) oversight, and real-time budget tracking.
           </p>
         </div>
       </div>
@@ -120,7 +120,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={e => { setEmail(e.target.value); setError(''); }}
-                placeholder="nama@jeker.id"
+                placeholder="name@jeker.id"
                 autoComplete="email"
                 className={`w-full px-3.5 py-2.5 rounded-xl border text-[14px] outline-none transition-all duration-200
                   ${error ? 'border-danger focus:ring-4 focus:ring-danger/15' : 'border-slate-200 focus:border-brand focus:ring-4 focus:ring-brand/10'}
@@ -152,7 +152,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => setShowPw(v => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 transition-colors"
-                  title={showPw ? 'Sembunyikan password' : 'Lihat password'}
+                  title={showPw ? 'Hide password' : 'Show password'}
                 >
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>

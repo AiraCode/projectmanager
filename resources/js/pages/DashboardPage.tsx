@@ -77,18 +77,18 @@ export default function DashboardPage() {
         />
         <KpiCard
           label="Timeline Progress"
-          value={`Hari ke-${p.hariKe}`}
+          value={`Day ${p.hariKe}`}
           sub={`${p.sisaHari} days remaining`}
           icon={Clock}
         />
         <KpiCard
-          label="Realisasi Budget"
+          label="Budget Realization"
           value={formatRupiah(usedBudget)}
           sub={`${budgetUsedPct}% of ${formatRupiah(p.totalBudget)}`}
           icon={DollarSign}
         />
         <KpiCard
-          label="Sisa Budget"
+          label="Remaining Budget"
           value={formatRupiah(remaining)}
           sub={budgetHealth === 'good' ? 'Budget on track' : budgetHealth === 'warning' ? 'Approaching ceiling' : 'Budget critical'}
           icon={DollarSign}
@@ -261,7 +261,7 @@ export default function DashboardPage() {
 
             <div className="space-y-2.5">
               <div className="flex justify-between items-baseline text-[12px]">
-                <span className="text-neutral-500 font-medium">Realisasi</span>
+                <span className="text-neutral-500 font-medium">Realized</span>
                 <span className="font-bold text-neutral-900">{formatRupiah(usedBudget)}</span>
               </div>
               <ProgressBar

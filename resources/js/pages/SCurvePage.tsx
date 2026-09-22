@@ -80,7 +80,7 @@ export default function SCurvePage() {
     const years = Array.from(new Set(weeks.map(w => new Date(w.startDate).getFullYear().toString()))).sort();
     return years.map(y => ({
       value: y,
-      label: `Tahun ${y}`
+      label: `Year ${y}`
     }));
   }, [weeks]);
 
@@ -300,7 +300,7 @@ export default function SCurvePage() {
 
         points.push({
           name: String(yr),
-          subLabel: `${yrWeeks.length} Minggu`,
+          subLabel: `${yrWeeks.length} Weeks`,
           'Plan. Cumulative': lastWeekInYr.plannedCumulative,
           'Act. Cumulative': hasActual ? lastWeekInYr.actualCumulative : null,
           'Planned (Weekly)': Number(sumPlanned.toFixed(2)),
@@ -357,7 +357,7 @@ export default function SCurvePage() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Periode', 'Planned (%)', 'Actual (%)', 'Plan. Cumulative (%)', 'Act. Cumulative (%)', 'Deviasi (%)'];
+    const headers = ['Period', 'Planned (%)', 'Actual (%)', 'Plan. Cumulative (%)', 'Act. Cumulative (%)', 'Deviation (%)'];
     const rows = chartData.map(d => [
       d.name,
       d['Planned (Weekly)'] ?? '-',
@@ -411,22 +411,22 @@ export default function SCurvePage() {
           {
             label: 'Target S-Curve',
             value: `${(weeks.length > 0 ? (weeks.at(-1)?.plannedCumulative ?? 100) : 0).toFixed(1)}%`,
-            sub: weeks.length > 0 ? `Target at completion (W${weeks.length})` : 'Belum ada jadwal',
+            sub: weeks.length > 0 ? `Target at completion (W${weeks.length})` : 'No schedule available',
           },
           {
-            label: 'Realisasi Kumulatif',
+            label: 'Cumulative Actual',
             value: `${realisasiValue.toFixed(1)}%`,
-            sub: currentLabel ? `Reported as of ${currentLabel}` : 'Belum ada periode berjalan',
+            sub: currentLabel ? `Reported as of ${currentLabel}` : 'No active period',
           },
           {
-            label: 'Deviasi Progres',
+            label: 'Progress Deviation',
             value: `${deviation >= 0 ? '+' : ''}${deviation.toFixed(1)}%`,
             sub: deviation >= 0 ? 'Ahead of scheduled pace' : 'Behind scheduled pace',
             accent: deviation < 0 ? 'danger' : 'success',
           },
           {
             label: 'Reported Periods',
-            value: `${weeks.length > 0 && currentWeekIdx >= 0 ? Math.min(weeks.length, currentWeekIdx + 1) : 0} Minggu`,
+            value: `${weeks.length > 0 && currentWeekIdx >= 0 ? Math.min(weeks.length, currentWeekIdx + 1) : 0} Weeks`,
             sub: `of ${weeks.length} project weeks`,
           },
         ].map(({ label, value, sub, accent }) => (
@@ -560,7 +560,7 @@ export default function SCurvePage() {
         {isInvalidRange && (
           <div className="mt-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[12px] flex items-center gap-2">
             <AlertTriangle size={15} className="text-amber-600 flex-shrink-0" />
-            <span>Pilihan rentang tidak valid: Nilai 'From' tidak boleh melebihi 'To'. Grafik menampilkan seluruh periode proyek.</span>
+            <span>Invalid range selection: 'From' value cannot exceed 'To' value. Chart displaying the full project timeline.</span>
           </div>
         )}
       </Card>
@@ -572,7 +572,7 @@ export default function SCurvePage() {
             <TrendingUp size={16} className="text-brand" />
             <span className="text-[14px] font-bold text-neutral-800 tracking-tight">
               {viewMode === 'cumulative' ? 'Cumulative Progress S-Curve (Planning vs. Actual)' : 'Periodic Progress Distribution (Planning vs. Actual)'}
-              {isFiltered && <span className="ml-2 text-[12px] font-normal text-brand bg-brand/10 px-2 py-0.5 rounded-full">Fokus Terfilter</span>}
+              {isFiltered && <span className="ml-2 text-[12px] font-normal text-brand bg-brand/10 px-2 py-0.5 rounded-full">Filtered View</span>}
             </span>
           </div>
 
@@ -591,9 +591,9 @@ export default function SCurvePage() {
         {chartData.length === 0 ? (
           <div className="w-full h-72 flex flex-col items-center justify-center text-center p-6 bg-neutral-50/50 rounded-xl border border-dashed border-neutral-200">
             <TrendingUp size={36} className="text-neutral-300 mb-2" />
-            <div className="text-[14px] font-bold text-neutral-700">Belum Ada Data S-Curve</div>
+            <div className="text-[14px] font-bold text-neutral-700">No S-Curve Data Available</div>
             <div className="text-[12px] text-neutral-500 max-w-sm mt-1">
-              Project ini belum memiliki jadwal pekerjaan mingguan yang ditentukan. Buat atau perbarui jadwal pelaksanaan pekerjaan untuk melihat grafik S-Curve.
+              This project does not have a scheduled timeline yet. Create or update the task schedule to generate the S-Curve.
             </div>
           </div>
         ) : (
@@ -709,7 +709,7 @@ export default function SCurvePage() {
                   {chartData.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-neutral-400">
-                        Belum ada data pada rentang filter ini.
+                        No data available for this filter range.
                       </td>
                     </tr>
                   ) : (

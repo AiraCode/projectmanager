@@ -188,7 +188,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
               <div
                 onClick={toggleCollapse}
                 className="flex items-center justify-center w-9 h-9 rounded-xl bg-brand cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all"
-                title="Klik untuk membuka sidebar"
+                title="Click to expand sidebar"
               >
                 <span className="text-white font-black text-base tracking-tight">J</span>
               </div>
@@ -210,7 +210,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                   <button
                     onClick={toggleCollapse}
                     className="hidden lg:flex items-center justify-center p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
-                    title="Tutup Sidebar (Collapse)"
+                    title="Collapse sidebar"
                   >
                     <ChevronLeft size={16} />
                   </button>
@@ -416,13 +416,13 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
       <Modal
         isOpen={showExitConfirm}
         onClose={() => setShowExitConfirm(false)}
-        title="Keluar dari Project?"
-        subtitle="Konfirmasi kembali ke halaman pemilihan seluruh project"
+        title="Exit Project?"
+        subtitle="Confirm return to all projects list"
         size="sm"
       >
         <div className="space-y-4">
           <p className="text-[13px] text-neutral-600 leading-relaxed">
-            Anda sedang aktif membuka halaman project. Apakah Anda yakin ingin keluar dan kembali ke halaman <strong>Daftar Seluruh Project</strong>?
+            You are currently viewing an active project. Are you sure you want to return to the <strong>All Projects</strong> list?
           </p>
           <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">
             <Button
@@ -430,7 +430,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
               size="sm"
               onClick={() => setShowExitConfirm(false)}
             >
-              Batal
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -440,7 +440,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                 router.visit('/projectlistpage');
               }}
             >
-              Ya, Ke Daftar Project
+              Yes, Back to All Projects
             </Button>
           </div>
         </div>

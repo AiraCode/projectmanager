@@ -191,7 +191,7 @@ export default function ProjectDetailPage() {
         </div>
         <ProgressBar value={p.overallProgress} size="md" />
         <div className="flex justify-between text-[11.5px] text-neutral-400 mt-2 font-medium">
-          <span>Hari ke-{p.hariKe}</span>
+          <span>Day {p.hariKe}</span>
           <span>{p.sisaHari} days remaining</span>
         </div>
       </Card>
@@ -209,10 +209,10 @@ export default function ProjectDetailPage() {
                 href={`/tasks?project_id=${p.id}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[12px] font-semibold bg-brand text-white hover:bg-brand-dark transition-colors shadow-xs"
               >
-                <Plus size={13} /> Kelola & Tambah Task
+                <Plus size={13} /> Manage & Add Tasks
               </a>
             )}
-            <span className="text-[12px] text-neutral-400 hidden sm:inline">Klik Main Job untuk melihat Sub Main Job</span>
+            <span className="text-[12px] text-neutral-400 hidden sm:inline">Click Main Job to expand Sub-jobs</span>
           </div>
         </div>
 
@@ -472,7 +472,7 @@ function MainJobCard({ mj, expanded, onToggle }: { mj: MainJob; expanded: boolea
           <div className="flex items-center gap-2 mt-1">
             <span className="text-[12px] font-medium text-neutral-500">{mj.subMainJobs.length} Sub Main Jobs</span>
             <span className="text-[12px] text-neutral-300">·</span>
-            <span className="text-[12px] font-bold text-neutral-700">Bobot: {mj.weight}%</span>
+            <span className="text-[12px] font-bold text-neutral-700">Weight: {mj.weight}%</span>
           </div>
         </div>
         <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
@@ -504,7 +504,7 @@ function MainJobCard({ mj, expanded, onToggle }: { mj: MainJob; expanded: boolea
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-neutral-100 text-neutral-700 border border-neutral-200">
                     PIC: {smj.pic}
                   </span>
-                  <span className="text-[11.5px] text-neutral-600 font-bold">Bobot: {smj.weight}%</span>
+                  <span className="text-[11.5px] text-neutral-600 font-bold">Weight: {smj.weight}%</span>
                 </div>
               </div>
               <div className="flex items-center gap-2.5 flex-shrink-0">

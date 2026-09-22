@@ -177,7 +177,7 @@ export default function TimelinePage() {
       {/* 1. Page Header with dynamic project title */}
       <PageHeader
         title="Timeline / Gantt Schedule"
-        subtitle={`Visualisasi jadwal proyek (${projectData.name || 'Project'}) berdasarkan fase dan struktur WBS.`}
+        subtitle={`Project schedule visualization (${projectData.name || 'Project'}) based on phases and WBS structure.`}
         actions={
           <div className="flex flex-col items-end gap-1.5">
             {/* View Mode Switcher */}
@@ -457,12 +457,12 @@ export default function TimelinePage() {
                                       x: e.clientX,
                                       y: e.clientY,
                                       title: `${item.code} ${item.name}`,
-                                      subtitle: `Fase: ${mj.name}`,
+                                      subtitle: `Phase: ${mj.name}`,
                                       details: [
-                                        `Jadwal: ${formatDateDisplay(itemStart)} s/d ${formatDateDisplay(itemEnd)}`,
-                                        `Durasi: ${item.duration || Math.max(1, dayOffset(itemEnd) - dayOffset(itemStart))} hari`,
-                                        `PIC / Divisi: ${item.pic || 'Internal'}`,
-                                        `Progres: ${item.progress || 0}% (${item.status || 'Open'})`,
+                                        `Schedule: ${formatDateDisplay(itemStart)} to ${formatDateDisplay(itemEnd)}`,
+                                        `Duration: ${item.duration || Math.max(1, dayOffset(itemEnd) - dayOffset(itemStart))} days`,
+                                        `PIC / Division: ${item.pic || 'Internal'}`,
+                                        `Progress: ${item.progress || 0}% (${item.status || 'Open'})`,
                                       ],
                                     })
                                   }
@@ -492,7 +492,7 @@ export default function TimelinePage() {
 
                 {mainJobsList.length === 0 && (
                   <div className="p-12 text-center text-neutral-500 text-sm">
-                    Belum ada data WBS untuk timeline project ini.
+                    No WBS data available for this project timeline.
                   </div>
                 )}
               </div>
@@ -596,7 +596,7 @@ export default function TimelinePage() {
                 ))
               ) : (
                 <div className="p-12 text-center text-neutral-500 text-sm">
-                  Belum ada data WBS untuk timeline project ini.
+                  No WBS data available for this project timeline.
                 </div>
               )}
             </div>
@@ -729,11 +729,11 @@ function GanttTreeMJ({
                 x: e.clientX,
                 y: e.clientY,
                 text: `${mj.code}. ${mj.name}`,
-                sub: `Fase Proyek Utama`,
+                sub: `Main Project Phase`,
                 details: [
-                  `Jadwal: ${formatDateDisplay(mj.startDate)} s/d ${formatDateDisplay(mj.finishDate)}`,
-                  `Durasi: ${mj.duration || Math.max(1, dayOffset(mj.finishDate) - dayOffset(mj.startDate))} hari`,
-                  `Total Progres: ${mj.progress}% selesai`,
+                  `Schedule: ${formatDateDisplay(mj.startDate)} to ${formatDateDisplay(mj.finishDate)}`,
+                  `Duration: ${mj.duration || Math.max(1, dayOffset(mj.finishDate) - dayOffset(mj.startDate))} days`,
+                  `Total Progress: ${mj.progress}% completed`,
                 ],
               })
             }
@@ -830,9 +830,9 @@ function GanttTreeMJ({
                         text: `${smj.code} ${smj.name}`,
                         sub: `Sub Main Job`,
                         details: [
-                          `Jadwal: ${formatDateDisplay(smj.startDate)} s/d ${formatDateDisplay(smj.finishDate)}`,
-                          `PIC / Divisi: ${smj.pic || 'Internal'}`,
-                          `Progres: ${smj.progress}%`,
+                          `Schedule: ${formatDateDisplay(smj.startDate)} to ${formatDateDisplay(smj.finishDate)}`,
+                          `PIC / Division: ${smj.pic || 'Internal'}`,
+                          `Progress: ${smj.progress}%`,
                         ],
                       })
                     }
@@ -908,7 +908,7 @@ function GanttTreeMJ({
                               text: `${st.code} ${st.name}`,
                               sub: `Task Activity`,
                               details: [
-                                `Tanggal: ${formatDateDisplay(st.startDate)} s/d ${formatDateDisplay(st.finishDate)} (${st.duration || 0} hari)`,
+                                `Dates: ${formatDateDisplay(st.startDate)} to ${formatDateDisplay(st.finishDate)} (${st.duration || 0} days)`,
                                 `Predecessor: ${st.predecessor || 'None'}`,
                                 `Status: ${st.status || 'Open'}`,
                               ],

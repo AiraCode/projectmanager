@@ -52,21 +52,21 @@ export default function DivisionProgressPage() {
       <PageHeader
         title={
           isWorkerDivision && activeDivisionName
-            ? `Progres Divisi: ${activeDivisionName} ${project?.name ? `· ${project.name}` : ''}`
-            : `Progress per Divisi ${project?.name ? `· ${project.name}` : ''}`
+            ? `Division Progress: ${activeDivisionName} ${project?.name ? `· ${project.name}` : ''}`
+            : `Division Progress ${project?.name ? `· ${project.name}` : ''}`
         }
         subtitle={
           isWorkerDivision && activeDivisionName
-            ? `Monitoring realisasi dan beban kerja khusus Divisi ${activeDivisionName} pada project ini`
-            : "Monitoring realisasi dan beban kerja per divisi berdasarkan struktur tugas WBS"
+            ? `Task completion and workload monitoring specifically for the ${activeDivisionName} division on this project`
+            : "Workload and completion monitoring per division based on WBS structure"
         }
         actions={
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-brand-light text-brand border border-brand-border shadow-2xs">
               <Users size={14} />
               {isWorkerDivision && activeDivisionName
-                ? `Divisi ${activeDivisionName}`
-                : `${divisionGroups.length} Divisi Terlibat`}
+                ? `${activeDivisionName} Division`
+                : `${divisionGroups.length} Involved Divisions`}
             </span>
           </div>
         }
@@ -76,30 +76,30 @@ export default function DivisionProgressPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
           {
-            label: 'Total Divisi',
-            value: `${divisionGroups.length} Divisi`,
-            sub: 'Divisi terdaftar dalam project',
+            label: 'Total Divisions',
+            value: `${divisionGroups.length} Divisions`,
+            sub: 'Divisions registered in project',
             icon: Users,
             color: 'text-brand bg-brand-light',
           },
           {
-            label: 'Total Pekerjaan',
+            label: 'Total Tasks',
             value: `${totalTasks} Tasks`,
-            sub: 'Seluruh rincian tugas WBS',
+            sub: 'All WBS task breakdown items',
             icon: ListChecks,
             color: 'text-indigo-600 bg-indigo-50',
           },
           {
-            label: 'Tugas Selesai',
-            value: `${totalCompleted} Selesai`,
-            sub: `${totalTasks - totalCompleted} tugas tersisa`,
+            label: 'Completed Tasks',
+            value: `${totalCompleted} Completed`,
+            sub: `${totalTasks - totalCompleted} tasks remaining`,
             icon: CheckCircle2,
             color: 'text-emerald-600 bg-emerald-50',
           },
           {
-            label: 'Rata-rata Progres',
+            label: 'Average Progress',
             value: `${overallPercentage}%`,
-            sub: 'Tingkat penyelesaian keseluruhan',
+            sub: 'Overall completion rate',
             icon: Clock,
             color: 'text-amber-600 bg-amber-50',
           },
@@ -162,7 +162,7 @@ export default function DivisionProgressPage() {
                 <div className="flex items-center gap-4 sm:gap-6 flex-shrink-0 pl-11 md:pl-0">
                   <div className="w-40 sm:w-56">
                     <div className="flex justify-between text-[11.5px] font-bold text-neutral-700 mb-1">
-                      <span>Progres Tugas</span>
+                      <span>Task Progress</span>
                       <span className="text-[13px] font-black text-brand">{group.percentage}%</span>
                     </div>
                     <ProgressBar value={group.percentage} color={progressColor} size="sm" showLabel={false} />
@@ -173,7 +173,7 @@ export default function DivisionProgressPage() {
                       {group.percentage}%
                     </span>
                     <span className="text-[10.5px] font-semibold text-neutral-400 mt-0.5 uppercase tracking-wider">
-                      Selesai
+                      Completed
                     </span>
                   </div>
                 </div>
@@ -183,12 +183,12 @@ export default function DivisionProgressPage() {
               {isExp && (
                 <div className="border-t border-neutral-100 bg-neutral-50/40 p-4 sm:p-5 space-y-2">
                   <div className="text-[12px] font-bold text-neutral-500 uppercase tracking-wider mb-2">
-                    Daftar Pekerjaan ({group.tasks.length} Tasks)
+                    Task Breakdown ({group.tasks.length} Tasks)
                   </div>
 
                   {group.tasks.length === 0 ? (
                     <div className="py-4 text-center text-[12.5px] text-neutral-400 italic">
-                      Tidak ada tugas yang terdaftar untuk divisi ini.
+                      No tasks registered for this division.
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -236,7 +236,7 @@ export default function DivisionProgressPage() {
                           <div className="flex items-center gap-3 flex-shrink-0">
                             {task.weight > 0 && (
                               <span className="text-[11.5px] font-semibold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200 hidden sm:inline">
-                                Bobot: {task.weight}%
+                                Weight: {task.weight}%
                               </span>
                             )}
                             <StatusBadge status={task.is_completed ? 'Completed' : (task.status as any)} size="xs" />
@@ -254,9 +254,9 @@ export default function DivisionProgressPage() {
         {divisionGroups.length === 0 && (
           <div className="p-12 text-center bg-white rounded-xl border border-neutral-200/80">
             <Shield size={32} className="mx-auto text-neutral-300 mb-2" />
-            <h3 className="text-[15px] font-bold text-neutral-800">Belum Ada Data Divisi</h3>
+            <h3 className="text-[15px] font-bold text-neutral-800">No Division Data Available</h3>
             <p className="text-[13px] text-neutral-500 mt-1">
-              Project ini belum memiliki tugas WBS yang dialokasikan ke divisi.
+              This project does not have any WBS tasks allocated to divisions yet.
             </p>
           </div>
         )}

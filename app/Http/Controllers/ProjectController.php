@@ -284,12 +284,12 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         if ($role !== 'pic') {
-            abort(403, 'Akses Ditolak: Hanya PIC yang dapat membuat project baru. Admin tidak berhak membuat project.');
+            abort(403, 'Access Denied: Only PICs can create new projects. Admins are not permitted to create projects.');
         }
 
         // 1 PIC can only manage 1 Project
         if (Project::where('project_manager', $user->id)->exists()) {
-            return back()->withErrors(['title' => 'Anda sudah memiliki project yang terdaftar.']);
+            return back()->withErrors(['title' => 'You already manage an existing project.']);
         }
 
         $validated = $request->validate([
@@ -308,7 +308,7 @@ class ProjectController extends Controller
                 $company = Company::firstOrCreate(['name' => trim($validated['company_name'])]);
                 $user->companies_id = $company->id;
             } else {
-                return back()->withErrors(['company_id' => 'Perusahaan wajib dipilih atau diisi.']);
+                return back()->withErrors(['company_id' => 'Company must be selected or entered.']);
             }
             $user->save();
         }
@@ -345,7 +345,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menambah Main Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can add a Main Task.');
         }
 
         $validated = $request->validate([
@@ -375,7 +375,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Main Task berhasil ditambahkan.');
+        return back()->with('success', 'Main Task created successfully.');
     }
 
     /**
@@ -389,7 +389,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat mengubah Main Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can update this Main Task.');
         }
 
         $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
@@ -415,7 +415,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Main Task berhasil diperbarui.');
+        return back()->with('success', 'Main Task updated successfully.');
     }
 
     /**
@@ -429,7 +429,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menghapus Main Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can delete this Main Task.');
         }
 
         $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
@@ -443,7 +443,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Main Task berhasil dihapus.');
+        return back()->with('success', 'Main Task deleted successfully.');
     }
 
     /**
@@ -457,7 +457,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menambah Sub Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can add a Sub Task.');
         }
 
         if ($request->has('main_wbs_id')) {
@@ -499,7 +499,7 @@ class ProjectController extends Controller
             'weight'                 => $validated['weight'] ?? 5,
         ]);
 
-        return back()->with('success', 'Sub Task berhasil ditambahkan.');
+        return back()->with('success', 'Sub Task created successfully.');
     }
 
     /**
@@ -513,7 +513,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat mengubah Sub Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can update this Sub Task.');
         }
 
         $subWbs = SubWbs::whereHas('mainWbs', function($q) use ($projectId) {
@@ -543,7 +543,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Sub Task berhasil diperbarui.');
+        return back()->with('success', 'Sub Task updated successfully.');
     }
 
     /**
@@ -557,7 +557,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menghapus Sub Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can delete this Sub Task.');
         }
 
         $subWbs = SubWbs::whereHas('mainWbs', function($q) use ($projectId) {
@@ -569,7 +569,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Sub Task berhasil dihapus.');
+        return back()->with('success', 'Sub Task deleted successfully.');
     }
 
     /**
@@ -583,7 +583,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menambah Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can add a Task.');
         }
 
         if ($request->has('sub_wbs_id')) {
@@ -629,7 +629,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Task berhasil ditambahkan.');
+        return back()->with('success', 'Task created successfully.');
     }
 
     /**
@@ -643,7 +643,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat mengubah Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can update this Task.');
         }
 
         $task = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($projectId) {
@@ -682,7 +682,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Task berhasil diperbarui.');
+        return back()->with('success', 'Task updated successfully.');
     }
 
     /**
@@ -696,7 +696,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($projectId);
         if ($role !== 'pic' || $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Hanya PIC project ini yang dapat menghapus Task.');
+            abort(403, 'Access Denied: Only the PIC of this project can delete this Task.');
         }
 
         $task = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($projectId) {
@@ -707,7 +707,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', 'Task berhasil dihapus.');
+        return back()->with('success', 'Task deleted successfully.');
     }
 
     /**
@@ -724,26 +724,26 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         if ($role === 'admin_utama' || $role === 'admin_progres') {
-            abort(403, 'Akses Ditolak: Admin hanya dapat melihat (read-only) dan tidak boleh mengubah status tugas.');
+            abort(403, 'Access Denied: Administrators have read-only access and cannot modify task status.');
         }
 
         if ($role === 'pic') {
-            abort(403, 'Akses Ditolak: PIC hanya berwenang menambah dan mengelola jadwal tugas. Centang checklist hanya dapat dilakukan oleh Pekerja (Worker) divisi terkait.');
+            abort(403, 'Access Denied: PICs can only manage schedules. Checklist completion can only be performed by workers of the assigned division.');
         }
 
         $task = Wbs::with('parentSubWbs.mainWbs.project')->where('id', $taskId)->firstOrFail();
         $project = $task->parentSubWbs?->mainWbs?->project;
 
         if (!$project || $project->id != $projectId) {
-            abort(404, 'Task tidak sesuai dengan project.');
+            abort(404, 'Task does not belong to this project.');
         }
 
         if ($role === 'worker') {
             if ($project->companies_id != $user->companies_id) {
-                abort(403, 'Akses Ditolak: Pekerja hanya dapat mengubah tugas di perusahaan tempat Anda bekerja.');
+                abort(403, 'Access Denied: Workers can only update tasks within their assigned company.');
             }
             if ($user->divisions_id && $task->divisions_id != $user->divisions_id) {
-                abort(403, 'Akses Ditolak: Anda hanya berwenang mencentang tugas divisi Anda sendiri.');
+                abort(403, 'Access Denied: You are only authorized to complete tasks for your own division.');
             }
         }
 
@@ -753,7 +753,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($projectId);
 
-        return back()->with('success', 'Status tugas berhasil diperbarui.');
+        return back()->with('success', 'Task status updated successfully.');
     }
 
     /**
@@ -780,7 +780,7 @@ class ProjectController extends Controller
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
                 if ($project->project_manager != $user->id || ($user->companies_id && $project->companies_id != $user->companies_id)) {
-                    abort(403, 'Akses Ditolak: PIC tidak dapat membuka project milik perusahaan lain.');
+                    abort(403, 'Access Denied: PICs cannot access projects belonging to another company.');
                 }
                 if ($project->mainWbs->count() === 0) {
                     app(ProjectTemplateService::class)->applyTemplateToProject($project);
@@ -800,7 +800,7 @@ class ProjectController extends Controller
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
                 if ($project->companies_id != $user->companies_id) {
-                    abort(403, 'Akses Ditolak: Pekerja hanya dapat mengakses project milik perusahaan tempat Anda bekerja.');
+                    abort(403, 'Access Denied: Workers can only access projects belonging to their assigned company.');
                 }
                 return $project;
             } else {
@@ -963,11 +963,11 @@ class ProjectController extends Controller
         $project = Project::findOrFail($projectId);
 
         if ($role === 'worker' || $role === 'admin_progres') {
-            abort(403, 'Akses Ditolak: Anda tidak berwenang menambahkan realisasi anggaran.');
+            abort(403, 'Access Denied: You are not authorized to add budget realization entries.');
         }
 
         if ($role === 'pic' && $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Anda bukan PIC dari project ini.');
+            abort(403, 'Access Denied: You are not the PIC of this project.');
         }
 
         $validated = $request->validate([
@@ -1006,7 +1006,7 @@ class ProjectController extends Controller
             'keterangan'   => $validated['keterangan'] ?? null,
         ]);
 
-        return back()->with('success', "Transaksi budget untuk \"{$validated['nama_item']}\" berhasil disimpan.");
+        return back()->with('success', "Budget transaction for \"{$validated['nama_item']}\" was successfully saved.");
     }
 
     /**
@@ -1020,18 +1020,18 @@ class ProjectController extends Controller
         $project = Project::findOrFail($projectId);
 
         if ($role === 'worker' || $role === 'admin_progres') {
-            abort(403, 'Akses Ditolak: Anda tidak berwenang menghapus realisasi anggaran.');
+            abort(403, 'Access Denied: You are not authorized to delete budget realization entries.');
         }
 
         if ($role === 'pic' && $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Anda bukan PIC dari project ini.');
+            abort(403, 'Access Denied: You are not the PIC of this project.');
         }
 
         $entry = BudgetEntry::where('projects_id', $project->id)->where('id', $entryId)->firstOrFail();
         $itemName = $entry->nama_item;
         $entry->delete();
 
-        return back()->with('success', "Transaksi \"{$itemName}\" berhasil dihapus.");
+        return back()->with('success', "Transaction \"{$itemName}\" was successfully deleted.");
     }
 
     /**
@@ -1045,11 +1045,11 @@ class ProjectController extends Controller
         $project = Project::findOrFail($projectId);
 
         if ($role === 'worker' || $role === 'admin_progres') {
-            abort(403, 'Akses Ditolak: Anda tidak berwenang memperbarui progres mingguan.');
+            abort(403, 'Access Denied: You are not authorized to update weekly progress.');
         }
 
         if ($role === 'pic' && $project->project_manager != $user->id) {
-            abort(403, 'Akses Ditolak: Anda bukan PIC dari project ini.');
+            abort(403, 'Access Denied: You are not the PIC of this project.');
         }
 
         $validated = $request->validate([
@@ -1069,7 +1069,7 @@ class ProjectController extends Controller
             ]
         );
 
-        return back()->with('success', "Actual progress untuk W{$validated['week']} berhasil disimpan.");
+        return back()->with('success', "Actual progress for W{$validated['week']} was successfully saved.");
     }
 
     /**

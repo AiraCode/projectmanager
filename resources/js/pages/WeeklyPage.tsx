@@ -79,12 +79,12 @@ export default function WeeklyPage() {
           setSaved(p => ({ ...p, [weekNo]: true }));
           setEditMode(p => ({ ...p, [weekNo]: false }));
           setSaving(p => ({ ...p, [weekNo]: false }));
-          setToastMsg(`Actual progress W${weekNo} sebesar ${val}% berhasil disimpan.`);
+          setToastMsg(`Actual progress for W${weekNo} (${val}%) saved successfully.`);
           setTimeout(() => setSaved(p => ({ ...p, [weekNo]: false })), 2000);
         },
         onError: (errors) => {
           const errText = Object.values(errors).flat().join(', ');
-          setToastMsg(`Gagal menyimpan: ${errText || 'Terjadi kesalahan'}`);
+          setToastMsg(`Failed to save: ${errText || 'An error occurred'}`);
           setSaving(p => ({ ...p, [weekNo]: false }));
         },
         onFinish: () => setSaving(p => ({ ...p, [weekNo]: false })),
@@ -100,7 +100,7 @@ export default function WeeklyPage() {
       });
       setSaved(p => ({ ...p, [weekNo]: true }));
       setEditMode(p => ({ ...p, [weekNo]: false }));
-      setToastMsg(`Actual progress W${weekNo} sebesar ${val}% berhasil disimpan.`);
+      setToastMsg(`Actual progress for W${weekNo} (${val}%) saved successfully.`);
       setTimeout(() => setSaved(p => ({ ...p, [weekNo]: false })), 2000);
     }
   };
@@ -118,8 +118,8 @@ export default function WeeklyPage() {
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
-          { label: 'Total Periods', value: `${weeks.length} Minggu`, sub: 'Total project span' },
-          { label: 'Reported Periods', value: `${weeks.filter(w => w.actual > 0).length} Minggu`, sub: 'With actual progress' },
+          { label: 'Total Periods', value: `${weeks.length} Weeks`, sub: 'Total project span' },
+          { label: 'Reported Periods', value: `${weeks.filter(w => w.actual > 0).length} Weeks`, sub: 'With actual progress' },
           { label: 'Planned Target', value: `${totalPlanned.toFixed(1)}%`, sub: 'Total scheduled weight' },
           { label: 'Realized Progress', value: `${totalActual.toFixed(1)}%`, sub: 'Cumulative actual progress' },
         ].map(({ label, value, sub }) => (
@@ -263,7 +263,7 @@ export default function WeeklyPage() {
                             <button
                               onClick={() => cancelEdit(w.week)}
                               className="p-1 rounded text-neutral-400 hover:text-danger hover:bg-red-50 transition-colors"
-                              title="Batal edit"
+                              title="Cancel edit"
                             >
                               <X size={12} />
                             </button>
