@@ -18,8 +18,8 @@ return new class extends Migration
             $table->string('lag_lead_time', 45)->nullable();
             $table->dateTime('start');
             $table->dateTime('end');
-            $table->dateTime('actual_start');
-            $table->dateTime('actual_end');
+            $table->dateTime('actual_start')->nullable();
+            $table->dateTime('actual_end')->nullable();
             $table->timestamps();
             $table->softDeletes();
 

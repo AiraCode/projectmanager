@@ -14,8 +14,8 @@ return new class extends Migration
             $table->unsignedInteger('list_main_wbs_names_id');
             $table->string('name', 255)->nullable();
             $table->decimal('percentage');
-            $table->dateTime('actual_start');
-            $table->dateTime('actual_end');
+            $table->dateTime('actual_start')->nullable();
+            $table->dateTime('actual_end')->nullable();
             $table->timestamps();
             $table->softDeletes();
 

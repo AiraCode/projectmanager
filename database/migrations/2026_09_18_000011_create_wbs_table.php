@@ -16,6 +16,8 @@ return new class extends Migration
             $table->string('vendor', 45);
             $table->dateTime('start');
             $table->dateTime('end');
+            $table->dateTime('actual_start')->nullable();
+            $table->dateTime('actual_end')->nullable();
             $table->timestamps();
             $table->softDeletes();
 
