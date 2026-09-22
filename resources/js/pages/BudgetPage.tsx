@@ -3,7 +3,7 @@ import { usePage, router } from '@inertiajs/react';
 import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X, Download, Loader2 } from 'lucide-react';
 import { PROJECT, BudgetEntry } from '@/data/mockData';
 import { exportToCSV } from '@/utils/exportEngine';
-import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState } from '@/components/ui';
+import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState, formatDateDisplay } from '@/components/ui';
 
 const KATEGORI = ['Material', 'Jasa', 'Mesin', 'Peralatan', 'Logistik', 'Lainnya'];
 const SATUAN = ['kg', 'sak', 'batang', 'unit', 'LS', 'pcs', 'm', 'm²', 'm³', 'set'];
@@ -328,7 +328,7 @@ export default function BudgetPage() {
             <tbody className="divide-y divide-neutral-100 text-[12.5px]">
               {filtered.map(e => (
                 <tr key={e.id} className="hover:bg-neutral-50/70 transition-colors">
-                  <td className="px-3.5 py-2.5 text-neutral-500 whitespace-nowrap text-[12px]">{e.tanggal}</td>
+                  <td className="px-3.5 py-2.5 text-neutral-500 whitespace-nowrap text-[12px]">{formatDateDisplay(e.tanggal)}</td>
                   <td className="px-3.5 py-2.5 font-bold text-brand">{e.codeSubWbs}</td>
                   <td className="px-3.5 py-2.5 text-neutral-700 max-w-[140px] truncate" title={e.subTaskWbs}>
                     {e.subTaskWbs}

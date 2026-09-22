@@ -2,7 +2,7 @@ import { useState, useEffect, FormEvent } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import { Building2, User, Calendar, Target, CheckCircle2, Layers, ShieldCheck, Plus, Lock, AlertCircle, Check } from 'lucide-react';
 import { PROJECT, MainJob } from '@/data/mockData';
-import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast } from '@/components/ui';
+import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast, formatDateDisplay } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
 interface CompanyOption {
@@ -165,8 +165,8 @@ export default function ProjectPage() {
         {[
           { icon: Building2, label: 'Company', value: p.company },
           { icon: User, label: 'Project Manager', value: p.projectManager },
-          { icon: Calendar, label: 'Start Date', value: p.startDate },
-          { icon: Target, label: 'Target Completion', value: p.endDate },
+          { icon: Calendar, label: 'Start Date', value: formatDateDisplay(p.startDate) },
+          { icon: Target, label: 'Target Completion', value: formatDateDisplay(p.endDate) },
         ].map(({ icon: Icon, label, value }) => (
           <Card key={label} className="p-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-brand-light flex items-center justify-center flex-shrink-0">

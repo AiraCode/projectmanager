@@ -5,7 +5,7 @@ import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyTy
 import { recalculateSchedule } from '@/utils/scheduleEngine';
 import { recalculateProgress } from '@/utils/progressEngine';
 import { exportToCSV } from '@/utils/exportEngine';
-import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast, EmptyState } from '@/components/ui';
+import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast, EmptyState, formatDateDisplay } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
 const STATUSES: Status[] = ['Open', 'On Track', 'At Risk', 'Delayed', 'Cancelled', 'Completed'];
@@ -549,8 +549,8 @@ export default function TasksPage() {
                       <td className="px-4 py-2.5 text-neutral-500 font-medium">—</td>
                       <td className="px-4 py-2.5"><StatusBadge status={mj.status} size="xs" /></td>
                       <td className="px-4 py-2.5 text-right font-bold text-brand">{mj.progress}%</td>
-                      <td className="px-4 py-2.5 text-neutral-600 font-medium">{mj.startDate || '—'}</td>
-                      <td className="px-4 py-2.5 text-neutral-600 font-medium">{mj.finishDate || '—'}</td>
+                      <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(mj.startDate)}</td>
+                      <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(mj.finishDate)}</td>
                       <td className="px-4 py-2.5 text-right text-neutral-400">—</td>
                       <td className="px-4 py-2.5 text-neutral-400">—</td>
                     </tr>
@@ -568,8 +568,8 @@ export default function TasksPage() {
                           </td>
                           <td className="px-4 py-2.5"><StatusBadge status={smj.status} size="xs" /></td>
                           <td className="px-4 py-2.5 text-right font-bold text-neutral-700">{smj.progress}%</td>
-                          <td className="px-4 py-2.5 text-neutral-600 font-medium">{smj.startDate || '—'}</td>
-                          <td className="px-4 py-2.5 text-neutral-600 font-medium">{smj.finishDate || '—'}</td>
+                          <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(smj.startDate)}</td>
+                          <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(smj.finishDate)}</td>
                           <td className="px-4 py-2.5 text-right text-neutral-400">—</td>
                           <td className="px-4 py-2.5 text-neutral-400">—</td>
                         </tr>
@@ -587,8 +587,8 @@ export default function TasksPage() {
                             <td className="px-4 py-2 text-right font-semibold text-neutral-600">
                               {st.checked ? '100' : st.progress}%
                             </td>
-                            <td className="px-4 py-2 text-neutral-600">{st.startDate}</td>
-                            <td className="px-4 py-2 text-neutral-600">{st.finishDate}</td>
+                            <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.startDate)}</td>
+                            <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.finishDate)}</td>
                             <td className="px-4 py-2 text-right text-neutral-600">{st.duration}d</td>
                             <td className="px-4 py-2 font-mono text-[11px] text-neutral-500">
                               {st.predecessor ? `${st.predecessor} (${st.depType || 'FS'}${st.lag ? `+${st.lag}` : ''})` : '—'}
@@ -795,7 +795,7 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
           </span>
           <span className="inline-flex items-center gap-1 font-semibold text-neutral-700 bg-neutral-50 px-2 py-0.5 rounded border border-neutral-200">
             <Calendar size={11} className="text-brand" />
-            Jadwal: {st.startDate || '—'} s/d {st.finishDate || '—'}
+            Jadwal: {formatDateDisplay(st.startDate)} s/d {formatDateDisplay(st.finishDate)}
           </span>
           <span className="text-neutral-500 font-medium">Durasi: {st.duration} hari</span>
           {st.daysLeft !== undefined && st.daysLeft > 0 && !isChecked && (

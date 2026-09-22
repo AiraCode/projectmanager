@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import { Project, PROJECT, WeekData } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
-import { PageHeader, Card, Button, Toast } from '@/components/ui';
+import { PageHeader, Card, Button, Toast, formatDateDisplay } from '@/components/ui';
 import { Info, ChevronLeft, ChevronRight, Check, Calendar, TrendingUp, Edit3, X, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 10;
@@ -33,8 +33,12 @@ export default function WeeklyPage() {
   const totalPages = Math.ceil(weeks.length / PAGE_SIZE);
   const visible = weeks.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  // Active current week based on date / actuals
-  const currentWeekIdx = weeks.findIndex(w => w.actual === 0 && w.week > 30) - 1;
+  // Active current week based on today's date
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let currentWeekIdx = weeks.findIndex(w => todayStr >= w.startDate && todayStr <= w.endDate);
+  if (currentWeekIdx === -1) {
+    currentWeekIdx = (weeks.length > 0 && todayStr < weeks[0].startDate) ? 0 : Math.max(0, weeks.length - 1);
+  }
 
   const handleEdit = (weekNo: number, val: string) => {
     setEditing(p => ({ ...p, [weekNo]: val }));
@@ -116,7 +120,7 @@ export default function WeeklyPage() {
         <Info size={16} className="text-brand flex-shrink-0 mt-0.5" />
         <div className="text-[12.5px] text-neutral-700 flex-1 leading-relaxed">
           <span className="font-semibold text-brand">System-Generated Weekly Periods: </span>
-          The number and dates of weeks are derived automatically from the project schedule (Start: {projectData.startDate} → End: {projectData.endDate}).
+          The number and dates of weeks are derived automatically from the project schedule (Start: {formatDateDisplay(projectData.startDate)} → End: {formatDateDisplay(projectData.endDate)}).
           Planned weekly progress is calculated from WBS work weights, while Actual values are reported by authorized PICs.
         </div>
       </div>
@@ -218,7 +222,7 @@ export default function WeeklyPage() {
 
                     {/* Dates */}
                     <td className="px-4 py-3 text-neutral-600 whitespace-nowrap text-[12px]">
-                      {w.startDate} → {w.endDate}
+                      {formatDateDisplay(w.startDate)} → {formatDateDisplay(w.endDate)}
                     </td>
 
                     {/* Planned */}

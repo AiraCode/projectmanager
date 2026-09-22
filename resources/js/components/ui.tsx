@@ -3,12 +3,12 @@ import { Status } from '@/data/mockData';
 import { X, Loader2 } from 'lucide-react';
 
 export const STATUS_CONFIG: Record<Status, { label: string; bg: string; text: string; dot: string }> = {
-  'Open':      { label: 'Open',      bg: 'bg-neutral-100',     text: 'text-neutral-600',   dot: 'bg-neutral-400' },
-  'On Track':  { label: 'On Track',  bg: 'bg-success-light',   text: 'text-success',       dot: 'bg-success' },
+  'Open':      { label: 'Open',      bg: 'bg-success-light',   text: 'text-success',       dot: 'bg-success' },
+  'On Track':  { label: 'On Track',  bg: 'bg-brand-light',     text: 'text-brand',         dot: 'bg-brand' },
   'At Risk':   { label: 'At Risk',   bg: 'bg-warning-light',   text: 'text-warning',       dot: 'bg-warning' },
   'Delayed':   { label: 'Delayed',   bg: 'bg-danger-light',    text: 'text-danger',        dot: 'bg-danger' },
-  'Cancelled': { label: 'Cancelled', bg: 'bg-neutral-100',     text: 'text-neutral-400',   dot: 'bg-neutral-400' },
-  'Completed': { label: 'Completed', bg: 'bg-brand-light',     text: 'text-brand',         dot: 'bg-brand' },
+  'Cancelled': { label: 'Cancelled', bg: 'bg-neutral-100',     text: 'text-neutral-500',   dot: 'bg-neutral-400' },
+  'Completed': { label: 'Completed', bg: 'bg-indigo-50',       text: 'text-indigo-700',    dot: 'bg-indigo-600' },
 };
 
 export function StatusBadge({ status, size = 'sm' }: { status: Status; size?: 'xs' | 'sm' | 'md' }) {
@@ -59,6 +59,20 @@ export function formatRupiahFull(n: number): string {
   return `Rp ${n.toLocaleString('id-ID')}`;
 }
 
+/**
+ * Format YYYY-MM-DD or ISO date string to DD-MM-YYYY for display purposes only.
+ * Example: '2026-09-03' -> '03-09-2026'
+ */
+export function formatDateDisplay(dateStr?: string | null): string {
+  if (!dateStr || dateStr === '—' || dateStr === '-') return '—';
+  const match = String(dateStr).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const [, y, m, d] = match;
+    return `${d}-${m}-${y}`;
+  }
+  return dateStr;
+}
+
 export function PageHeader({
   title,
   subtitle,
@@ -79,9 +93,12 @@ export function PageHeader({
   );
 }
 
-export function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+export function Card({ children, className = '', interactive = false }: { children: React.ReactNode; className?: string; interactive?: boolean }) {
+  const interactiveClasses = interactive
+    ? 'transition-all duration-200 ease-out hover:shadow-md hover:border-brand/35 active:scale-[0.99] cursor-pointer'
+    : '';
   return (
-    <div className={`bg-white rounded-lg border border-neutral-200 shadow-sm ${className}`}>
+    <div className={`bg-white rounded-lg border border-neutral-200 shadow-xs ${interactiveClasses} ${className}`}>
       {children}
     </div>
   );
@@ -133,7 +150,7 @@ export function Button({
   loading?: boolean;
   icon?: React.ComponentType<{ size?: number; className?: string }>;
 }) {
-  const base = 'inline-flex items-center justify-center font-semibold rounded-lg transition-all duration-150 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100';
+  const base = 'inline-flex items-center justify-center font-semibold rounded-lg transition-all duration-150 ease-out active:scale-[0.98] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100';
   
   const sizeStyles = {
     sm: 'px-2.5 py-1.5 text-[12px] gap-1.5',
@@ -142,11 +159,11 @@ export function Button({
   }[size];
 
   const variantStyles = {
-    primary: 'bg-brand text-white hover:bg-brand-dark shadow-sm',
-    secondary: 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200',
-    danger: 'bg-danger text-white hover:bg-red-700 shadow-sm',
-    outline: 'bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-50 hover:border-neutral-300 shadow-sm',
-    ghost: 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900',
+    primary: 'bg-brand text-white hover:bg-brand-dark active:bg-brand-dark/95 shadow-xs hover:shadow-sm',
+    secondary: 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 active:bg-neutral-300',
+    danger: 'bg-danger text-white hover:bg-red-700 active:bg-red-800 shadow-xs hover:shadow-sm',
+    outline: 'bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-50 hover:border-neutral-300 active:bg-neutral-100 shadow-xs',
+    ghost: 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 active:bg-neutral-200',
   }[variant];
 
   return (

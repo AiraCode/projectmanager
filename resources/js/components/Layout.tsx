@@ -167,7 +167,31 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
           {visibleNav.map(({ to, icon: Icon, label }) => {
             const targetUrl = getNavUrl(to);
             const purePath = currentUrl.split('?')[0];
-            const isActive = purePath === to || purePath.startsWith(to + '/') || (to === '/dashboard' && purePath.startsWith('/projects/'));
+
+            // Precise active state matching routes in routes/web.php:
+            // 1. '/projects' is active ONLY on '/projects' (All Projects list)
+            // 2. '/dashboard' is active on '/dashboard' OR '/projects/{id}' (project dashboard)
+            // 3. Other items (/project, /timeline, /tasks, /weekly, /scurve, /budget) are active on their respective base or scoped routes
+            let isActive = false;
+            if (to === '/projects') {
+              isActive = purePath === '/projects';
+            } else if (to === '/dashboard') {
+              isActive = purePath === '/dashboard' || /^\/projects\/[^/]+$/.test(purePath);
+            } else if (to === '/project') {
+              isActive = purePath === '/project' || /^\/projects\/[^/]+\/detail/.test(purePath);
+            } else if (to === '/timeline') {
+              isActive = purePath === '/timeline' || /^\/projects\/[^/]+\/timeline/.test(purePath);
+            } else if (to === '/weekly') {
+              isActive = purePath === '/weekly' || /^\/projects\/[^/]+\/weekly/.test(purePath);
+            } else if (to === '/scurve') {
+              isActive = purePath === '/scurve' || /^\/projects\/[^/]+\/scurve/.test(purePath);
+            } else if (to === '/budget') {
+              isActive = purePath === '/budget' || /^\/projects\/[^/]+\/budget/.test(purePath);
+            } else if (to === '/tasks') {
+              isActive = purePath === '/tasks' || /^\/projects\/[^/]+\/tasks/.test(purePath);
+            } else {
+              isActive = purePath === to || purePath.startsWith(to + '/');
+            }
             return (
               <Link
                 key={to}

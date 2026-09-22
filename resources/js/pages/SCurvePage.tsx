@@ -3,7 +3,7 @@ import { usePage } from '@inertiajs/react';
 import { Project, PROJECT } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { exportToCSV } from '@/utils/exportEngine';
-import { PageHeader, Card, Button } from '@/components/ui';
+import { PageHeader, Card, Button, formatDateDisplay } from '@/components/ui';
 import { TrendingUp, BarChart2, Calendar, Eye, EyeOff, Download } from 'lucide-react';
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -18,29 +18,46 @@ export default function SCurvePage() {
   const [showTable, setShowTable] = useState(true);
   
   // Use engine to calculate exact cumulative values
-  const [projectData] = useState<Project>(() => {
-    if (project && project.weeklyData && project.weeklyData.length > 0) {
-      return project;
-    }
+  const [projectData, setProjectData] = useState<Project>(() => {
     return recalculateWeeklyData(project || PROJECT);
   });
+
+  useEffect(() => {
+    if (project) {
+      setProjectData(recalculateWeeklyData(project));
+    }
+  }, [project]);
+
   const weeks = projectData.weeklyData;
 
-  const chartData = weeks.map(w => ({
+  // Identify dynamic current week based on today's date
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const currentWeekIdx = useMemo(() => {
+    const idx = weeks.findIndex(w => todayStr >= w.startDate && todayStr <= w.endDate);
+    if (idx !== -1) return idx;
+    if (weeks.length > 0 && todayStr < weeks[0].startDate) return 0;
+    return Math.max(0, weeks.length - 1);
+  }, [weeks, todayStr]);
+
+  const currentWeek = weeks[currentWeekIdx];
+  const currentLabel = currentWeek ? `W${currentWeek.week}` : (weeks[0] ? `W${weeks[0].week}` : 'W1');
+
+  const chartData = weeks.map((w, idx) => ({
     name: `W${w.week}`,
     'Plan. Cumulative': w.plannedCumulative,
-    'Act. Cumulative': w.actualCumulative > 0 ? w.actualCumulative : null,
+    'Act. Cumulative': idx <= currentWeekIdx && w.actualCumulative > 0 ? w.actualCumulative : null,
     'Planned (Weekly)': w.planned,
-    'Actual (Weekly)': w.actual > 0 ? w.actual : null,
+    'Actual (Weekly)': idx <= currentWeekIdx && w.actual > 0 ? w.actual : null,
   }));
 
-  // Find active current week
-  const currentWeek = weeks.findIndex(w => w.actual === 0 && w.week > 30) - 1;
-  const currentLabel = currentWeek >= 0 ? `W${currentWeek + 1}` : 'W36';
+  const elapsedWeeks = weeks.slice(0, currentWeekIdx + 1);
+  const latestActual = elapsedWeeks.filter(w => w.actualCumulative > 0).at(-1);
+  const realisasiValue = latestActual
+    ? latestActual.actualCumulative
+    : (projectData.overallProgress ? Number(projectData.overallProgress) : 0);
 
-  const latestActual = weeks.filter(w => w.actualCumulative > 0).at(-1);
-  const deviation = latestActual
-    ? latestActual.actualCumulative - latestActual.plannedCumulative
+  const deviation = currentWeek
+    ? Number((realisasiValue - (currentWeek.plannedCumulative || 0)).toFixed(1))
     : 0;
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -126,12 +143,12 @@ export default function SCurvePage() {
         {[
           {
             label: 'Target S-Curve',
-            value: `${weeks.at(-1)?.plannedCumulative.toFixed(1)}%`,
-            sub: 'Target at completion (W150)',
+            value: `${(weeks.at(-1)?.plannedCumulative ?? 100).toFixed(1)}%`,
+            sub: `Target at completion (W${weeks.length})`,
           },
           {
             label: 'Realisasi Kumulatif',
-            value: `${latestActual?.actualCumulative.toFixed(1) ?? '—'}%`,
+            value: `${realisasiValue.toFixed(1)}%`,
             sub: `Reported as of ${currentLabel}`,
           },
           {
@@ -142,7 +159,7 @@ export default function SCurvePage() {
           },
           {
             label: 'Reported Periods',
-            value: `${weeks.filter(w => w.actualCumulative > 0).length} Minggu`,
+            value: `${Math.min(weeks.length, currentWeekIdx + 1)} Minggu`,
             sub: `of ${weeks.length} project weeks`,
           },
         ].map(({ label, value, sub, accent }) => (
@@ -280,7 +297,7 @@ export default function SCurvePage() {
                           </div>
                         </td>
                         <td className="px-4 py-2.5 text-neutral-600 text-[12px] whitespace-nowrap">
-                          {w.startDate} → {w.endDate}
+                          {formatDateDisplay(w.startDate)} → {formatDateDisplay(w.endDate)}
                         </td>
                         <td className="px-4 py-2.5 text-right font-medium text-brand">
                           {w.planned.toFixed(2)}%

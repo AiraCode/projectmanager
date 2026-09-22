@@ -2,7 +2,7 @@ import { Calendar, Clock, TrendingUp, DollarSign, CheckCircle2, AlertTriangle, X
 import { Link, usePage } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import { Project, PROJECT } from '@/data/mockData';
-import { StatusBadge, ProgressBar, formatRupiah, PageHeader, Card, KpiCard } from '@/components/ui';
+import { StatusBadge, ProgressBar, formatRupiah, PageHeader, Card, KpiCard, formatDateDisplay } from '@/components/ui';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { recalculateProgress } from '@/utils/progressEngine';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
@@ -38,10 +38,14 @@ export default function DashboardPage() {
     return acc;
   }, {} as Record<string, number>);
 
-  // Find current week and slice around it for the mini chart
-  const currentWeekIdx = p.weeklyData.findIndex(w => w.actual === 0 && w.week > 30) - 1;
+  // Find current week based on today's date and slice around it for the mini chart
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let currentWeekIdx = (p.weeklyData || []).findIndex(w => todayStr >= w.startDate && todayStr <= w.endDate);
+  if (currentWeekIdx === -1) {
+    currentWeekIdx = (p.weeklyData && p.weeklyData.length > 0 && todayStr < p.weeklyData[0].startDate) ? 0 : Math.max(0, (p.weeklyData?.length || 1) - 1);
+  }
   const chartStart = Math.max(0, currentWeekIdx - 10);
-  const chartEnd = Math.min(p.weeklyData.length, currentWeekIdx + 12);
+  const chartEnd = Math.min((p.weeklyData || []).length, currentWeekIdx + 12);
   
   const miniChart = p.weeklyData.slice(chartStart, chartEnd).map(w => ({
     week: `W${w.week}`,
@@ -111,8 +115,8 @@ export default function DashboardPage() {
                 { label: 'Project Name', value: p.name },
                 { label: 'Company', value: p.company },
                 { label: 'Project Manager', value: p.projectManager },
-                { label: 'Start Date', value: p.startDate },
-                { label: 'Target Finish', value: p.endDate },
+                { label: 'Start Date', value: formatDateDisplay(p.startDate) },
+                { label: 'Target Finish', value: formatDateDisplay(p.endDate) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between items-start gap-3">
                   <span className="text-[12px] text-neutral-400 font-medium flex-shrink-0">{label}</span>
@@ -229,11 +233,11 @@ export default function DashboardPage() {
 
             <div className="space-y-2">
               {([
-                { s: 'Completed', icon: CheckCircle2, color: 'text-brand' },
-                { s: 'On Track', icon: TrendingUp, color: 'text-success' },
+                { s: 'Open', icon: Layers, color: 'text-success' },
+                { s: 'On Track', icon: TrendingUp, color: 'text-brand' },
                 { s: 'At Risk', icon: AlertTriangle, color: 'text-warning' },
                 { s: 'Delayed', icon: XCircle, color: 'text-danger' },
-                { s: 'Open', icon: Layers, color: 'text-neutral-400' },
+                { s: 'Completed', icon: CheckCircle2, color: 'text-indigo-600' },
               ] as const).map(({ s, icon: Icon, color }) => (
                 <div key={s} className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-neutral-50">
                   <div className="flex items-center gap-2">

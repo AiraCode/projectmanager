@@ -46,49 +46,92 @@ export function recalculateWeeklyData(project: Project): Project {
   let plannedCumulative = 0;
   let actualCumulative = 0;
 
-  weeks.forEach(w => {
+  // Normalize total weights across all Main Jobs to 100%
+  const rawTotalWeight = newProject.mainJobs.reduce((sum, mj) => sum + (Number(mj.weight) || 0), 0);
+  const weightNormalizer = rawTotalWeight > 0 ? 100 / rawTotalWeight : 1;
+
+  // Identify current week index based on today's date
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let currentWeekIdx = weeks.findIndex(w => todayStr >= w.startDate && todayStr <= w.endDate);
+  if (currentWeekIdx === -1) {
+    if (weeks.length > 0 && todayStr < weeks[0].startDate) {
+      currentWeekIdx = 0;
+    } else {
+      currentWeekIdx = Math.max(0, weeks.length - 1);
+    }
+  }
+
+  // Check if explicit weekly actual entries exist in DB
+  const savedActuals = (newProject as any).savedWeeklyActuals || {};
+  const hasSavedActuals = Object.keys(savedActuals).some(
+    k => savedActuals[k] !== undefined && savedActuals[k] !== null && Number(savedActuals[k]) > 0
+  );
+
+  const overallActual = Number(newProject.overallProgress || 0);
+
+  weeks.forEach((w, idx) => {
     let weekPlanned = 0;
-    
+
     newProject.mainJobs.forEach(mj => {
-      if (!mj.startDate || !mj.finishDate || !mj.weight) return;
-      
+      const mjWeight = (Number(mj.weight) || 0) * weightNormalizer;
+      if (!mj.startDate || !mj.finishDate || mjWeight <= 0) return;
+
       // Check if this Main Job is active during this week
       if (mj.startDate <= w.endDate && mj.finishDate >= w.startDate) {
-        // Find how many total weeks this MJ spans
-        let mjStartMs = new Date(mj.startDate).getTime();
-        let mjEndMs = new Date(mj.finishDate).getTime();
-        
+        const mjStartMs = new Date(mj.startDate).getTime();
+        const mjEndMs = new Date(mj.finishDate).getTime();
+
         if (!isNaN(mjStartMs) && !isNaN(mjEndMs)) {
           const mjDurationDays = Math.ceil((mjEndMs - mjStartMs) / (1000 * 60 * 60 * 24)) + 1;
           const mjTotalWeeks = Math.ceil(mjDurationDays / 7) || 1;
-          
-          // Distribute weight equally across its weeks
-          weekPlanned += mj.weight / mjTotalWeeks;
+          weekPlanned += mjWeight / mjTotalWeeks;
         }
       }
     });
 
-    // Formatting nicely
     weekPlanned = parseFloat(weekPlanned.toFixed(2));
     plannedCumulative += weekPlanned;
     plannedCumulative = parseFloat(plannedCumulative.toFixed(2));
 
-    // Preserve existing actual values if they exist or read from DB savedWeeklyActuals
-    const existingWeek = newProject.weeklyData?.find(ew => ew.week === w.week);
-    const savedActual = (newProject as any).savedWeeklyActuals?.[w.week];
-    const actualValue = savedActual !== undefined ? Number(savedActual) : (existingWeek?.actual || 0);
-    
-    actualCumulative += actualValue;
-    actualCumulative = parseFloat(actualCumulative.toFixed(2));
+    // Cap planned cumulative at 100% on or near the final week
+    if (idx === weeks.length - 1) {
+      plannedCumulative = 100.00;
+    } else if (plannedCumulative > 100) {
+      plannedCumulative = 100.00;
+    }
+
+    // Determine actual progress for this week:
+    let actualValue = 0;
+    const isElapsed = idx <= currentWeekIdx;
+
+    if (hasSavedActuals) {
+      // Use explicitly saved weekly actuals from DB
+      const existingWeek = newProject.weeklyData?.find(ew => ew.week === w.week);
+      const saved = savedActuals[w.week];
+      actualValue = saved !== undefined ? Number(saved) : (existingWeek?.actual || 0);
+      actualCumulative += actualValue;
+      actualCumulative = parseFloat(actualCumulative.toFixed(2));
+    } else if (isElapsed && overallActual > 0) {
+      // If no explicit weekly actuals saved yet, distribute the project's actual overallProgress
+      // smoothly up to the current week
+      const targetCumulative = parseFloat(
+        (((idx + 1) / (currentWeekIdx + 1)) * overallActual).toFixed(2)
+      );
+      actualValue = parseFloat((targetCumulative - actualCumulative).toFixed(2));
+      if (actualValue < 0) actualValue = 0;
+      actualCumulative = targetCumulative;
+    } else {
+      actualValue = 0;
+    }
 
     weeklyData.push({
       week: w.week,
       startDate: w.startDate,
       endDate: w.endDate,
       planned: weekPlanned,
-      actual: actualValue,
+      actual: isElapsed ? actualValue : 0,
       plannedCumulative,
-      actualCumulative,
+      actualCumulative: isElapsed ? actualCumulative : 0,
     });
   });
 
