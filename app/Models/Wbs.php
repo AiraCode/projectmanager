@@ -26,11 +26,13 @@ class Wbs extends Model
         'is_completed',
         'status',
         'predecessor',
+        'weight',
     ];
 
     protected $casts = [
         'start' => 'datetime',
         'end' => 'datetime',
+        'weight' => 'decimal:2',
     ];
 
     public function parentSubWbs()

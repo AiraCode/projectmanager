@@ -107,7 +107,7 @@ export default function ProjectDetailPage() {
     }
 
     setIsSubmitting(true);
-    router.post('/projects', {
+    router.post('/projectlistpage', {
       title: projectName.trim(),
       company_id: companyId || null,
       company_name: newCompanyName.trim() || null,
@@ -195,28 +195,6 @@ export default function ProjectDetailPage() {
           <span>{p.sisaHari} days remaining</span>
         </div>
       </Card>
-
-      {/* Fixed Template Info Banner */}
-      <div className="p-4 sm:p-5 rounded-xl bg-brand-light border border-brand-border flex flex-col sm:flex-row items-start gap-3.5">
-        <div className="w-8 h-8 rounded-lg bg-brand text-white flex items-center justify-center flex-shrink-0 shadow-xs">
-          <ShieldCheck size={18} />
-        </div>
-        <div className="flex-1 text-[13px] text-neutral-700 space-y-1">
-          <div className="font-bold text-brand text-[13.5px]">
-            Master Template WBS Project (17 Main Tasks Awal Tersedia Otomatis)
-          </div>
-          <p className="leading-relaxed text-neutral-600 text-[12.5px]">
-            Setiap project baru secara otomatis memuat 17 Main Task (Main Job) standar perusahaan lengkap dengan Sub Task awal.
-            Sebagai PIC, Anda memiliki fleksibilitas penuh untuk <strong>menambah Main Task baru</strong>, <strong>menambah Sub Task</strong>, maupun <strong>menambah Task (Sub-Subtask)</strong> serta mengubah dan menyesuaikan rincian pekerjaan proyek.
-          </p>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-[11.5px] font-semibold text-neutral-500">
-            <span>✓ 17 Main Tasks Standar Otomatis</span>
-            <span>✓ PIC Bebas Tambah Main Task Baru</span>
-            <span>✓ PIC Bebas Tambah & Sesuaikan Sub Task</span>
-            <span>✓ Dynamic Task Management</span>
-          </div>
-        </div>
-      </div>
 
       {/* Main Job tree */}
       <div>
@@ -486,24 +464,24 @@ function MainJobCard({ mj, expanded, onToggle }: { mj: MainJob; expanded: boolea
         onClick={onToggle}
         className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-neutral-50/60 transition-colors text-left"
       >
-        <div className="w-7 h-7 rounded-lg bg-brand flex items-center justify-center flex-shrink-0 shadow-xs">
-          <span className="text-white text-[11px] font-bold">{mj.code}</span>
+        <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center flex-shrink-0 shadow-xs">
+          <span className="text-white text-[12px] font-bold">{mj.code}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-bold text-neutral-800 truncate">{mj.name}</div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[11px] font-medium text-neutral-400">{mj.subMainJobs.length} Sub Main Jobs</span>
-            <span className="text-[11px] text-neutral-300">·</span>
-            <span className="text-[11px] font-medium text-neutral-400">Bobot: {mj.weight}%</span>
+          <div className="text-[15px] sm:text-[16px] font-bold text-neutral-900 truncate">{mj.name}</div>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[12px] font-medium text-neutral-500">{mj.subMainJobs.length} Sub Main Jobs</span>
+            <span className="text-[12px] text-neutral-300">·</span>
+            <span className="text-[12px] font-bold text-neutral-700">Bobot: {mj.weight}%</span>
           </div>
         </div>
         <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
-          <StatusBadge status={mj.status} size="xs" />
-          <div className="w-16 sm:w-20 hidden xs:block">
-            <ProgressBar value={mj.progress} size="xs" showLabel={false} />
+          <StatusBadge status={mj.status} size="sm" />
+          <div className="w-16 sm:w-24 hidden xs:block">
+            <ProgressBar value={mj.progress} size="sm" showLabel={false} />
           </div>
-          <span className="text-[12px] font-bold text-neutral-800 w-9 text-right">{mj.progress}%</span>
-          <svg width="12" height="12" viewBox="0 0 12 12" className={`text-neutral-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
+          <span className="text-[14px] sm:text-[15px] font-black text-neutral-900 w-12 text-right">{mj.progress}%</span>
+          <svg width="14" height="14" viewBox="0 0 12 12" className={`text-neutral-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
             <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
@@ -514,27 +492,27 @@ function MainJobCard({ mj, expanded, onToggle }: { mj: MainJob; expanded: boolea
           {mj.subMainJobs.map((smj, i) => (
             <div
               key={smj.id}
-              className={`flex items-center gap-3 px-4 py-2.5 ${i < mj.subMainJobs.length - 1 ? 'border-b border-neutral-100' : ''} hover:bg-neutral-50 transition-colors`}
+              className={`flex items-center gap-3 px-4 py-3 ${i < mj.subMainJobs.length - 1 ? 'border-b border-neutral-100' : ''} hover:bg-neutral-50 transition-colors`}
             >
               <div className="w-4 flex-shrink-0" />
-              <div className="w-5 h-5 rounded bg-neutral-200/60 flex items-center justify-center flex-shrink-0">
-                <span className="text-neutral-600 text-[9.5px] font-bold">{smj.code}</span>
+              <div className="w-6 h-6 rounded bg-neutral-200/80 flex items-center justify-center flex-shrink-0">
+                <span className="text-neutral-700 text-[10px] font-bold">{smj.code}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[12.5px] font-semibold text-neutral-700 truncate">{smj.name}</div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-neutral-100 text-neutral-600 border border-neutral-200">
+                <div className="text-[13.5px] sm:text-[14px] font-semibold text-neutral-800 truncate">{smj.name}</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-neutral-100 text-neutral-700 border border-neutral-200">
                     PIC: {smj.pic}
                   </span>
-                  <span className="text-[10.5px] text-neutral-400 font-medium">Weight: {smj.weight}%</span>
+                  <span className="text-[11.5px] text-neutral-600 font-bold">Bobot: {smj.weight}%</span>
                 </div>
               </div>
               <div className="flex items-center gap-2.5 flex-shrink-0">
                 <StatusBadge status={smj.status} size="xs" />
-                <div className="w-14 sm:w-16 hidden sm:block">
+                <div className="w-14 sm:w-20 hidden sm:block">
                   <ProgressBar value={smj.progress} size="xs" showLabel={false} />
                 </div>
-                <span className="text-[11px] font-bold text-neutral-700 w-8 text-right">{smj.progress}%</span>
+                <span className="text-[12.5px] sm:text-[13px] font-bold text-neutral-800 w-10 text-right">{smj.progress}%</span>
               </div>
             </div>
           ))}

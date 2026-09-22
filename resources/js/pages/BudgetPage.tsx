@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X, Download, Loader2 } from 'lucide-react';
 import { PROJECT, BudgetEntry } from '@/data/mockData';
@@ -32,7 +32,16 @@ const EMPTY_FORM: EntryForm = {
 export default function BudgetPage() {
   const pageProps = usePage().props as any;
   const project = pageProps?.project;
-  const currentProject = project && project.mainJobs ? project : PROJECT;
+
+  const [currentProject, setCurrentProject] = useState(() => {
+    return project && project.mainJobs ? project : PROJECT;
+  });
+
+  useEffect(() => {
+    if (project && project.mainJobs) {
+      setCurrentProject(project);
+    }
+  }, [project]);
 
   const [entries, setEntries] = useState<BudgetEntry[]>(() => {
     return currentProject.budgetEntries?.length ? currentProject.budgetEntries : PROJECT.budgetEntries;
@@ -57,16 +66,32 @@ export default function BudgetPage() {
   const usedPct = Math.round((totalUsed / totalBudget) * 100);
   const budgetColor: 'brand' | 'warning' | 'danger' = usedPct <= 80 ? 'brand' : usedPct <= 95 ? 'warning' : 'danger';
 
-  // Generate flat list of all tasks from project structure for selection
-  const allTasks = currentProject.mainJobs.flatMap((mj: any) => 
-    mj.subMainJobs.flatMap((smj: any) => 
-      smj.subtasks.map((st: any) => ({
-        code: st.code,
-        name: st.name,
-        mjName: mj.name
-      }))
-    )
-  );
+  // Generate dynamic flat list of all WBS tasks & subtasks from project structure
+  const allTasks = useMemo(() => {
+    if (!currentProject?.mainJobs) return [];
+    const list: { code: string; name: string; mjName: string }[] = [];
+    currentProject.mainJobs.forEach((mj: any) => {
+      (mj.subMainJobs || []).forEach((smj: any) => {
+        if (smj.subtasks && smj.subtasks.length > 0) {
+          smj.subtasks.forEach((st: any) => {
+            list.push({
+              code: st.code || st.id,
+              name: st.name,
+              mjName: mj.name
+            });
+          });
+        } else {
+          // Allow selection of Sub Main Job even if no subtasks added yet
+          list.push({
+            code: smj.code || smj.id,
+            name: smj.name,
+            mjName: mj.name
+          });
+        }
+      });
+    });
+    return list;
+  }, [currentProject]);
 
   const numQty = Number(form.qty || 0);
   const numHargaSatuan = Number(form.hargaSatuan || 0);
@@ -376,29 +401,39 @@ export default function BudgetPage() {
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-neutral-200 bg-neutral-50 font-bold text-neutral-800 text-[13px]">
-                <td colSpan={8} className="px-3.5 py-3 text-right">Total Realisasi Anggaran:</td>
-                <td className="px-3.5 py-3 text-right text-brand font-mono whitespace-nowrap">
-                  {formatRupiahFull(totalUsed)}
-                </td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
+            {entries.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-neutral-200 bg-neutral-50 font-bold text-neutral-800 text-[13px]">
+                  <td colSpan={8} className="px-3.5 py-3 text-right">Total Realisasi Anggaran:</td>
+                  <td className="px-3.5 py-3 text-right text-brand font-mono whitespace-nowrap">
+                    {formatRupiahFull(totalUsed)}
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
 
         {filtered.length === 0 && (
-          <EmptyState
-            icon={DollarSign}
-            title="No budget entries match your filter"
-            description="Try changing your search term or add a new transaction record."
-            action={
-              <Button variant="outline" size="sm" onClick={() => setSearch('')}>
-                Clear Search
-              </Button>
-            }
-          />
+          entries.length === 0 ? (
+            <EmptyState
+              icon={DollarSign}
+              title="Belum Ada Transaksi Anggaran"
+              description="Project ini belum memiliki catatan realisasi anggaran pengeluaran."
+            />
+          ) : (
+            <EmptyState
+              icon={Search}
+              title="Tidak Ada Transaksi yang Cocok"
+              description={`Tidak ada data anggaran yang cocok dengan kata kunci "${search}". Coba periksa kata kunci pencarian Anda.`}
+              action={
+                <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                  Clear Search
+                </Button>
+              }
+            />
+          )
         )}
       </Card>
 
@@ -410,20 +445,21 @@ export default function BudgetPage() {
         subtitle="Record new project expenditure linked to WBS element"
         maxWidth="max-w-2xl"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 gap-3">
+        <form onSubmit={handleSubmit} className="space-y-2.5">
+          {/* Row 1: Tanggal & Tugas WBS */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Tanggal</label>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Tanggal</label>
               <input
                 type="date"
                 required
                 value={form.tanggal}
                 onChange={e => setForm(p => ({ ...p, tanggal: e.target.value }))}
-                className="w-full sm:w-1/3 px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               />
             </div>
-            <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Tugas WBS Terkait</label>
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Tugas WBS Terkait</label>
               <select
                 required
                 value={form.codeSubWbs}
@@ -435,41 +471,46 @@ export default function BudgetPage() {
                     subTaskWbs: selected?.name || ''
                   }));
                 }}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                className="w-full max-w-full truncate px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               >
                 <option value="" disabled>Pilih Tugas dari WBS...</option>
-                {allTasks.map(t => (
-                  <option key={t.code} value={t.code}>[{t.code}] {t.name} (Bagian dari: {t.mjName})</option>
-                ))}
+                {currentProject.mainJobs.map((mj: any) => {
+                  const items: { code: string; name: string }[] = [];
+                  (mj.subMainJobs || []).forEach((smj: any) => {
+                    if (smj.subtasks && smj.subtasks.length > 0) {
+                      smj.subtasks.forEach((st: any) => {
+                        items.push({
+                          code: st.code || st.id,
+                          name: st.name,
+                        });
+                      });
+                    } else {
+                      items.push({
+                        code: smj.code || smj.id,
+                        name: `${smj.name} (Sub Task)`,
+                      });
+                    }
+                  });
+
+                  if (items.length === 0) return null;
+                  return (
+                    <optgroup key={mj.id} label={`${mj.code ? `[${mj.code}] ` : ''}${mj.name}`}>
+                      {items.map((it) => (
+                        <option key={it.code} value={it.code}>
+                          [{it.code}] {it.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Kategori Biaya</label>
-              <select
-                value={form.kategori}
-                onChange={e => setForm(p => ({ ...p, kategori: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-              >
-                {KATEGORI.map(k => <option key={k} value={k}>{k}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Lokasi Penyimpanan</label>
-              <input
-                placeholder="e.g. Gudang Proyek B"
-                value={form.lokasi}
-                onChange={e => setForm(p => ({ ...p, lokasi: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
+          {/* Row 2: Nama Item & Kategori */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">
                 Nama Item <span className="text-danger">*</span>
               </label>
               <input
@@ -477,23 +518,47 @@ export default function BudgetPage() {
                 placeholder="e.g. Semen Gresik 50kg"
                 value={form.namaItem}
                 onChange={e => setForm(p => ({ ...p, namaItem: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               />
             </div>
             <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Spesifikasi</label>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Kategori Biaya</label>
+              <select
+                value={form.kategori}
+                onChange={e => setForm(p => ({ ...p, kategori: e.target.value }))}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
+              >
+                {KATEGORI.map(k => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 3: Spesifikasi & Lokasi */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Spesifikasi</label>
               <input
                 placeholder="e.g. Portland Composite Cement"
                 value={form.spesifikasi}
                 onChange={e => setForm(p => ({ ...p, spesifikasi: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Lokasi Penyimpanan</label>
+              <input
+                placeholder="e.g. Gudang Proyek B"
+                value={form.lokasi}
+                onChange={e => setForm(p => ({ ...p, lokasi: e.target.value }))}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          {/* Row 4: QTY, Satuan, Harga Satuan */}
+          <div className="grid grid-cols-3 gap-2.5">
             <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">
                 QTY <span className="text-danger">*</span>
               </label>
               <input
@@ -503,21 +568,21 @@ export default function BudgetPage() {
                 placeholder="100"
                 value={form.qty}
                 onChange={e => setForm(p => ({ ...p, qty: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               />
             </div>
             <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Satuan</label>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Satuan</label>
               <select
                 value={form.satuan}
                 onChange={e => setForm(p => ({ ...p, satuan: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               >
                 {SATUAN.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">
                 Harga Satuan (Rp) <span className="text-danger">*</span>
               </label>
               <input
@@ -528,44 +593,46 @@ export default function BudgetPage() {
                 placeholder="75000"
                 value={form.hargaSatuan}
                 onChange={e => setForm(p => ({ ...p, hargaSatuan: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
               />
             </div>
           </div>
 
           {/* Auto Calculation Result Display */}
-          <div className="p-3 rounded-lg bg-brand-light/60 border border-brand-border flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[12.5px] text-neutral-700 font-medium">
-              <Calculator size={16} className="text-brand" />
+          <div className="p-2.5 rounded-lg bg-brand-light/60 border border-brand-border flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-[12px] text-neutral-700 font-medium">
+              <Calculator size={15} className="text-brand" />
               <span>Harga Total (QTY × Harga Satuan):</span>
             </div>
-            <span className="text-[15px] font-bold text-brand font-mono">
+            <span className="text-[14px] font-bold text-brand font-mono">
               {formatRupiahFull(hargaTotal)}
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Referensi Dokumen</label>
-              <input
-                placeholder="e.g. PO-2024-08-0112"
-                value={form.referensi}
-                onChange={e => setForm(p => ({ ...p, referensi: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-              />
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Keterangan</label>
-              <input
-                placeholder="Catatan tambahan..."
-                value={form.keterangan}
-                onChange={e => setForm(p => ({ ...p, keterangan: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-              />
-            </div>
+          {/* Row 5: Referensi Dokumen */}
+          <div>
+            <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Referensi Dokumen</label>
+            <input
+              placeholder="e.g. PO-2024-08-0112 / No. Kwitansi"
+              value={form.referensi}
+              onChange={e => setForm(p => ({ ...p, referensi: e.target.value }))}
+              className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
+            />
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
+          {/* Row 6: Keterangan (Multi-line textarea) */}
+          <div>
+            <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Keterangan</label>
+            <textarea
+              rows={4}
+              placeholder="Catatan tambahan atau keterangan detail transaksi (tekan Enter untuk baris baru)..."
+              value={form.keterangan}
+              onChange={e => setForm(p => ({ ...p, keterangan: e.target.value }))}
+              className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2.5 border-t border-neutral-100">
             <Button variant="outline" size="sm" type="button" onClick={() => setShowModal(false)} disabled={submitting}>
               Cancel
             </Button>

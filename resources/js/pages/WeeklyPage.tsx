@@ -115,16 +115,6 @@ export default function WeeklyPage() {
         subtitle="System-generated weekly schedule with Planned vs. Actual tracking"
       />
 
-      {/* Auto-generation Information Banner */}
-      <div className="p-4 rounded-xl bg-brand-light/70 border border-brand-border flex items-start gap-3">
-        <Info size={16} className="text-brand flex-shrink-0 mt-0.5" />
-        <div className="text-[12.5px] text-neutral-700 flex-1 leading-relaxed">
-          <span className="font-semibold text-brand">System-Generated Weekly Periods: </span>
-          The number and dates of weeks are derived automatically from the project schedule (Start: {formatDateDisplay(projectData.startDate)} → End: {formatDateDisplay(projectData.endDate)}).
-          Planned weekly progress is calculated from WBS work weights, while Actual values are reported by authorized PICs.
-        </div>
-      </div>
-
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[

@@ -1,6 +1,6 @@
 import { useState, useEffect, Fragment } from 'react';
 import { usePage, router } from '@inertiajs/react';
-import { Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square, Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties, Download, AlertCircle } from 'lucide-react';
+import { Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square, Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties, Download, AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyType } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
 import { recalculateProgress } from '@/utils/progressEngine';
@@ -48,7 +48,7 @@ export default function TasksPage() {
   
   // Modals
   const [showAddMainJobModal, setShowAddMainJobModal] = useState(false);
-  const [showAddTaskModal, setShowAddTaskModal] = useState<{ smjId: string; smjDbId?: number; task?: SubSubtask } | null>(null);
+  const [showAddTaskModal, setShowAddTaskModal] = useState<{ smjId: string; smjDbId?: number; parentSmj?: SubMainJob; task?: SubSubtask } | null>(null);
   const [showAddSubMainJobModal, setShowAddSubMainJobModal] = useState<{ mjId: string; mjDbId?: number; mjName: string } | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -145,13 +145,14 @@ export default function TasksPage() {
   };
 
   // Add or Edit Sub-Subtask (Task)
-  const handleSaveSubtask = (smjId: string, taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => {
+  const handleSaveSubtask = (smjId: string, taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number; weight?: number }) => {
     if (!projectData.id || !taskData.name) return;
     
     const cleanSubWbsId = taskData.smjDbId || (smjId.startsWith('smj-') ? parseInt(smjId.replace('smj-', '')) : parseInt(smjId));
     const payload = {
       sub_wbs_id: cleanSubWbsId,
       name: taskData.name,
+      weight: taskData.weight !== undefined ? Number(taskData.weight) : undefined,
       divisions_id: taskData.divisionId || null,
       duration: taskData.duration || 1,
       start: taskData.startDate || null,
@@ -164,6 +165,27 @@ export default function TasksPage() {
       router.put(`/projects/${projectData.id}/tasks/${taskData.id}`, payload, {
         preserveScroll: true,
         onSuccess: () => {
+          setProjectData(prev => {
+            const newData = { ...prev };
+            newData.mainJobs = newData.mainJobs.map(mj => ({
+              ...mj,
+              subMainJobs: mj.subMainJobs.map(smj => {
+                if (smj.id !== smjId) return smj;
+                return {
+                  ...smj,
+                  subtasks: smj.subtasks.map(st => {
+                    if (st.id !== taskData.id) return st;
+                    return {
+                      ...st,
+                      name: taskData.name || st.name,
+                      weight: taskData.weight !== undefined ? Number(taskData.weight) : st.weight,
+                    };
+                  })
+                };
+              })
+            }));
+            return recalculateSchedule(recalculateProgress(newData));
+          });
           setToastMsg(`Task "${taskData.name}" berhasil diperbarui.`);
           setShowAddTaskModal(null);
         },
@@ -383,17 +405,6 @@ export default function TasksPage() {
         }
       />
 
-      {/* Role explanation banner */}
-      <div className="p-3.5 sm:p-4 rounded-xl bg-brand-light/60 border border-brand-border flex items-start gap-3">
-        <Info size={16} className="text-brand flex-shrink-0 mt-0.5" />
-        <div className="text-[12.5px] text-neutral-700 flex-1">
-          <span className="font-semibold text-brand">Otorisasi Sesuai Aturan: </span>
-          {isPIC && "Sebagai PIC, Anda berwenang penuh untuk menambah Main Task, menambah Sub Task, menambah Task, serta mengedit jadwal di proyek ini."}
-          {isWorker && `Sebagai Pekerja dari divisi "${user?.division || 'Internal'}", Anda hanya diizinkan untuk mencentang tugas yang ditujukan ke divisi Anda.`}
-          {isAdmin && "Sebagai Admin, Anda dapat memantau seluruh progres tugas secara transparan dalam mode baca (Read-Only)."}
-        </div>
-      </div>
-
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row gap-2.5">
         <div className="relative flex-1">
@@ -444,20 +455,20 @@ export default function TasksPage() {
                   <span className="text-[10px] font-bold">{mj.code}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13.5px] font-bold text-neutral-900 truncate">{mj.name}</div>
-                  <div className="text-[11px] text-neutral-400 font-medium hidden sm:block">
+                  <div className="text-[15px] sm:text-[16px] font-black text-neutral-900 truncate">{mj.name}</div>
+                  <div className="text-[12.5px] text-neutral-600 font-bold hidden sm:block mt-0.5">
                     Bobot Main Job: {mj.weight}%
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0 ml-2">
-                  <span className="text-[11px] font-medium text-neutral-400 hidden sm:inline">
+                  <span className="text-[12px] font-semibold text-neutral-500 hidden sm:inline">
                     {mj.subMainJobs.length} Sub Tasks
                   </span>
-                  <StatusBadge status={mj.status} size="xs" />
+                  <StatusBadge status={mj.status} size="sm" />
                   <div className="w-16 hidden md:block">
                     <ProgressBar value={mj.progress} size="xs" showLabel={false} />
                   </div>
-                  <span className="text-[12px] font-bold text-neutral-800 w-9 text-right">{mj.progress}%</span>
+                  <span className="text-[15px] sm:text-[16px] font-black text-neutral-900 w-12 text-right">{mj.progress}%</span>
 
                   {/* PIC can add Sub Task & delete Main Task */}
                   {isPIC && (
@@ -504,9 +515,9 @@ export default function TasksPage() {
                       isAdmin={isAdmin}
                       onOpenAddModal={() => {
                         setExpandedSMJ(p => ({ ...p, [smj.id]: true }));
-                        setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId });
+                        setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, parentSmj: smj });
                       }}
-                      onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, task })}
+                      onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, parentSmj: smj, task })}
                       onDeleteSubMainJob={() => handleDeleteSubMainJob(mj.id, smj.id, (smj as any).dbId, smj.name)}
                       onDeleteTask={(taskId, taskName) => handleDeleteSubtask(smj.id, taskId, taskName)}
                       onCheck={handleCheck}
@@ -527,9 +538,10 @@ export default function TasksPage() {
           <div className="overflow-x-auto scrollbar-thin max-h-[70vh]">
             <table className="w-full min-w-[1000px] text-left border-collapse">
               <thead className="bg-neutral-100/80 border-b border-neutral-200 sticky top-0 z-10">
-                <tr className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
+                <tr className="text-[12px] font-bold text-neutral-600 uppercase tracking-wider">
                   <th className="px-4 py-3">WBS Code</th>
                   <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 text-right">Bobot</th>
                   <th className="px-4 py-3">Divisi</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Progress</th>
@@ -539,35 +551,37 @@ export default function TasksPage() {
                   <th className="px-4 py-3">Pred</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100 text-[12px]">
+              <tbody className="divide-y divide-neutral-100 text-[13px]">
                 {filteredMJs.map(mj => (
                   <Fragment key={mj.id}>
                     {/* Main Job Row */}
                     <tr className="bg-brand/5 hover:bg-brand/10 transition-colors">
-                      <td className="px-4 py-2.5 font-bold text-brand">{mj.code}</td>
-                      <td className="px-4 py-2.5 font-bold text-neutral-900">{mj.name}</td>
-                      <td className="px-4 py-2.5 text-neutral-500 font-medium">—</td>
-                      <td className="px-4 py-2.5"><StatusBadge status={mj.status} size="xs" /></td>
-                      <td className="px-4 py-2.5 text-right font-bold text-brand">{mj.progress}%</td>
-                      <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(mj.startDate)}</td>
-                      <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(mj.finishDate)}</td>
-                      <td className="px-4 py-2.5 text-right text-neutral-400">—</td>
-                      <td className="px-4 py-2.5 text-neutral-400">—</td>
+                      <td className="px-4 py-3 font-bold text-brand">{mj.code}</td>
+                      <td className="px-4 py-3 font-bold text-neutral-900 text-[14px]">{mj.name}</td>
+                      <td className="px-4 py-3 text-right font-black text-brand text-[13px]">{mj.weight}%</td>
+                      <td className="px-4 py-3 text-neutral-500 font-medium">—</td>
+                      <td className="px-4 py-3"><StatusBadge status={mj.status} size="sm" /></td>
+                      <td className="px-4 py-3 text-right font-black text-brand text-[14px]">{mj.progress}%</td>
+                      <td className="px-4 py-3 text-neutral-600 font-medium">{formatDateDisplay(mj.startDate)}</td>
+                      <td className="px-4 py-3 text-neutral-600 font-medium">{formatDateDisplay(mj.finishDate)}</td>
+                      <td className="px-4 py-3 text-right text-neutral-400">—</td>
+                      <td className="px-4 py-3 text-neutral-400">—</td>
                     </tr>
                     
                     {/* Sub Main Job Rows */}
                     {mj.subMainJobs.map(smj => (
                       <Fragment key={smj.id}>
                         <tr className="bg-neutral-50 hover:bg-neutral-100/70 transition-colors">
-                          <td className="px-4 py-2.5 pl-8 font-semibold text-neutral-700">{smj.code}</td>
-                          <td className="px-4 py-2.5 font-semibold text-neutral-800">{smj.name}</td>
+                          <td className="px-4 py-2.5 pl-8 font-bold text-neutral-700">{smj.code}</td>
+                          <td className="px-4 py-2.5 font-bold text-neutral-800 text-[13.5px]">{smj.name}</td>
+                          <td className="px-4 py-2.5 text-right font-bold text-neutral-800 text-[12.5px]">{smj.weight}%</td>
                           <td className="px-4 py-2.5">
-                            <span className="px-1.5 py-0.5 bg-white border border-neutral-200 rounded text-[10px] font-bold text-neutral-600">
+                            <span className="px-2 py-0.5 bg-white border border-neutral-200 rounded text-[11px] font-bold text-neutral-600">
                               {smj.pic}
                             </span>
                           </td>
                           <td className="px-4 py-2.5"><StatusBadge status={smj.status} size="xs" /></td>
-                          <td className="px-4 py-2.5 text-right font-bold text-neutral-700">{smj.progress}%</td>
+                          <td className="px-4 py-2.5 text-right font-black text-neutral-800 text-[13px]">{smj.progress}%</td>
                           <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(smj.startDate)}</td>
                           <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(smj.finishDate)}</td>
                           <td className="px-4 py-2.5 text-right text-neutral-400">—</td>
@@ -577,20 +591,21 @@ export default function TasksPage() {
                         {/* Sub-Subtask Rows */}
                         {smj.subtasks.map(st => (
                           <tr key={st.id} className="hover:bg-neutral-50/50 transition-colors">
-                            <td className="px-4 py-2 pl-12 font-mono text-[11px] text-neutral-500">{st.code}</td>
-                            <td className="px-4 py-2 text-neutral-700 flex items-center gap-2">
-                              {st.checked && <CheckSquare size={13} className="text-success" />}
-                              <span className={st.checked ? 'line-through text-neutral-400' : ''}>{st.name}</span>
+                            <td className="px-4 py-2 pl-12 font-mono text-[12px] text-neutral-500 font-semibold">{st.code}</td>
+                            <td className="px-4 py-2 text-neutral-800 font-medium flex items-center gap-2">
+                              {st.checked && <CheckSquare size={14} className="text-success" />}
+                              <span className={st.checked ? 'line-through text-neutral-400' : 'text-neutral-900 font-medium'}>{st.name}</span>
                             </td>
-                            <td className="px-4 py-2 text-neutral-500 text-[11px]">{st.division || smj.pic}</td>
+                            <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">{st.weight ?? 100}%</td>
+                            <td className="px-4 py-2 text-neutral-600 text-[11.5px]">{st.division || smj.pic}</td>
                             <td className="px-4 py-2"><StatusBadge status={st.checked ? 'Completed' : st.status} size="xs" /></td>
-                            <td className="px-4 py-2 text-right font-semibold text-neutral-600">
+                            <td className="px-4 py-2 text-right font-bold text-neutral-800 text-[13px]">
                               {st.checked ? '100' : st.progress}%
                             </td>
                             <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.startDate)}</td>
                             <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.finishDate)}</td>
                             <td className="px-4 py-2 text-right text-neutral-600">{st.duration}d</td>
-                            <td className="px-4 py-2 font-mono text-[11px] text-neutral-500">
+                            <td className="px-4 py-2 font-mono text-[11.5px] text-neutral-500">
                               {st.predecessor ? `${st.predecessor} (${st.depType || 'FS'}${st.lag ? `+${st.lag}` : ''})` : '—'}
                             </td>
                           </tr>
@@ -640,6 +655,7 @@ export default function TasksPage() {
         <AddSubtaskModal
           smjId={showAddTaskModal.smjId}
           smjDbId={showAddTaskModal.smjDbId}
+          parentSmj={showAddTaskModal.parentSmj}
           divisions={divisions}
           initialData={showAddTaskModal.task}
           onClose={() => setShowAddTaskModal(null)}
@@ -672,24 +688,24 @@ function SubMainJobSection({
 }) {
   return (
     <div className="transition-colors">
-      <div className="flex items-center gap-3 pl-6 sm:pl-9 pr-4 py-2.5 hover:bg-neutral-50/80">
+      <div className="flex items-center gap-3 pl-6 sm:pl-9 pr-4 py-3 hover:bg-neutral-50/80">
         <button onClick={onToggle} className="text-neutral-400 hover:text-neutral-600 flex-shrink-0">
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         </button>
         <div className="w-5 h-5 rounded bg-neutral-200/80 flex items-center justify-center flex-shrink-0">
-          <span className="text-[9.5px] font-bold text-neutral-700">{smj.code}</span>
+          <span className="text-[10px] font-bold text-neutral-700">{smj.code}</span>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[12.5px] font-semibold text-neutral-800 truncate">{smj.name}</span>
+            <span className="text-[14px] sm:text-[15px] font-bold text-neutral-900 truncate">{smj.name}</span>
           </div>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10.5px] text-neutral-400 font-medium">Sub Task (Sub Main Job) · Bobot: {smj.weight}%</span>
+            <span className="text-[12px] text-neutral-600 font-semibold">Sub Task (Sub Main Job) · Bobot: {smj.weight}%</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <StatusBadge status={smj.status} size="xs" />
-          <span className="text-[11.5px] font-bold text-neutral-700 w-8 text-right">{smj.progress}%</span>
+        <div className="flex items-center gap-2.5 flex-shrink-0">
+          <StatusBadge status={smj.status} size="sm" />
+          <span className="text-[13px] sm:text-[14px] font-black text-neutral-800 w-10 text-right">{smj.progress}%</span>
           
           {/* Only PIC can add tasks / delete sub tasks */}
           {isPIC && (
@@ -709,7 +725,7 @@ function SubMainJobSection({
                 className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors"
                 title="Hapus Sub Task"
               >
-                <Trash2 size={12} />
+                <Trash2 size={13} />
               </button>
             </div>
           )}
@@ -718,9 +734,9 @@ function SubMainJobSection({
 
       {/* Level 3: Sub-Subtasks (Tasks) */}
       {expanded && (
-        <div className="pl-12 sm:pl-16 pr-4 pb-3 pt-1 space-y-1.5">
+        <div className="pl-12 sm:pl-16 pr-4 pb-3 pt-1 space-y-2">
           {smj.subtasks.length === 0 ? (
-            <div className="py-2 text-[12px] text-neutral-400 italic">
+            <div className="py-2 text-[12.5px] text-neutral-400 italic">
               Belum ada Task.{isPIC && " Klik 'Add Task' untuk menambahkan pekerjaan."}
             </div>
           ) : (
@@ -759,7 +775,7 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
 }) {
   return (
     <div
-      className={`group flex items-start sm:items-center gap-3 p-2.5 rounded-lg border transition-all ${
+      className={`group flex items-start sm:items-center gap-3 p-3 rounded-lg border transition-all ${
         isChecked
           ? 'bg-success-light/40 border-success/30'
           : 'bg-white border-neutral-200/80 hover:border-neutral-300 shadow-xs'
@@ -774,56 +790,59 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
         }`}
       >
         {isChecked ? (
-          <CheckSquare size={17} className="text-success" />
+          <CheckSquare size={19} className="text-success" />
         ) : (
-          <Square size={17} className="text-neutral-300 hover:text-neutral-500" />
+          <Square size={19} className="text-neutral-300 hover:text-neutral-500" />
         )}
       </button>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold text-neutral-500">{st.code}</span>
-          <span className={`text-[12.5px] font-medium ${isChecked ? 'line-through text-neutral-400' : 'text-neutral-800'}`}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[12px] font-bold text-neutral-500 font-mono">{st.code}</span>
+          <span className={`text-[13.5px] sm:text-[14.5px] font-semibold ${isChecked ? 'line-through text-neutral-400' : 'text-neutral-900'}`}>
             {st.name}
           </span>
-          {!canCheck && <Lock size={11} className="text-neutral-300" title="Anda tidak berhak mengubah tugas ini" />}
+          <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
+            Bobot {st.weight ?? 100}%
+          </span>
+          {!canCheck && <Lock size={12} className="text-neutral-300" title="Anda tidak berhak mengubah tugas ini" />}
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1 text-[11px] text-neutral-400">
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[10px] font-semibold text-neutral-600">
-            <Shield size={9} />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
+            <Shield size={10} />
             Divisi: {divisi}
           </span>
           <span className="inline-flex items-center gap-1 font-semibold text-neutral-700 bg-neutral-50 px-2 py-0.5 rounded border border-neutral-200">
-            <Calendar size={11} className="text-brand" />
+            <Calendar size={12} className="text-brand" />
             Jadwal: {formatDateDisplay(st.startDate)} s/d {formatDateDisplay(st.finishDate)}
           </span>
-          <span className="text-neutral-500 font-medium">Durasi: {st.duration} hari</span>
+          <span className="text-neutral-600 font-medium">Durasi: {st.duration} hari</span>
           {st.daysLeft !== undefined && st.daysLeft > 0 && !isChecked && (
-            <span className="text-amber-600 font-semibold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[10px]">
+            <span className="text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px]">
               Sisa {st.daysLeft} hari
             </span>
           )}
           {st.predecessor && (
-            <span className="font-medium text-neutral-500">
+            <span className="font-medium text-neutral-600">
               Pred: {st.predecessor} ({st.depType || 'FS'}{st.lag ? ` +${st.lag}d` : ''})
             </span>
           )}
         </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
-        <StatusBadge status={isChecked ? 'Completed' : st.status} size="xs" />
-        <span className="text-[11px] font-bold text-neutral-700 w-7 text-right">
+      <div className="flex items-center gap-2.5 flex-shrink-0 self-end sm:self-center">
+        <StatusBadge status={isChecked ? 'Completed' : st.status} size="sm" />
+        <span className="text-[13px] sm:text-[14px] font-bold text-neutral-800 w-10 text-right">
           {isChecked ? 100 : st.progress}%
         </span>
         {/* Edit / Delete: PIC only */}
         {canEdit && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
-            <button onClick={onEdit} className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Edit Task">
-              <Edit2 size={13} />
+            <button onClick={onEdit} className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Edit Task (Nama & Bobot)">
+              <Edit2 size={14} />
             </button>
-            <button onClick={onDelete} className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Delete Task">
-              <Trash2 size={13} />
+            <button onClick={onDelete} className="p-1.5 text-neutral-500 hover:text-danger bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Delete Task">
+              <Trash2 size={14} />
             </button>
           </div>
         )}
@@ -979,6 +998,7 @@ function AddMainTaskModal({ onClose, onSave }: { onClose: () => void; onSave: (n
 function AddSubtaskModal({
   smjId,
   smjDbId,
+  parentSmj,
   divisions,
   onClose,
   onSave,
@@ -986,6 +1006,7 @@ function AddSubtaskModal({
 }: {
   smjId: string;
   smjDbId?: number;
+  parentSmj?: SubMainJob;
   divisions: { id: number; divisi: string }[];
   onClose: () => void;
   onSave: (taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => void;
@@ -999,13 +1020,36 @@ function AddSubtaskModal({
   const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
   const [lag, setLag] = useState(initialData?.lag?.toString() || '0');
 
+  // Calculate sibling task weights
+  const otherTasksWeight = parentSmj?.subtasks
+    ? parentSmj.subtasks
+        .filter(t => t.id !== initialData?.id)
+        .reduce((sum, t) => sum + (Number(t.weight) || 0), 0)
+    : 0;
+
+  const defaultWeight = initialData?.weight !== undefined
+    ? initialData.weight.toString()
+    : (Math.max(0, Math.round((100 - otherTasksWeight) * 100) / 100) || 10).toString();
+
+  const [weight, setWeight] = useState(defaultWeight);
+
+  const currentWeightNum = parseFloat(weight) || 0;
+  const totalWeight = Math.round((otherTasksWeight + currentWeightNum) * 100) / 100;
+  const isOverWeight = totalWeight > 100;
+  const isUnderWeight = totalWeight < 100;
+  const isExactWeight = totalWeight === 100;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    if (isOverWeight) return; // Strict validation: cannot save if > 100%
+    if (currentWeightNum <= 0) return;
+
     onSave({
       id: initialData?.id,
       smjDbId,
       name,
+      weight: currentWeightNum,
       divisionId: divisionId ? parseInt(divisionId) : undefined,
       startDate,
       duration: parseInt(duration) || 1,
@@ -1017,8 +1061,8 @@ function AddSubtaskModal({
 
   return (
     <Modal
-      title={initialData ? "Edit Task" : "Tambah Task Baru (Sub-Subtask)"}
-      subtitle={initialData ? `Mengedit: ${initialData.code}` : "Tambahkan rincian pekerjaan spesifik proyek"}
+      title={initialData ? "Edit Task (Nama & Bobot)" : "Tambah Task Baru (Sub-Subtask)"}
+      subtitle={initialData ? `Mengedit: ${initialData.code} — ${initialData.name}` : "Tambahkan rincian pekerjaan spesifik proyek"}
       onClose={onClose}
       size="md"
     >
@@ -1033,12 +1077,35 @@ function AddSubtaskModal({
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="e.g. Persiapan dan review dokumen vendor..."
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white"
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
             autoFocus
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
+              Bobot Task (%) <span className="text-danger">*</span>
+            </label>
+            <input
+              type="number"
+              min="0.01"
+              max="100"
+              step="0.01"
+              required
+              value={weight}
+              onChange={e => setWeight(e.target.value)}
+              className={`w-full px-3 py-2 rounded-lg border text-[13px] outline-none bg-white font-bold transition-all ${
+                isOverWeight
+                  ? 'border-danger focus:border-danger ring-2 ring-danger/15 text-danger'
+                  : 'border-neutral-200 focus:border-brand text-neutral-900'
+              }`}
+            />
+            <span className="text-[10.5px] text-neutral-400 mt-1 block">
+              Bobot task lain di Sub Task ini: {Math.round(otherTasksWeight * 100) / 100}%
+            </span>
+          </div>
+
           <div>
             <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Divisi Penanggung Jawab</label>
             <select
@@ -1051,6 +1118,39 @@ function AddSubtaskModal({
               ))}
             </select>
           </div>
+        </div>
+
+        {/* Real-time Weight Indicator */}
+        {isOverWeight && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-danger text-[12px] flex items-start gap-2.5 animate-fadeIn">
+            <AlertCircle size={17} className="flex-shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold">Total bobot task melebihi 100% (saat ini {totalWeight}%).</span>
+              <p className="text-[11px] text-red-600 mt-0.5">Sesuaikan bobot task sebelum menyimpan.</p>
+            </div>
+          </div>
+        )}
+
+        {isUnderWeight && (
+          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[12px] flex items-start gap-2.5">
+            <AlertTriangle size={17} className="flex-shrink-0 mt-0.5 text-amber-600" />
+            <div>
+              <span className="font-bold">Total bobot saat ini {totalWeight}%.</span>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                Sisa {Math.round((100 - totalWeight) * 100) / 100}% belum teralokasi. Anda tetap dapat menyimpan jika task lain akan diinput berikutnya.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {isExactWeight && (
+          <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-[12px] flex items-center gap-2.5">
+            <CheckCircle2 size={17} className="flex-shrink-0 text-success" />
+            <span className="font-bold">Total alokasi bobot pas 100%.</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Durasi (Hari)</label>
             <input
@@ -1061,9 +1161,6 @@ function AddSubtaskModal({
               className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
             />
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Tanggal Mulai</label>
             <input
@@ -1073,6 +1170,9 @@ function AddSubtaskModal({
               className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
             />
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Predecessor</label>
             <input
@@ -1082,13 +1182,32 @@ function AddSubtaskModal({
               className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
             />
           </div>
+          <div>
+            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Tipe Dependensi</label>
+            <select
+              value={depType}
+              onChange={e => setDepType(e.target.value as DependencyType)}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+            >
+              <option value="FS">Finish-to-Start (FS)</option>
+              <option value="SS">Start-to-Start (SS)</option>
+              <option value="FF">Finish-to-Finish (FF)</option>
+              <option value="SF">Start-to-Finish (SF)</option>
+            </select>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
           <Button variant="outline" size="sm" type="button" onClick={onClose}>
             Batal
           </Button>
-          <Button variant="primary" size="sm" type="submit">
+          <Button
+            variant="primary"
+            size="sm"
+            type="submit"
+            disabled={isOverWeight || currentWeightNum <= 0}
+            className={isOverWeight ? 'opacity-50 cursor-not-allowed' : ''}
+          >
             Simpan Task
           </Button>
         </div>

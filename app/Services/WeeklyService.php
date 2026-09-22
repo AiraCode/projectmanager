@@ -94,4 +94,38 @@ class WeeklyService
 
         return $weeklyData;
     }
+
+    /**
+     * Get current cumulative planned progress up to current date.
+     */
+    public function getCurrentPlannedProgress($projectId)
+    {
+        $weeklyData = $this->getWeeklyData($projectId);
+        if (empty($weeklyData)) {
+            $project = Project::find($projectId);
+            if (!$project || !$project->start || !$project->end) return 0;
+            $now = Carbon::now();
+            if ($now->lt($project->start)) return 0;
+            if ($now->gte($project->end)) return 100;
+            $totalDays = $project->start->diffInDays($project->end) ?: 1;
+            $elapsedDays = $project->start->diffInDays($now);
+            return min(100, max(0, round(($elapsedDays / $totalDays) * 100)));
+        }
+
+        $today = Carbon::now()->toDateString();
+        // Find week where today falls between startDate and endDate
+        foreach ($weeklyData as $w) {
+            if ($today >= $w['startDate'] && $today <= $w['endDate']) {
+                return (float) $w['plannedCumulative'];
+            }
+        }
+
+        // If today is before first week
+        if ($today < $weeklyData[0]['startDate']) {
+            return 0.0;
+        }
+
+        // If today is after last week
+        return 100.0;
+    }
 }

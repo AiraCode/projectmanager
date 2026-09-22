@@ -22,11 +22,11 @@ use Carbon\Carbon;
 class ProjectController extends Controller
 {
     /**
-     * Project card selector — shown to Admin Utama & Admin Progres.
+     * Project card selector (ProjectListPage) — shown to Admin Utama & Admin Progres.
      * PIC is redirected directly to their project dashboard (or creation page if none).
      * Worker is redirected directly to their company's tasks.
      */
-    public function index(Request $request)
+    public function projectListPage(Request $request)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -42,7 +42,7 @@ class ProjectController extends Controller
             }
             // PIC has no project yet (e.g. pic4): let them create one!
             $companies = Company::select('id', 'name')->get();
-            return Inertia::render('ProjectsListPage', [
+            return Inertia::render('ProjectListPage', [
                 'projects'  => [],
                 'canCreate' => true,
                 'companies' => $companies,
@@ -57,18 +57,27 @@ class ProjectController extends Controller
                 'name'        => $p->title,
                 'company'     => $p->company?->name ?? '—',
                 'manager'     => $p->manager?->username ?? $p->manager?->name ?? '—',
-                'status'      => $p->status ?? 'Open',
-                'progress'    => (int) ($p->progress ?? 0),
-                'start_date'  => $p->start ? $p->start->format('Y-m-d') : null,
-                'end_date'    => $p->end ? $p->end->format('Y-m-d') : null,
+                'status'           => $p->status ?? 'Open',
+                'progress'         => (int) ($p->progress ?? 0),
+                'planned_progress' => app(\App\Services\WeeklyService::class)->getCurrentPlannedProgress($p->id),
+                'start_date'       => $p->start ? $p->start->format('Y-m-d') : null,
+                'end_date'         => $p->end ? $p->end->format('Y-m-d') : null,
             ];
         });
 
-        return Inertia::render('ProjectsListPage', [
+        return Inertia::render('ProjectListPage', [
             'projects'  => $projects,
             'canCreate' => false, // Admin Utama and Admin Progres CANNOT create project!
             'userRole'  => $role,
         ]);
+    }
+
+    /**
+     * Backward-compatible alias for index.
+     */
+    public function index(Request $request)
+    {
+        return $this->projectListPage($request);
     }
 
     /**
@@ -82,12 +91,12 @@ class ProjectController extends Controller
 
         if ($role === 'admin_progres') {
             if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         return Inertia::render('DashboardPage', [
@@ -97,9 +106,9 @@ class ProjectController extends Controller
     }
 
     /**
-     * Project detail breakdown (17 Main Jobs breakdown).
+     * Project detail breakdown (ProjectDetailPage).
      */
-    public function projectPage(Request $request, $id = null)
+    public function projectDetailPage(Request $request, $id = null)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -107,18 +116,26 @@ class ProjectController extends Controller
 
         if ($role === 'admin_progres') {
             if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         return Inertia::render('ProjectDetailPage', [
             'project'  => $this->transformProjectData($project),
             'userRole' => $role,
         ]);
+    }
+
+    /**
+     * Backward-compatible alias for projectPage.
+     */
+    public function projectPage(Request $request, $id = null)
+    {
+        return $this->projectDetailPage($request, $id);
     }
 
     /**
@@ -132,13 +149,13 @@ class ProjectController extends Controller
 
         if ($role === 'admin_progres') {
             if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
-            return redirect()->route('projects.index');
+            return redirect()->route('scurve');
         }
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
             // No project found — redirect appropriately instead of 404
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         $divisions = Division::select('id', 'divisi')->get();
@@ -169,12 +186,12 @@ class ProjectController extends Controller
 
         if ($role === 'admin_progres') {
             if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
@@ -196,12 +213,12 @@ class ProjectController extends Controller
 
         if ($role === 'admin_progres') {
             if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         return Inertia::render('WeeklyPage', [
@@ -221,12 +238,12 @@ class ProjectController extends Controller
 
         if ($role === 'admin_progres') {
             if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         return Inertia::render('BudgetPage', [
@@ -248,7 +265,7 @@ class ProjectController extends Controller
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
             // Admin Progres has no specific project selected — send back to project list
-            return redirect()->route('projects.index');
+            return redirect()->route('projectlistpage');
         }
 
         return Inertia::render('SCurvePage', [
@@ -578,6 +595,7 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'sub_wbs_id'   => 'required|exists:sub_wbs,id',
             'name'         => 'required|string|max:255',
+            'weight'       => 'nullable|numeric|min:0|max:100',
             'divisions_id' => 'nullable|exists:divisions,id',
             'duration'     => 'nullable|integer|min:0',
             'start'        => 'nullable|date',
@@ -600,6 +618,7 @@ class ProjectController extends Controller
             'sub_wbs_id'   => $subWbs->id,
             'divisions_id' => $divisionId,
             'name'         => $validated['name'],
+            'weight'       => isset($validated['weight']) ? (float) $validated['weight'] : 100.0,
             'vendor'       => 'INTERNAL',
             'start'        => $startDate,
             'end'          => $endDate,
@@ -633,6 +652,7 @@ class ProjectController extends Controller
 
         $validated = $request->validate([
             'name'         => 'required|string|max:255',
+            'weight'       => 'nullable|numeric|min:0|max:100',
             'divisions_id' => 'nullable|exists:divisions,id',
             'duration'     => 'nullable|integer|min:0',
             'start'        => 'nullable|date',
@@ -643,6 +663,9 @@ class ProjectController extends Controller
         ]);
 
         $task->name = $validated['name'];
+        if (isset($validated['weight'])) {
+            $task->weight = $validated['weight'];
+        }
         if (isset($validated['divisions_id'])) {
             $task->divisions_id = $validated['divisions_id'];
         }
@@ -834,7 +857,7 @@ class ProjectController extends Controller
                         'status'      => $st->status ?? 'Open',
                         'predecessor' => $st->predecessor ?? '',
                         'depType'     => 'FS',
-                        'weight'      => 0,
+                        'weight'      => (float) ($st->weight ?? 100),
                         'checked'     => (bool) $st->is_completed,
                         'division'    => $st->division?->divisi ?? 'General',
                     ];
@@ -1046,5 +1069,95 @@ class ProjectController extends Controller
         );
 
         return back()->with('success', "Actual progress untuk W{$validated['week']} berhasil disimpan.");
+    }
+
+    /**
+     * Division Progress page — shows progress per division based on tasks.
+     */
+    public function divisionProgress(Request $request, $id = null)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+        $targetId = $id ?? $request->query('project_id');
+
+        if ($role === 'admin_progres') {
+            if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
+            return redirect()->route('projectlistpage');
+        }
+
+        $project = $this->resolveProjectForUser($targetId);
+        if (!$project) {
+            return redirect()->route('projectlistpage');
+        }
+
+        // Retrieve all tasks for this project
+        $tasks = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($project) {
+            $q->where('projects_id', $project->id);
+        })->with(['division', 'parentSubWbs.mainWbs'])->get();
+
+        // Group by division
+        $divisionGroups = [];
+        foreach ($tasks as $task) {
+            $divName = $task->division?->divisi ?? 'General';
+            if (!isset($divisionGroups[$divName])) {
+                $divisionGroups[$divName] = [
+                    'division'    => $divName,
+                    'division_id' => $task->divisions_id,
+                    'total'       => 0,
+                    'completed'   => 0,
+                    'remaining'   => 0,
+                    'percentage'  => 0,
+                    'tasks'       => [],
+                ];
+            }
+
+            $divisionGroups[$divName]['total']++;
+            if ($task->is_completed) {
+                $divisionGroups[$divName]['completed']++;
+            } else {
+                $divisionGroups[$divName]['remaining']++;
+            }
+
+            $divisionGroups[$divName]['tasks'][] = [
+                'id'           => $task->id,
+                'name'         => $task->name,
+                'weight'       => (float) ($task->weight ?? 100),
+                'is_completed' => (bool) $task->is_completed,
+                'status'       => $task->status ?? ($task->is_completed ? 'Completed' : 'Open'),
+                'subMainJob'   => $task->parentSubWbs?->name ?? '—',
+                'mainJob'      => $task->parentSubWbs?->mainWbs?->name ?? '—',
+                'start'        => $task->start ? $task->start->format('Y-m-d') : null,
+                'end'          => $task->end ? $task->end->format('Y-m-d') : null,
+            ];
+        }
+
+        foreach ($divisionGroups as &$group) {
+            $group['percentage'] = $group['total'] > 0
+                ? round(($group['completed'] / $group['total']) * 100)
+                : 0;
+        }
+        unset($group);
+
+        // Sort divisions alphabetically
+        ksort($divisionGroups);
+
+        // If user is a worker (division account), filter to ONLY their division
+        if ($role === 'worker') {
+            $userDivName = strtolower(trim($user->division?->divisi ?? ''));
+            $userDivId   = $user->divisions_id;
+            if ($userDivName !== '' || $userDivId) {
+                $divisionGroups = array_filter($divisionGroups, function($g) use ($userDivName, $userDivId) {
+                    return ($userDivName !== '' && strtolower(trim($g['division'])) === $userDivName)
+                        || ($userDivId && isset($g['division_id']) && $g['division_id'] == $userDivId);
+                });
+            }
+        }
+
+        return Inertia::render('DivisionProgressPage', [
+            'project'        => $this->transformProjectData($project),
+            'divisionGroups' => array_values($divisionGroups),
+            'userRole'       => $role,
+            'userDivision'   => $user->division?->divisi ?? null,
+        ]);
     }
 }

@@ -29,7 +29,7 @@ class AuthController extends Controller
                 return redirect()->intended('/tasks');
             }
 
-            return redirect()->intended('/projects');
+            return redirect()->intended('/projectlistpage');
         }
 
         return back()->withErrors([

@@ -1,20 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import {
   LayoutDashboard, FolderOpen, CheckSquare, GitBranch,
   BarChart2, TrendingUp, DollarSign, Menu, X, LogOut,
-  ChevronRight, Shield, User
+  ChevronRight, ChevronLeft, Shield, User, Users
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { Modal, Button } from '@/components/ui';
 
 const NAV_ITEMS = [
-  { to: '/projects',  icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/project',   icon: FolderOpen,      label: 'Project'   },
-  { to: '/tasks',     icon: CheckSquare,     label: 'Tasks'     },
-  { to: '/timeline',  icon: GitBranch,       label: 'Timeline'  },
-  { to: '/weekly',    icon: BarChart2,       label: 'Weekly'    },
-  { to: '/scurve',    icon: TrendingUp,      label: 'S-Curve'   },
-  { to: '/budget',    icon: DollarSign,      label: 'Budget',   adminOnly: true },
+  { to: '/projectlistpage',   icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/projectdetailpage', icon: FolderOpen,      label: 'Project Detail' },
+  { to: '/tasks',             icon: CheckSquare,     label: 'Tasks'     },
+  { to: '/timeline',          icon: GitBranch,       label: 'Timeline'  },
+  { to: '/weekly',            icon: BarChart2,       label: 'Weekly'    },
+  { to: '/scurve',            icon: TrendingUp,      label: 'S-Curve'   },
+  { to: '/budget',            icon: DollarSign,      label: 'Budget',   adminOnly: true },
+  { to: '/division-progress', icon: Users,           label: 'Division Progress' },
 ] as const;
 
 export default function Layout({ children }: { children?: React.ReactNode }) {
@@ -23,6 +25,43 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('jeker_sidebar_collapsed') === 'true';
+    }
+    return false;
+  });
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  const toggleCollapse = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('jeker_sidebar_collapsed', String(next));
+      }
+      return next;
+    });
+  };
+
+  const mainRef = useRef<HTMLElement>(null);
+
+  // Auto reset scroll to top on page navigation
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0;
+    }
+    window.scrollTo(0, 0);
+  }, [url]);
+
+  useEffect(() => {
+    const unregister = router.on('navigate', () => {
+      if (mainRef.current) {
+        mainRef.current.scrollTop = 0;
+      }
+      window.scrollTo(0, 0);
+    });
+    return () => unregister();
+  }, []);
 
   useEffect(() => {
     const handle = (e: MouseEvent) => {
@@ -37,7 +76,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   if (!user) return null;
 
   const currentUrl = url ?? '';
-  const isProjectSelector = currentUrl === '/projects';
+  const isProjectSelector = currentUrl === '/projectlistpage' || currentUrl === '/projects';
 
   const isAdminProgres = user.isAdminProgres || user.role === 'admin_progres';
   const isAdminUtama   = user.isAdminUtama || user.role === 'admin_utama';
@@ -47,40 +86,43 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   // Navigation filtering according to strict authorization rules:
   // - Admin Progres: ONLY S-Curve (and All Projects selector)
   // - Worker: ONLY Tasks
-  // - PIC: Dashboard, Project, Tasks, Timeline, Weekly, S-Curve, Budget
-  // - Admin Utama: All Projects, Dashboard, Project, Tasks, Timeline, Weekly, S-Curve, Budget (Read-only)
+  // - PIC: Dashboard, Project Detail, Tasks, Timeline, Weekly, S-Curve, Budget, Division Progress
+  // - Admin Utama: All Projects, Dashboard, Project Detail, Tasks, Timeline, Weekly, S-Curve, Budget, Division Progress (Read-only)
   let visibleNav: { to: string; icon: any; label: string }[] = [];
 
   if (isAdminProgres) {
     visibleNav = [
-      { to: '/projects', icon: FolderOpen, label: 'All Projects' },
-      { to: '/scurve',   icon: TrendingUp, label: 'S-Curve' },
+      { to: '/projectlistpage', icon: FolderOpen, label: 'All Projects' },
+      { to: '/scurve',          icon: TrendingUp, label: 'S-Curve' },
     ];
   } else if (isWorker) {
     visibleNav = [
-      { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
+      { to: '/tasks',             icon: CheckSquare, label: 'Tasks' },
+      { to: '/division-progress', icon: Users,       label: 'Division Progress' },
     ];
   } else if (isAdminUtama) {
     visibleNav = [
-      { to: '/projects',  icon: FolderOpen,      label: 'All Projects' },
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/project',   icon: FolderOpen,      label: 'Project' },
-      { to: '/tasks',     icon: CheckSquare,     label: 'Tasks' },
-      { to: '/timeline',  icon: GitBranch,       label: 'Timeline' },
-      { to: '/weekly',    icon: BarChart2,       label: 'Weekly' },
-      { to: '/scurve',    icon: TrendingUp,      label: 'S-Curve' },
-      { to: '/budget',    icon: DollarSign,      label: 'Budget' },
+      { to: '/projectlistpage',   icon: FolderOpen,      label: 'All Projects' },
+      { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/projectdetailpage', icon: FolderOpen,      label: 'Project Detail' },
+      { to: '/tasks',             icon: CheckSquare,     label: 'Tasks' },
+      { to: '/timeline',          icon: GitBranch,       label: 'Timeline' },
+      { to: '/weekly',            icon: BarChart2,       label: 'Weekly' },
+      { to: '/scurve',            icon: TrendingUp,      label: 'S-Curve' },
+      { to: '/budget',            icon: DollarSign,      label: 'Budget' },
+      { to: '/division-progress', icon: Users,           label: 'Division Progress' },
     ];
   } else {
     // PIC
     visibleNav = [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/project',   icon: FolderOpen,      label: 'Project' },
-      { to: '/tasks',     icon: CheckSquare,     label: 'Tasks' },
-      { to: '/timeline',  icon: GitBranch,       label: 'Timeline' },
-      { to: '/weekly',    icon: BarChart2,       label: 'Weekly' },
-      { to: '/scurve',    icon: TrendingUp,      label: 'S-Curve' },
-      { to: '/budget',    icon: DollarSign,      label: 'Budget' },
+      { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/projectdetailpage', icon: FolderOpen,      label: 'Project Detail' },
+      { to: '/tasks',             icon: CheckSquare,     label: 'Tasks' },
+      { to: '/timeline',          icon: GitBranch,       label: 'Timeline' },
+      { to: '/weekly',            icon: BarChart2,       label: 'Weekly' },
+      { to: '/scurve',            icon: TrendingUp,      label: 'S-Curve' },
+      { to: '/budget',            icon: DollarSign,      label: 'Budget' },
+      { to: '/division-progress', icon: Users,           label: 'Division Progress' },
     ];
   }
 
@@ -94,6 +136,12 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
 
   const pageProps = usePage().props as any;
   const activeProjectId = pageProps?.project?.id;
+  const activeProject = pageProps?.project;
+  const projectHeaderTitle = activeProject
+    ? (activeProject.company && activeProject.name
+        ? `${activeProject.company} — ${activeProject.name}`
+        : activeProject.name || '')
+    : '';
 
   useEffect(() => {
     if (activeProjectId && typeof window !== 'undefined') {
@@ -107,10 +155,11 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   };
 
   const getNavUrl = (basePath: string) => {
-    if (basePath === '/projects') return basePath;
+    if (basePath === '/projectlistpage' || basePath === '/projects') return basePath;
     const resolvedId = activeProjectId || (typeof window !== 'undefined' ? localStorage.getItem('jeker_last_project_id') : null);
     if (!resolvedId) return basePath;
     if (basePath === '/dashboard') return `/projects/${resolvedId}`;
+    if (basePath === '/division-progress') return `/projects/${resolvedId}/division-progress`;
     return `${basePath}?project_id=${resolvedId}`;
   };
 
@@ -128,107 +177,155 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
       {!isProjectSelector && (
         <aside className={`
           fixed lg:static inset-y-0 left-0 z-50
-          w-64 flex flex-col bg-sidebar text-white shadow-xl lg:shadow-none
-          transition-transform duration-200 ease-out
+          flex flex-col bg-sidebar text-white shadow-xl lg:shadow-none
+          transition-all duration-300 ease-in-out
+          ${sidebarCollapsed ? 'w-[76px]' : 'w-64'}
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}>
-          {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
-          <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-brand flex-shrink-0 shadow-sm">
-            <span className="text-white font-bold text-sm tracking-tight">J</span>
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-danger ring-2 ring-sidebar" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1 font-bold text-base tracking-tight text-white leading-none">
-              <span>JEKER</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-danger" />
-            </div>
-            <div className="text-[11px] text-white/40 mt-1 font-medium truncate">Project Management</div>
-          </div>
-          <button
-            className="ml-auto lg:hidden p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Role badge */}
-        <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${roleBadgeStyle}`}>
-            <Shield size={11} />
-            {user.displayRole || user.role} {user.division ? `· ${user.division}` : (user.company ? `· ${user.company}` : '')}
-          </span>
-          <span className="text-[10px] text-white/40 font-mono">v1.0</span>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto scrollbar-hide">
-          {visibleNav.map(({ to, icon: Icon, label }) => {
-            const targetUrl = getNavUrl(to);
-            const purePath = currentUrl.split('?')[0];
-
-            // Precise active state matching routes in routes/web.php:
-            // 1. '/projects' is active ONLY on '/projects' (All Projects list)
-            // 2. '/dashboard' is active on '/dashboard' OR '/projects/{id}' (project dashboard)
-            // 3. Other items (/project, /timeline, /tasks, /weekly, /scurve, /budget) are active on their respective base or scoped routes
-            let isActive = false;
-            if (to === '/projects') {
-              isActive = purePath === '/projects';
-            } else if (to === '/dashboard') {
-              isActive = purePath === '/dashboard' || /^\/projects\/[^/]+$/.test(purePath);
-            } else if (to === '/project') {
-              isActive = purePath === '/project' || /^\/projects\/[^/]+\/detail/.test(purePath);
-            } else if (to === '/timeline') {
-              isActive = purePath === '/timeline' || /^\/projects\/[^/]+\/timeline/.test(purePath);
-            } else if (to === '/weekly') {
-              isActive = purePath === '/weekly' || /^\/projects\/[^/]+\/weekly/.test(purePath);
-            } else if (to === '/scurve') {
-              isActive = purePath === '/scurve' || /^\/projects\/[^/]+\/scurve/.test(purePath);
-            } else if (to === '/budget') {
-              isActive = purePath === '/budget' || /^\/projects\/[^/]+\/budget/.test(purePath);
-            } else if (to === '/tasks') {
-              isActive = purePath === '/tasks' || /^\/projects\/[^/]+\/tasks/.test(purePath);
-            } else {
-              isActive = purePath === to || purePath.startsWith(to + '/');
-            }
-            return (
-              <Link
-                key={to}
-                href={targetUrl}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-all duration-150 ${
-                  isActive
-                    ? 'bg-brand text-white shadow-sm font-semibold'
-                    : 'text-white/65 hover:text-white hover:bg-white/8'
-                }`}
+          {/* Logo & Collapse button */}
+          <div className={`h-[73px] flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-5'} border-b border-white/10 transition-all duration-300 flex-shrink-0`}>
+            {sidebarCollapsed ? (
+              <div
+                onClick={toggleCollapse}
+                className="flex items-center justify-center w-9 h-9 rounded-xl bg-brand cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all"
+                title="Klik untuk membuka sidebar"
               >
-                <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
-                <span>{label}</span>
-                {isActive && <ChevronRight size={14} className="ml-auto opacity-70" />}
-              </Link>
-            );
-          })}
-        </nav>
+                <span className="text-white font-black text-base tracking-tight">J</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-brand flex-shrink-0 shadow-sm">
+                    <span className="text-white font-bold text-sm tracking-tight">J</span>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-base tracking-tight text-white leading-none">
+                      JEKER
+                    </div>
+                    <div className="text-[11px] text-white/40 mt-1 font-medium truncate">Project Management</div>
+                  </div>
+                </div>
 
-        {/* User footer */}
-        <div className="p-3 border-t border-white/10">
-          <div
-            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/8 cursor-pointer transition-colors"
-            onClick={handleLogout}
-            title="Click to logout"
-          >
-            <div className="w-8 h-8 rounded-full bg-brand/30 flex items-center justify-center flex-shrink-0 border border-brand/40">
-              <User size={14} className="text-brand-light" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-white truncate">{user.name}</div>
-              <div className="text-[11px] text-white/40 truncate">{user.email}</div>
-            </div>
-            <LogOut size={15} className="text-white/40 hover:text-danger flex-shrink-0 transition-colors" />
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={toggleCollapse}
+                    className="hidden lg:flex items-center justify-center p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                    title="Tutup Sidebar (Collapse)"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    className="lg:hidden p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-        </div>
-      </aside>
+
+          {/* Navigation */}
+          <nav className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto scrollbar-hide">
+            {visibleNav.map(({ to, icon: Icon, label }) => {
+              const targetUrl = getNavUrl(to);
+              const purePath = currentUrl.split('?')[0];
+              const isAllProjects = to === '/projectlistpage' || to === '/projects';
+
+              // Precise active state matching routes in routes/web.php:
+              let isActive = false;
+              if (to === '/projectlistpage' || to === '/projects') {
+                isActive = purePath === '/projectlistpage' || purePath === '/projects';
+              } else if (to === '/dashboard') {
+                isActive = purePath === '/dashboard' || /^\/projects\/[^/]+$/.test(purePath);
+              } else if (to === '/projectdetailpage' || to === '/project') {
+                isActive = purePath === '/projectdetailpage' || purePath === '/project' || /^\/projects\/[^/]+\/detail/.test(purePath) || /^\/projectdetailpage\/[^/]+/.test(purePath);
+              } else if (to === '/timeline') {
+                isActive = purePath === '/timeline' || /^\/projects\/[^/]+\/timeline/.test(purePath);
+              } else if (to === '/weekly') {
+                isActive = purePath === '/weekly' || /^\/projects\/[^/]+\/weekly/.test(purePath);
+              } else if (to === '/scurve') {
+                isActive = purePath === '/scurve' || /^\/projects\/[^/]+\/scurve/.test(purePath);
+              } else if (to === '/budget') {
+                isActive = purePath === '/budget' || /^\/projects\/[^/]+\/budget/.test(purePath);
+              } else if (to === '/division-progress') {
+                isActive = purePath === '/division-progress' || /^\/projects\/[^/]+\/division-progress/.test(purePath);
+              } else if (to === '/tasks') {
+                isActive = purePath === '/tasks' || /^\/projects\/[^/]+\/tasks/.test(purePath);
+              } else {
+                isActive = purePath === to || purePath.startsWith(to + '/');
+              }
+
+              // Custom click handling for All Projects: confirm before leaving active project
+              const handleClick = (e: React.MouseEvent) => {
+                setSidebarOpen(false);
+                if (isAllProjects && purePath !== '/projectlistpage' && purePath !== '/projects') {
+                  e.preventDefault();
+                  setShowExitConfirm(true);
+                }
+              };
+
+              // Special distinction for All Projects:
+              const allProjectsStyle = isAllProjects
+                ? (isActive
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
+                    : 'text-amber-300/85 hover:text-amber-200 bg-amber-400/10 hover:bg-amber-400/15 border border-amber-400/25')
+                : (isActive
+                    ? 'bg-brand text-white shadow-sm font-semibold'
+                    : 'text-white/65 hover:text-white hover:bg-white/8');
+
+              return (
+                <div key={to}>
+                  <Link
+                    href={targetUrl}
+                    onClick={handleClick}
+                    title={sidebarCollapsed ? label : undefined}
+                    className={`flex items-center rounded-lg transition-all duration-150 ${
+                      sidebarCollapsed
+                        ? `w-10 h-10 mx-auto justify-center ${allProjectsStyle}`
+                        : `gap-3 px-3 py-2.5 text-[13.5px] font-medium ${allProjectsStyle}`
+                    }`}
+                  >
+                    <Icon size={16} strokeWidth={isActive ? 2.5 : 2} className="flex-shrink-0" />
+                    {!sidebarCollapsed && (
+                      <>
+                        <span className="truncate">{label}</span>
+                        {isAllProjects && !isActive && (
+                          <span className="ml-auto text-[9.5px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 font-semibold uppercase tracking-wider">
+                            Home
+                          </span>
+                        )}
+                        {isActive && !isAllProjects && <ChevronRight size={14} className="ml-auto opacity-70" />}
+                      </>
+                    )}
+                  </Link>
+                  {/* Subtle separator below All Projects in expanded mode */}
+                  {isAllProjects && !sidebarCollapsed && (
+                    <div className="my-2 border-b border-white/5" />
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+
+          {/* Sidebar Footer */}
+          <div className="border-t border-white/10 flex-shrink-0 transition-all duration-300">
+            {sidebarCollapsed ? (
+              <div className="py-3.5 text-center" title="Jeker v1.0 © 2026">
+                <span className="text-[10px] text-white/40 font-mono font-bold">v1.0</span>
+              </div>
+            ) : (
+              <div className="p-4 text-center">
+                <div className="text-[11.5px] text-white/50 font-medium tracking-wide">
+                  Jeker, 2026. All rights reserved.
+                </div>
+                <div className="text-[10px] text-white/30 font-mono mt-0.5 font-medium">
+                  Version 1.0
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
       )}
 
       {/* Main app */}
@@ -249,7 +346,25 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
             <span className="font-bold text-neutral-900 text-sm tracking-tight">JEKER</span>
           </div>
 
-          <div className="flex-1" />
+          {/* Project Title Header (Format: [Company Name] — [Project Name]) */}
+          {projectHeaderTitle && !isProjectSelector ? (
+            <div className="flex-1 min-w-0 px-2 lg:px-4">
+              <h1
+                className={`font-black tracking-tight text-neutral-900 truncate leading-snug ${
+                  projectHeaderTitle.length > 55
+                    ? 'text-[12px] sm:text-[13.5px] lg:text-[14.5px]'
+                    : projectHeaderTitle.length > 35
+                    ? 'text-[13px] sm:text-[14.5px] lg:text-[16px]'
+                    : 'text-[14px] sm:text-[16px] lg:text-[18px]'
+                }`}
+                title={projectHeaderTitle}
+              >
+                {projectHeaderTitle}
+              </h1>
+            </div>
+          ) : (
+            <div className="flex-1" />
+          )}
 
           {/* User profile dropdown */}
           <div className="relative" data-profile-menu>
@@ -292,10 +407,44 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
+        <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
           {children}
         </main>
       </div>
+
+      {/* Exit Project Confirmation Modal */}
+      <Modal
+        isOpen={showExitConfirm}
+        onClose={() => setShowExitConfirm(false)}
+        title="Keluar dari Project?"
+        subtitle="Konfirmasi kembali ke halaman pemilihan seluruh project"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-[13px] text-neutral-600 leading-relaxed">
+            Anda sedang aktif membuka halaman project. Apakah Anda yakin ingin keluar dan kembali ke halaman <strong>Daftar Seluruh Project</strong>?
+          </p>
+          <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowExitConfirm(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setShowExitConfirm(false);
+                router.visit('/projectlistpage');
+              }}
+            >
+              Ya, Ke Daftar Project
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

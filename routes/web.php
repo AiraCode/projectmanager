@@ -17,14 +17,16 @@ Route::middleware('auth')->group(function () {
     Route::get('/', function () {
         $role = auth()->user()->role->name ?? '';
         if ($role === 'worker') return redirect('/tasks');
-        if ($role === 'admin_progres') return redirect('/projects');
-        return redirect('/projects');
+        if ($role === 'admin_progres') return redirect('/projectlistpage');
+        return redirect('/projectlistpage');
     });
 
-    // ── Project card selector (Admin Utama / Admin Progres / PIC without project) ──
-    Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
+    // ── Project card selector (ProjectListPage) ──
+    Route::get('/projectlistpage', [ProjectController::class, 'projectListPage'])->name('projectlistpage');
+    Route::get('/projects', [ProjectController::class, 'projectListPage'])->name('projects.index');
 
     // ── Create project (PIC only, Admin is FORBIDDEN) ──
+    Route::post('/projectlistpage', [ProjectController::class, 'store'])->name('projectlistpage.store');
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
 
     // ── Single project dashboard ──
@@ -55,16 +57,20 @@ Route::middleware('auth')->group(function () {
     // ── Other Pages — Guarded: Admin Progres MUST NOT access these ──
     Route::middleware(BlockAdminProgres::class)->group(function () {
         Route::get('/dashboard', [ProjectController::class, 'dashboard'])->name('dashboard');
-        Route::get('/project',   [ProjectController::class, 'projectPage'])->name('project');
+        Route::get('/projectdetailpage', [ProjectController::class, 'projectDetailPage'])->name('projectdetailpage');
+        Route::get('/project',           [ProjectController::class, 'projectDetailPage'])->name('project');
         Route::get('/timeline',  [ProjectController::class, 'timeline'])->name('timeline');
         Route::get('/weekly',    [ProjectController::class, 'weekly'])->name('weekly');
-        Route::get('/budget',    [ProjectController::class, 'budget'])->name('budget');
+        Route::get('/budget',            [ProjectController::class, 'budget'])->name('budget');
+        Route::get('/division-progress', [ProjectController::class, 'divisionProgress'])->name('division-progress');
 
         // Scoped project routes with id parameter
-        Route::get('/projects/{id}/detail',   [ProjectController::class, 'projectPage'])->name('projects.detail');
-        Route::get('/projects/{id}/timeline', [ProjectController::class, 'timeline'])->name('projects.timeline');
-        Route::get('/projects/{id}/weekly',   [ProjectController::class, 'weekly'])->name('projects.weekly');
-        Route::get('/projects/{id}/budget',   [ProjectController::class, 'budget'])->name('projects.budget');
+        Route::get('/projectdetailpage/{id}',          [ProjectController::class, 'projectDetailPage'])->name('projectdetailpage.id');
+        Route::get('/projects/{id}/detail',            [ProjectController::class, 'projectDetailPage'])->name('projects.detail');
+        Route::get('/projects/{id}/timeline',          [ProjectController::class, 'timeline'])->name('projects.timeline');
+        Route::get('/projects/{id}/weekly',            [ProjectController::class, 'weekly'])->name('projects.weekly');
+        Route::get('/projects/{id}/budget',            [ProjectController::class, 'budget'])->name('projects.budget');
+        Route::get('/projects/{id}/division-progress', [ProjectController::class, 'divisionProgress'])->name('projects.division-progress');
 
         // Weekly Progress mutations
         Route::post('/projects/{id}/weekly', [ProjectController::class, 'saveWeeklyProgress'])->name('projects.weekly.store');

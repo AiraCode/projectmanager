@@ -34,8 +34,14 @@ class ProgressService
                 $wbsTasks = $subWbs->wbsTasks;
                 
                 if ($wbsTasks->count() > 0) {
-                    $completedCount = $wbsTasks->where('is_completed', true)->count();
-                    $subWbs->progress = round(($completedCount / $wbsTasks->count()) * 100);
+                    $totalTaskWeight = (float) $wbsTasks->sum('weight');
+                    if ($totalTaskWeight > 0) {
+                        $weightedCompleted = (float) $wbsTasks->where('is_completed', true)->sum('weight');
+                        $subWbs->progress = round(($weightedCompleted / $totalTaskWeight) * 100);
+                    } else {
+                        $completedCount = $wbsTasks->where('is_completed', true)->count();
+                        $subWbs->progress = round(($completedCount / $wbsTasks->count()) * 100);
+                    }
                     
                     // Update individual Wbs status
                     foreach ($wbsTasks as $wbs) {

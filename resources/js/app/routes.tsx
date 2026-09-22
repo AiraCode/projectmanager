@@ -4,6 +4,7 @@ import Layout from '@/components/Layout';
 import LoginPage from '@/pages/LoginPage';
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const ProjectListPage = lazy(() => import('@/pages/ProjectListPage'));
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage'));
 const TasksPage = lazy(() => import('@/pages/TasksPage'));
 const TimelinePage = lazy(() => import('@/pages/TimelinePage'));
@@ -33,6 +34,9 @@ export const router = createHashRouter([
     Component: Layout,
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
+      { path: 'projectlistpage', element: wrap(ProjectListPage) },
+      { path: 'projectdetailpage', element: wrap(ProjectDetailPage) },
+      { path: 'projects', element: wrap(ProjectListPage) },
       { path: 'dashboard', element: wrap(DashboardPage) },
       { path: 'project', element: wrap(ProjectDetailPage) },
       { path: 'tasks', element: wrap(TasksPage) },

@@ -179,7 +179,7 @@ export default function TimelinePage() {
         title="Timeline / Gantt Schedule"
         subtitle={`Visualisasi jadwal proyek (${projectData.name || 'Project'}) berdasarkan fase dan struktur WBS.`}
         actions={
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex flex-col items-end gap-1.5">
             {/* View Mode Switcher */}
             <div className="flex items-center bg-neutral-100 p-1 rounded-lg border border-neutral-200 shadow-2xs">
               <button
@@ -206,27 +206,27 @@ export default function TimelinePage() {
               </button>
             </div>
 
-            {/* Expand / Collapse Controls (WBS Tree Mode) */}
+            {/* Expand / Collapse Controls (WBS Tree Mode) directly underneath */}
             {viewMode === 'wbs-tree' && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center justify-end gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => toggleAll(true)}
-                  className="text-[12px] h-8 px-2.5 bg-white hover:bg-neutral-50"
+                  className="text-[11px] h-7 px-2 bg-white hover:bg-neutral-50"
                   title="Expand all levels"
                 >
-                  <Maximize2 size={13} className="mr-1 text-neutral-500" />
+                  <Maximize2 size={12} className="mr-1 text-neutral-500" />
                   Expand All
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => toggleAll(false)}
-                  className="text-[12px] h-8 px-2.5 bg-white hover:bg-neutral-50"
+                  className="text-[11px] h-7 px-2 bg-white hover:bg-neutral-50"
                   title="Collapse all levels"
                 >
-                  <Minimize2 size={13} className="mr-1 text-neutral-500" />
+                  <Minimize2 size={12} className="mr-1 text-neutral-500" />
                   Collapse All
                 </Button>
               </div>

@@ -22,8 +22,16 @@ export function recalculateProgress(project: Project): Project {
       
       // 1. Calculate SMJ Progress based on Sub-Subtasks
       if (smj.subtasks && smj.subtasks.length > 0) {
-        const completedCount = smj.subtasks.filter(st => st.checked).length;
-        smj.progress = Math.round((completedCount / smj.subtasks.length) * 100);
+        const totalTaskWeight = smj.subtasks.reduce((acc, st) => acc + (Number(st.weight) || 0), 0);
+        if (totalTaskWeight > 0) {
+          const weightedCompleted = smj.subtasks
+            .filter(st => st.checked)
+            .reduce((acc, st) => acc + (Number(st.weight) || 0), 0);
+          smj.progress = Math.round((weightedCompleted / totalTaskWeight) * 100);
+        } else {
+          const completedCount = smj.subtasks.filter(st => st.checked).length;
+          smj.progress = Math.round((completedCount / smj.subtasks.length) * 100);
+        }
         
         // Also update individual subtask status/progress
         smj.subtasks.forEach(st => {
