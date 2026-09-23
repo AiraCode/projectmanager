@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { usePage, Link, router } from '@inertiajs/react';
 import { Building2, User, Calendar, TrendingUp, ChevronRight, FolderOpen, Plus, ShieldAlert, Sparkles } from 'lucide-react';
 import { PageHeader, Card, ProgressBar, StatusBadge, Button, Modal, formatDateDisplay } from '@/components/ui';
@@ -309,71 +309,231 @@ export default function ProjectListPage() {
   );
 }
 
+function getActualTheme(actual: number) {
+  const val = Math.max(0, Math.min(100, Math.round(actual)));
+
+  if (val >= 100) {
+    return {
+      color: '#059669',
+      isComplete: true,
+    };
+  }
+
+  if (val >= 90) {
+    return {
+      color: '#10B981',
+      isComplete: false,
+    };
+  }
+
+  if (val >= 70) {
+    return {
+      color: '#D97706',
+      isComplete: false,
+    };
+  }
+
+  // 0% - 69%: Gradient from strong red (#DC2626) to faded / soft red (#EB6D6D)
+  const ratio = val / 70;
+  const r = Math.round(220 + ratio * 15);
+  const g = Math.round(38 + ratio * 71);
+  const b = Math.round(38 + ratio * 71);
+  const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+
+  return {
+    color: hex,
+    isComplete: false,
+  };
+}
+
 function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: number }) {
+  const uniqueId = useId().replace(/:/g, '');
+  const redGradId = `gauge-red-${uniqueId}`;
+  const shineGradId = `gauge-shine-${uniqueId}`;
+
   const planVal = Math.max(0, Math.min(100, Math.round(plan)));
   const actualVal = Math.max(0, Math.min(100, Math.round(actual)));
+  const actualTheme = getActualTheme(actualVal);
 
-  const cx = 100;
-  const cy = 88;
-  const r = 65;
+  const cx = 130;
+  const cy = 118;
+  const r = 88;
+  const strokeWidth = 14;
 
-  // Calculate needle tips (180deg to 360deg)
-  const getTip = (val: number, len: number) => {
-    const clamped = Math.max(0, Math.min(100, val));
+  // Calculate coordinates on the arc for any percentage (0 to 100)
+  const getPoint = (percent: number, radius: number = r) => {
+    const clamped = Math.max(0, Math.min(100, percent));
     const rad = (180 + (clamped / 100) * 180) * (Math.PI / 180);
     return {
-      x: cx + len * Math.cos(rad),
-      y: cy + len * Math.sin(rad),
+      x: cx + radius * Math.cos(rad),
+      y: cy + radius * Math.sin(rad),
     };
   };
 
-  const planTip = getTip(planVal, 50);
-  const actualTip = getTip(actualVal, 54);
+  // Helper for arc path between two percentages
+  const describeArc = (startPct: number, endPct: number, radius: number = r) => {
+    const p1 = getPoint(startPct, radius);
+    const p2 = getPoint(endPct, radius);
+    return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${radius} ${radius} 0 0 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  };
+
+  const planTip = getPoint(planVal, 64);
+  const actualTip = getPoint(actualVal, 72);
+
+  // Key coordinates for gradient and points
+  const p0 = getPoint(0);
+  const p70 = getPoint(70);
+  const p100 = getPoint(100);
+
+  // Label coordinates (outside track)
+  const labelRadius = r + 18;
+  const p30Label = getPoint(30, labelRadius);
+  const p50Label = getPoint(50, r + 16);
+  const p70Label = getPoint(70, labelRadius);
+  const p90Label = getPoint(90, r + 17);
 
   return (
     <div className="flex flex-col items-center justify-center w-full pt-1">
-      <div className="relative w-full max-w-[210px] aspect-[200/105]">
-        <svg viewBox="0 0 200 110" className="w-full h-full overflow-visible">
+      <div className="relative w-full max-w-[285px] aspect-[260/142]">
+        <svg viewBox="0 0 260 142" className="w-full h-full overflow-visible">
+          <defs>
+            {/* Linear Gradient for Zone 0% - 70%: Strong Red to Faded Red */}
+            <linearGradient
+              id={redGradId}
+              x1={p0.x}
+              y1={p0.y}
+              x2={p70.x}
+              y2={p70.y}
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop offset="0%" stopColor="#DC2626" />
+              <stop offset="45%" stopColor="#EF4444" />
+              <stop offset="80%" stopColor="#F87171" />
+              <stop offset="100%" stopColor="#FDA4AF" />
+            </linearGradient>
+
+            {/* Radial Gradient for 100% Completion Shining Aura */}
+            <radialGradient id={shineGradId} cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#34D399" stopOpacity="0.85" />
+              <stop offset="45%" stopColor="#10B981" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#10B981" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
           {/* Base Gauge Track */}
           <path
-            d="M 35 88 A 65 65 0 0 1 165 88"
+            d={describeArc(0, 100)}
             fill="none"
             stroke="#F1F5F9"
-            strokeWidth="13"
+            strokeWidth={strokeWidth + 2}
             strokeLinecap="round"
           />
 
-          {/* Zone 1: Red (0% - 70%) */}
+          {/* Zone 1: Red Gradient (0% - 70%) */}
           <path
-            d="M 35 88 A 65 65 0 0 1 138.2 35.4"
+            d={describeArc(0, 70)}
             fill="none"
-            stroke="#EF4444"
-            strokeWidth="11"
+            stroke={`url(#${redGradId})`}
+            strokeWidth={strokeWidth}
             strokeLinecap="round"
           />
 
-          {/* Zone 2: Yellow / Amber (70% - 90%) */}
+          {/* Zone 2: Amber / Orange (70% - 90%) */}
           <path
-            d="M 138.2 35.4 A 65 65 0 0 1 161.8 67.9"
+            d={describeArc(70, 90)}
             fill="none"
             stroke="#F59E0B"
-            strokeWidth="11"
+            strokeWidth={strokeWidth}
           />
 
           {/* Zone 3: Green (90% - 100%) */}
           <path
-            d="M 161.8 67.9 A 65 65 0 0 1 165 88"
+            d={describeArc(90, 100)}
             fill="none"
             stroke="#10B981"
-            strokeWidth="11"
+            strokeWidth={strokeWidth}
             strokeLinecap="round"
           />
 
-          {/* Threshold Markings */}
-          <text x="32" y="103" textAnchor="middle" className="text-[9px] fill-neutral-400 font-bold">0%</text>
-          <text x="138" y="25" textAnchor="middle" className="text-[8.5px] fill-neutral-500 font-bold">70%</text>
-          <text x="172" y="62" textAnchor="start" className="text-[8.5px] fill-neutral-500 font-bold">90%</text>
-          <text x="168" y="103" textAnchor="middle" className="text-[9px] fill-neutral-400 font-bold">100%</text>
+          {/* Boundary Divider Ticks at 30%, 50%, 70%, 90% */}
+          {[30, 50, 70, 90].map((pct) => {
+            const pInner = getPoint(pct, r - strokeWidth / 2 - 0.5);
+            const pOuter = getPoint(pct, r + strokeWidth / 2 + 0.5);
+            return (
+              <line
+                key={pct}
+                x1={pInner.x}
+                y1={pInner.y}
+                x2={pOuter.x}
+                y2={pOuter.y}
+                stroke="#FFFFFF"
+                strokeWidth={2.2}
+                strokeLinecap="butt"
+              />
+            );
+          })}
+
+          {/* Threshold Markings (Enlarged and Clear) */}
+          <text
+            x={p0.x - 2}
+            y={cy + 17}
+            textAnchor="middle"
+            fontSize="11.5"
+            fontWeight="700"
+            className="fill-neutral-400 font-bold"
+          >
+            0%
+          </text>
+          <text
+            x={p30Label.x}
+            y={p30Label.y}
+            textAnchor="middle"
+            fontSize="11.5"
+            fontWeight="700"
+            className="fill-red-500 font-bold"
+          >
+            30%
+          </text>
+          <text
+            x={p50Label.x}
+            y={p50Label.y}
+            textAnchor="middle"
+            fontSize="11.5"
+            fontWeight="700"
+            className="fill-neutral-600 font-bold"
+          >
+            50%
+          </text>
+          <text
+            x={p70Label.x}
+            y={p70Label.y}
+            textAnchor="middle"
+            fontSize="11.5"
+            fontWeight="700"
+            className="fill-amber-600 font-bold"
+          >
+            70%
+          </text>
+          <text
+            x={p90Label.x + 2}
+            y={p90Label.y}
+            textAnchor="middle"
+            fontSize="11.5"
+            fontWeight="700"
+            className="fill-emerald-600 font-bold"
+          >
+            90%
+          </text>
+          <text
+            x={p100.x + 2}
+            y={cy + 17}
+            textAnchor="middle"
+            fontSize="11.5"
+            fontWeight="700"
+            className={`font-bold ${actualTheme.isComplete ? 'fill-emerald-600 font-black' : 'fill-neutral-400'}`}
+          >
+            100%
+          </text>
 
           {/* Plan Pointer (Navy Dashed with Circle) */}
           <line
@@ -388,34 +548,100 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
           />
           <circle cx={planTip.x} cy={planTip.y} r="3" fill="#1E3A8A" />
 
-          {/* Actual Pointer (Red Solid with Tip Circle) */}
+          {/* Actual Pointer (Dynamic Color with Tip Circle) */}
           <line
             x1={cx}
             y1={cy}
             x2={actualTip.x}
             y2={actualTip.y}
-            stroke="#DC2626"
-            strokeWidth="3"
+            stroke={actualTheme.color}
+            strokeWidth="3.2"
             strokeLinecap="round"
+            className="transition-colors duration-300"
           />
-          <circle cx={actualTip.x} cy={actualTip.y} r="3.5" fill="#DC2626" />
+          <circle
+            cx={actualTip.x}
+            cy={actualTip.y}
+            r="4"
+            fill={actualTheme.color}
+            className="transition-colors duration-300"
+          />
 
           {/* Pivot Center */}
-          <circle cx={cx} cy={cy} r="6" fill="#0F172A" />
-          <circle cx={cx} cy={cy} r="2" fill="#FFFFFF" />
+          <circle cx={cx} cy={cy} r="6.5" fill="#0F172A" />
+          <circle cx={cx} cy={cy} r="2.5" fill="#FFFFFF" />
+
+          {/* 100% Completion Shining Light Effect (Subtle and Eye-catching) */}
+          {actualTheme.isComplete && (
+            <g className="transition-opacity duration-500 pointer-events-none">
+              {/* Soft pulsing halo */}
+              <circle
+                cx={p100.x}
+                cy={p100.y}
+                r="16"
+                fill={`url(#${shineGradId})`}
+                className="animate-pulse"
+              />
+
+              {/* Delicate 4-point star gleam flare */}
+              <path
+                d={`M ${p100.x} ${p100.y - 7}
+                    Q ${p100.x} ${p100.y} ${p100.x + 7} ${p100.y}
+                    Q ${p100.x} ${p100.y} ${p100.x} ${p100.y + 7}
+                    Q ${p100.x} ${p100.y} ${p100.x - 7} ${p100.y}
+                    Z`}
+                fill="#FFFFFF"
+                opacity="0.95"
+              />
+
+              {/* Diagonal micro-flares */}
+              <path
+                d={`M ${p100.x - 3.5} ${p100.y - 3.5} L ${p100.x + 3.5} ${p100.y + 3.5} M ${p100.x - 3.5} ${p100.y + 3.5} L ${p100.x + 3.5} ${p100.y - 3.5}`}
+                stroke="#ECFDF5"
+                strokeWidth="1"
+                strokeLinecap="round"
+                opacity="0.85"
+              />
+
+              {/* Bright center spark */}
+              <circle cx={p100.x} cy={p100.y} r="2" fill="#FFFFFF" />
+            </g>
+          )}
         </svg>
       </div>
 
       {/* Plan vs Actual Data Legend */}
-      <div className="flex items-center justify-between w-full px-2 mt-2 pt-2 border-t border-neutral-100 text-[12px]">
+      <div className="flex items-center justify-between w-full px-2 mt-2 pt-2 border-t border-neutral-100 text-[12.5px]">
         <div className="flex items-center gap-1.5 font-bold text-neutral-800">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#1E3A8A] inline-block shadow-2xs" />
-          <span>Plan: <span className="font-black text-[#1E3A8A]">{planVal}%</span></span>
+          <span className="w-2.5 h-2.5 rounded-full bg-[#1E3A8A] inline-block shadow-2xs flex-shrink-0" />
+          <span>
+            Plan: <span className="font-black text-[#1E3A8A]">{planVal}%</span>
+          </span>
         </div>
         <div className="h-3.5 w-px bg-neutral-200" />
         <div className="flex items-center gap-1.5 font-bold text-neutral-800">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#DC2626] inline-block shadow-2xs" />
-          <span>Actual: <span className="font-black text-[#DC2626]">{actualVal}%</span></span>
+          <span
+            className="w-2.5 h-2.5 rounded-full inline-block shadow-2xs transition-colors duration-300 flex-shrink-0"
+            style={{
+              backgroundColor: actualTheme.color,
+              boxShadow: actualTheme.isComplete ? '0 0 8px rgba(16, 185, 129, 0.7)' : undefined,
+            }}
+          />
+          <span className="flex items-center gap-1">
+            Actual:{' '}
+            <span
+              className="font-black transition-colors duration-300 inline-flex items-center gap-1"
+              style={{
+                color: actualTheme.color,
+                textShadow: actualTheme.isComplete ? '0 0 8px rgba(16, 185, 129, 0.35)' : undefined,
+              }}
+            >
+              {actualVal}%
+              {actualTheme.isComplete && (
+                <Sparkles size={13} className="text-emerald-500 animate-pulse flex-shrink-0" />
+              )}
+            </span>
+          </span>
         </div>
       </div>
     </div>
