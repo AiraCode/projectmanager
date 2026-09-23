@@ -220,6 +220,10 @@ export default function TasksPage() {
                     return {
                       ...st,
                       name: taskData.name || st.name,
+                      duration: taskData.duration ?? st.duration,
+                      startDate: taskData.startDate ?? st.startDate,
+                      predecessor: taskData.predecessor !== undefined ? taskData.predecessor : st.predecessor,
+                      depType: taskData.depType || st.depType,
                     };
                   })
                 };
@@ -731,6 +735,7 @@ export default function TasksPage() {
           smjId={showAddTaskModal.smjId}
           smjDbId={showAddTaskModal.smjDbId}
           parentSmj={showAddTaskModal.parentSmj}
+          mainJobs={projectData.mainJobs}
           divisions={divisions}
           initialData={showAddTaskModal.task}
           onClose={() => setShowAddTaskModal(null)}
@@ -1140,6 +1145,7 @@ function AddSubtaskModal({
   smjId,
   smjDbId,
   parentSmj,
+  mainJobs = [],
   divisions,
   onClose,
   onSave,
@@ -1148,6 +1154,7 @@ function AddSubtaskModal({
   smjId: string;
   smjDbId?: number;
   parentSmj?: SubMainJob;
+  mainJobs?: MainJob[];
   divisions: { id: number; divisi: string }[];
   onClose: () => void;
   onSave: (taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => void;
@@ -1166,6 +1173,19 @@ function AddSubtaskModal({
   const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
   const [lag, setLag] = useState(initialData?.lag?.toString() || '0');
 
+  // Collect Sub-Tasks across the project to populate predecessor dropdown
+  const availableSubMainJobs = (mainJobs && mainJobs.length > 0)
+    ? mainJobs.flatMap(mj => mj.subMainJobs || [])
+    : (parentSmj ? [parentSmj] : []);
+
+  const allKnownCodes = new Set<string>();
+  availableSubMainJobs.forEach(smj => {
+    if (smj.code) allKnownCodes.add(smj.code);
+    (smj.subtasks || []).forEach(st => {
+      if (st.code) allKnownCodes.add(st.code);
+    });
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -1177,7 +1197,7 @@ function AddSubtaskModal({
       divisionId: divisionId ? parseInt(divisionId) : undefined,
       startDate,
       duration: parseInt(duration) || 1,
-      predecessor,
+      predecessor: predecessor || undefined,
       depType,
       lag: parseInt(lag) || 0
     });
@@ -1244,12 +1264,36 @@ function AddSubtaskModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Predecessor</label>
-            <input
-              placeholder="e.g. 1.1.1"
+            <select
               value={predecessor}
               onChange={e => setPredecessor(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            />
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium truncate"
+            >
+              <option value="">None (No Predecessor)</option>
+              {predecessor && !allKnownCodes.has(predecessor) && (
+                <option value={predecessor}>{predecessor} (Current)</option>
+              )}
+              {availableSubMainJobs.map(smj => {
+                const availableTasks = (smj.subtasks || []).filter(
+                  st => st.id !== initialData?.id && st.code !== initialData?.code
+                );
+
+                return (
+                  <optgroup key={smj.id || smj.code} label={`${smj.code} · ${smj.name}`}>
+                    {/* Sub-Task option */}
+                    <option value={smj.code}>
+                      {smj.code} - {smj.name} (Sub-Task)
+                    </option>
+                    {/* Specific Task items under this Sub-Task */}
+                    {availableTasks.map(st => (
+                      <option key={st.id || st.code} value={st.code}>
+                        {st.code} - {st.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+            </select>
           </div>
           <div>
             <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Dependency Type</label>

@@ -11,11 +11,15 @@ export function recalculateSchedule(project: Project): Project {
   // Deep clone to avoid mutating the original reference directly
   const newProject = JSON.parse(JSON.stringify(project)) as Project;
   
-  // 1. Build a map of all subtasks by code for easy lookup
-  const taskMap = new Map<string, SubSubtask>();
+  // 1. Build a map of all tasks and sub-tasks by code for easy lookup
+  type PredTarget = { startDate: string; finishDate: string };
+  const taskMap = new Map<string, PredTarget>();
   
   for (const mj of newProject.mainJobs) {
     for (const smj of mj.subMainJobs) {
+      if (smj.code && smj.startDate && smj.finishDate) {
+        taskMap.set(smj.code, { startDate: smj.startDate, finishDate: smj.finishDate });
+      }
       for (const st of smj.subtasks) {
         taskMap.set(st.code, st);
       }
