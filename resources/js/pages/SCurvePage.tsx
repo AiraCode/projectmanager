@@ -566,8 +566,8 @@ export default function SCurvePage() {
       </Card>
 
       {/* Main Chart Card: Takes 100% Width & Height */}
-      <Card className="p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-neutral-100">
+      <Card className="p-5 !border-0 !shadow-none">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3">
           <div className="flex items-center gap-2">
             <TrendingUp size={16} className="text-brand" />
             <span className="text-[14px] font-bold text-neutral-800 tracking-tight">
