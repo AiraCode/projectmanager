@@ -64,16 +64,34 @@ export default function TimelinePage() {
   const [showAllPhases, setShowAllPhases] = useState(false);
 
   const pStart = useMemo(() => {
-    return projectData?.startDate && !isNaN(new Date(projectData.startDate).getTime())
+    const raw = projectData?.startDate && !isNaN(new Date(projectData.startDate).getTime())
       ? new Date(projectData.startDate)
       : new Date('2026-09-01');
+    // Align pStart to the 1st of that month so the first month is cleanly labeled and start tasks have breathing room
+    return new Date(raw.getFullYear(), raw.getMonth(), 1);
   }, [projectData?.startDate]);
 
   const pEnd = useMemo(() => {
-    return projectData?.endDate && !isNaN(new Date(projectData.endDate).getTime())
+    let raw = projectData?.endDate && !isNaN(new Date(projectData.endDate).getTime())
       ? new Date(projectData.endDate)
       : new Date('2027-10-31');
-  }, [projectData?.endDate]);
+
+    // Ensure pEnd spans at least past the latest task/milestone date
+    const tasksEndDates = (projectData?.mainJobs || []).flatMap((mj: any) => [
+      mj.finishDate,
+      ...(mj.subMainJobs || []).map((smj: any) => smj.finishDate),
+      ...(mj.subMainJobs || []).flatMap((smj: any) => (smj.subtasks || []).map((st: any) => st.finishDate))
+    ]).filter(Boolean).map((d: string) => new Date(d).getTime());
+
+    if (tasksEndDates.length > 0) {
+      const maxTaskTime = Math.max(...tasksEndDates);
+      if (maxTaskTime > raw.getTime()) {
+        raw = new Date(maxTaskTime);
+      }
+    }
+    // End on the last day of the finish month
+    return new Date(raw.getFullYear(), raw.getMonth() + 1, 0);
+  }, [projectData]);
 
   const TOTAL_DAYS = useMemo(() => {
     return Math.max(1, Math.ceil((pEnd.getTime() - pStart.getTime()) / 86400000));
@@ -101,6 +119,13 @@ export default function TimelinePage() {
     if (isNaN(diff) || diff <= 0) return 1.5;
     return Math.max(1.2, Math.min(100, (diff / TOTAL_DAYS) * 100));
   }
+
+  // Prevent marker badges (Today, Milestones) from clipping against sticky columns or canvas edges
+  const getMarkerTransform = (percent: number) => {
+    if (percent <= 4) return 'translateX(4px)';
+    if (percent >= 96) return 'translateX(calc(-100% - 4px))';
+    return 'translateX(-50%)';
+  };
 
   // Month markers for the top timeline axis
   const months = useMemo(() => {
@@ -326,7 +351,10 @@ export default function TimelinePage() {
                         }
                         onMouseLeave={() => setTooltip(null)}
                       >
-                        <div className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[9.5px] font-bold px-2 py-0.5 rounded-full shadow-xs -translate-x-1/2 mt-1 border border-amber-400/80 transition-transform group-hover/m:scale-105">
+                        <div
+                          className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[9.5px] font-bold px-2 py-0.5 rounded-full shadow-xs mt-1 border border-amber-400/80 transition-transform group-hover/m:scale-105"
+                          style={{ transform: getMarkerTransform(mPct) }}
+                        >
                           <span className="w-1.5 h-1.5 rotate-45 bg-white rounded-[0.5px]" />
                           <span>{m.name}</span>
                         </div>
@@ -339,7 +367,10 @@ export default function TimelinePage() {
                     className="absolute top-0 bottom-0 flex flex-col items-center z-30 pointer-events-none"
                     style={{ left: `${todayPct}%` }}
                   >
-                    <div className="bg-danger text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-xs -translate-x-1/2 mt-1 flex items-center gap-1 border border-red-400">
+                    <div
+                      className="bg-danger text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-xs mt-1 flex items-center gap-1 border border-red-400"
+                      style={{ transform: getMarkerTransform(todayPct) }}
+                    >
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                       <span>Today</span>
                     </div>
@@ -365,10 +396,10 @@ export default function TimelinePage() {
                       }];
 
                   return (
-                    <div key={mj.id} className="flex border-b border-neutral-200 group/phase">
+                    <div key={mj.id} className="flex border-b border-neutral-200 group/phase items-stretch">
                       {/* Left Column: Phase Group Card (Sticky Left) */}
                       <div
-                        className="w-44 sm:w-48 flex-shrink-0 flex flex-col items-center justify-center p-3 border-r border-neutral-200 text-center relative select-none sticky left-0 z-20 shadow-[1px_0_4px_rgba(0,0,0,0.03)]"
+                        className="w-44 sm:w-48 flex-shrink-0 flex flex-col items-center justify-center p-2.5 border-r border-neutral-200 text-center relative select-none sticky left-0 z-20 shadow-[1px_0_4px_rgba(0,0,0,0.03)]"
                         style={{ backgroundColor: color.light }}
                       >
                         <div
@@ -389,7 +420,7 @@ export default function TimelinePage() {
                       </div>
 
                       {/* Right Columns: Tasks List + Gantt Chart Area */}
-                      <div className="flex-1 divide-y divide-neutral-100 flex flex-col justify-between">
+                      <div className="flex-1 divide-y divide-neutral-100 flex flex-col justify-stretch">
                         {items.map((item: any) => {
                           const itemStart = item.startDate || mj.startDate || '2026-09-01';
                           const itemEnd = item.finishDate || mj.finishDate || '2027-09-30';
@@ -399,10 +430,10 @@ export default function TimelinePage() {
                           return (
                             <div
                               key={item.id}
-                              className="flex h-11 hover:bg-neutral-50/90 transition-colors group/row"
+                              className="flex flex-1 min-h-[48px] items-stretch hover:bg-neutral-50/90 transition-colors group/row"
                             >
                               {/* Task / Activity Column (Sticky offset) */}
-                              <div className="w-64 sm:w-72 flex-shrink-0 px-3.5 flex items-center justify-between border-r border-neutral-200 bg-white group-hover/row:bg-neutral-50/90 transition-colors sticky left-44 sm:left-48 z-20 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
+                              <div className="w-64 sm:w-72 flex-shrink-0 px-3.5 py-1.5 flex items-center justify-between border-r border-neutral-200 bg-white group-hover/row:bg-neutral-50/90 transition-colors sticky left-44 sm:left-48 z-20 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
                                 <div className="truncate text-[12px] font-semibold text-neutral-800 flex items-center gap-1.5 pr-2" title={item.name}>
                                   <span className="text-[10px] font-mono text-neutral-400 font-bold bg-neutral-100 px-1 py-0.2 rounded border border-neutral-200/60 flex-shrink-0">
                                     {item.code}
@@ -415,7 +446,7 @@ export default function TimelinePage() {
                               </div>
 
                               {/* Gantt Canvas Area */}
-                              <div className="flex-1 relative h-full bg-white group-hover/row:bg-neutral-50/90 transition-colors">
+                              <div className="flex-1 relative bg-white group-hover/row:bg-neutral-50/90 transition-colors min-h-[48px] flex items-center">
                                 {/* Subtle month grid lines */}
                                 {months.map(({ pct: p }) => (
                                   <div
@@ -445,11 +476,11 @@ export default function TimelinePage() {
 
                                 {/* Gantt Bar */}
                                 <div
-                                  className="absolute top-1/2 -translate-y-1/2 h-6 rounded-lg flex items-center px-2 cursor-pointer shadow-xs transition-all hover:brightness-105 active:scale-98 z-10"
+                                  className="absolute top-1/2 -translate-y-1/2 h-7 rounded-lg flex items-center px-2.5 cursor-pointer shadow-xs transition-all hover:brightness-105 active:scale-98 z-10 border border-white/20 overflow-hidden"
                                   style={{
                                     left: `${startPos}%`,
                                     width: `${widthPos}%`,
-                                    minWidth: 10,
+                                    minWidth: 16,
                                     backgroundColor: color.bg,
                                   }}
                                   onMouseMove={(e) =>
@@ -471,15 +502,14 @@ export default function TimelinePage() {
                                   {/* Progress fill inside the bar */}
                                   {item.progress > 0 && (
                                     <div
-                                      className="absolute inset-0 rounded-lg bg-white/25 overflow-hidden"
+                                      className="absolute inset-0 bg-white/25"
                                       style={{ width: `${Math.min(100, item.progress)}%` }}
                                     />
                                   )}
-                                  {widthPos > 5 && (
-                                    <span className="relative text-[10px] text-white font-bold truncate leading-none drop-shadow-2xs">
-                                      {item.progress ? `${item.progress}%` : ''}
-                                    </span>
-                                  )}
+                                  <span className="relative text-[10.5px] text-white font-bold truncate leading-none drop-shadow-2xs flex items-center gap-1.5">
+                                    {widthPos > 12 && <span className="truncate">{item.name}</span>}
+                                    <span className="opacity-95 text-[10px] whitespace-nowrap">{item.progress || 0}%</span>
+                                  </span>
                                 </div>
                               </div>
                             </div>
@@ -543,7 +573,10 @@ export default function TimelinePage() {
                         }
                         onMouseLeave={() => setTooltip(null)}
                       >
-                        <div className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[9.5px] font-bold px-2 py-0.5 rounded-full shadow-xs -translate-x-1/2 mt-1 border border-amber-400/80 transition-transform group-hover/m:scale-105">
+                        <div
+                          className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[9.5px] font-bold px-2 py-0.5 rounded-full shadow-xs mt-1 border border-amber-400/80 transition-transform group-hover/m:scale-105"
+                          style={{ transform: getMarkerTransform(mPct) }}
+                        >
                           <span className="w-1.5 h-1.5 rotate-45 bg-white rounded-[0.5px]" />
                           <span>{m.name}</span>
                         </div>
@@ -556,7 +589,10 @@ export default function TimelinePage() {
                     className="absolute top-0 bottom-0 flex flex-col items-center z-30 pointer-events-none"
                     style={{ left: `${todayPct}%` }}
                   >
-                    <div className="bg-danger text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-xs -translate-x-1/2 mt-1 flex items-center gap-1 border border-red-400">
+                    <div
+                      className="bg-danger text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-xs mt-1 flex items-center gap-1 border border-red-400"
+                      style={{ transform: getMarkerTransform(todayPct) }}
+                    >
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                       <span>Today</span>
                     </div>

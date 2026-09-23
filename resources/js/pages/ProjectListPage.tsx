@@ -333,11 +333,11 @@ function getActualTheme(actual: number) {
     };
   }
 
-  // 0% - 69%: Gradient from strong red (#DC2626) to faded / soft red (#EB6D6D)
-  const ratio = val / 70;
-  const r = Math.round(220 + ratio * 15);
-  const g = Math.round(38 + ratio * 71);
-  const b = Math.round(38 + ratio * 71);
+  // 0% - 69%: Gradient from deep red (#DC2626) transitioning towards warm orange (#F97316)
+  const ratio = Math.min(1, Math.max(0, val / 70));
+  const r = Math.round(220 + ratio * (249 - 220));
+  const g = Math.round(38 + ratio * (115 - 38));
+  const b = Math.round(38 + ratio * (22 - 38));
   const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 
   return {
@@ -397,7 +397,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
       <div className="relative w-full max-w-[285px] aspect-[260/142]">
         <svg viewBox="0 0 260 142" className="w-full h-full overflow-visible">
           <defs>
-            {/* Linear Gradient for Zone 0% - 70%: Strong Red to Faded Red */}
+            {/* Linear Gradient for Zone 0% - 70%: Solid Deep Red transitioning smoothly towards Orange */}
             <linearGradient
               id={redGradId}
               x1={p0.x}
@@ -407,9 +407,9 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
               gradientUnits="userSpaceOnUse"
             >
               <stop offset="0%" stopColor="#DC2626" />
-              <stop offset="45%" stopColor="#EF4444" />
-              <stop offset="80%" stopColor="#F87171" />
-              <stop offset="100%" stopColor="#FDA4AF" />
+              <stop offset="35%" stopColor="#EA4325" />
+              <stop offset="70%" stopColor="#F15A24" />
+              <stop offset="100%" stopColor="#F97316" />
             </linearGradient>
 
             {/* Radial Gradient for 100% Completion Shining Aura */}
@@ -429,13 +429,17 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             strokeLinecap="round"
           />
 
-          {/* Zone 1: Red Gradient (0% - 70%) */}
+          {/* Dedicated rounded caps at outer ends only (0% and 100%) so internal segments have clean straight cuts */}
+          <circle cx={p0.x} cy={p0.y} r={strokeWidth / 2} fill="#DC2626" />
+          <circle cx={p100.x} cy={p100.y} r={strokeWidth / 2} fill="#10B981" />
+
+          {/* Zone 1: Red Gradient to Orange (0% - 70%) */}
           <path
             d={describeArc(0, 70)}
             fill="none"
             stroke={`url(#${redGradId})`}
             strokeWidth={strokeWidth}
-            strokeLinecap="round"
+            strokeLinecap="butt"
           />
 
           {/* Zone 2: Amber / Orange (70% - 90%) */}
@@ -444,6 +448,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             fill="none"
             stroke="#F59E0B"
             strokeWidth={strokeWidth}
+            strokeLinecap="butt"
           />
 
           {/* Zone 3: Green (90% - 100%) */}
@@ -452,7 +457,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             fill="none"
             stroke="#10B981"
             strokeWidth={strokeWidth}
-            strokeLinecap="round"
+            strokeLinecap="butt"
           />
 
           {/* Boundary Divider Ticks at 30%, 50%, 70%, 90% */}
@@ -473,14 +478,14 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             );
           })}
 
-          {/* Threshold Markings (Enlarged and Clear) */}
+          {/* Threshold Markings (Enlarged and Clear, Color-Matched to Range) */}
           <text
             x={p0.x - 2}
             y={cy + 17}
             textAnchor="middle"
             fontSize="11.5"
             fontWeight="700"
-            className="fill-neutral-400 font-bold"
+            className="fill-red-500 font-bold"
           >
             0%
           </text>
@@ -500,7 +505,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             textAnchor="middle"
             fontSize="11.5"
             fontWeight="700"
-            className="fill-neutral-600 font-bold"
+            className="fill-orange-600 font-bold"
           >
             50%
           </text>
@@ -530,7 +535,11 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             textAnchor="middle"
             fontSize="11.5"
             fontWeight="700"
-            className={`font-bold ${actualTheme.isComplete ? 'fill-emerald-600 font-black' : 'fill-neutral-400'}`}
+            className={`transition-all duration-300 ${
+              actualTheme.isComplete
+                ? 'fill-emerald-600 font-black filter drop-shadow-[0_0_5px_rgba(16,185,129,0.65)]'
+                : 'fill-emerald-600 font-bold'
+            }`}
           >
             100%
           </text>

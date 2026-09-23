@@ -58,6 +58,11 @@ export default function TasksPage() {
   } | null>(null);
   const [showAddTaskModal, setShowAddTaskModal] = useState<{ smjId: string; smjDbId?: number; parentSmj?: SubMainJob; task?: SubSubtask } | null>(null);
   const [showAddSubMainJobModal, setShowAddSubMainJobModal] = useState<{ mjId: string; mjDbId?: number; mjName: string; parentWeight?: number; currentSubCount?: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const toggleMJ = (id: string) => setExpandedMJ(p => ({ ...p, [id]: !p[id] }));
@@ -109,22 +114,27 @@ export default function TasksPage() {
 
   // Delete Main Task (Main Job)
   const handleDeleteMainJob = (mjId: string, mjDbId: number | undefined, mjName: string) => {
-    if (!confirm(`Delete Main Task "${mjName}" along with all its Sub Tasks and task items?`)) return;
-    const targetDbId = mjDbId || (mjId.startsWith('mj-') ? mjId.replace('mj-', '') : mjId);
-    if (projectData.id && targetDbId) {
-      router.delete(`/projects/${projectData.id}/main-wbs/${targetDbId}`, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setProjectData(prev => {
-            const newData = { ...prev };
-            newData.mainJobs = newData.mainJobs.filter(mj => mj.id !== mjId);
-            return recalculateSchedule(recalculateProgress(newData));
+    setDeleteConfirm({
+      title: 'Delete Main Task',
+      message: `Delete Main Task "${mjName}" along with all its Sub Tasks and task items?`,
+      onConfirm: () => {
+        const targetDbId = mjDbId || (mjId.startsWith('mj-') ? mjId.replace('mj-', '') : mjId);
+        if (projectData.id && targetDbId) {
+          router.delete(`/projects/${projectData.id}/main-wbs/${targetDbId}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+              setProjectData(prev => {
+                const newData = { ...prev };
+                newData.mainJobs = newData.mainJobs.filter(mj => mj.id !== mjId);
+                return recalculateSchedule(recalculateProgress(newData));
+              });
+              setToastMsg(`Main Task "${mjName}" deleted successfully.`);
+            },
+            onError: () => setToastMsg('Failed to delete Main Task from server.'),
           });
-          setToastMsg(`Main Task "${mjName}" deleted successfully.`);
-        },
-        onError: () => setToastMsg('Failed to delete Main Task from server.'),
-      });
-    }
+        }
+      },
+    });
   };
 
   // Add Sub Task (Sub Main Job under Main Job)
@@ -151,25 +161,30 @@ export default function TasksPage() {
 
   // Delete Sub Task (Sub Main Job)
   const handleDeleteSubMainJob = (mjId: string, smjId: string, smjDbId: number | undefined, smjName: string) => {
-    if (!confirm(`Delete Sub Task "${smjName}" along with all tasks inside it?`)) return;
-    const targetDbId = smjDbId || (smjId.startsWith('smj-') ? smjId.replace('smj-', '') : smjId);
-    if (projectData.id && targetDbId) {
-      router.delete(`/projects/${projectData.id}/sub-wbs/${targetDbId}`, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setProjectData(prev => {
-            const newData = { ...prev };
-            newData.mainJobs = newData.mainJobs.map(mj => {
-              if (mj.id !== mjId) return mj;
-              return { ...mj, subMainJobs: mj.subMainJobs.filter(smj => smj.id !== smjId) };
-            });
-            return recalculateSchedule(recalculateProgress(newData));
+    setDeleteConfirm({
+      title: 'Delete Sub Task',
+      message: `Delete Sub Task "${smjName}" along with all tasks inside it?`,
+      onConfirm: () => {
+        const targetDbId = smjDbId || (smjId.startsWith('smj-') ? smjId.replace('smj-', '') : smjId);
+        if (projectData.id && targetDbId) {
+          router.delete(`/projects/${projectData.id}/sub-wbs/${targetDbId}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+              setProjectData(prev => {
+                const newData = { ...prev };
+                newData.mainJobs = newData.mainJobs.map(mj => {
+                  if (mj.id !== mjId) return mj;
+                  return { ...mj, subMainJobs: mj.subMainJobs.filter(smj => smj.id !== smjId) };
+                });
+                return recalculateSchedule(recalculateProgress(newData));
+              });
+              setToastMsg(`Sub Task "${smjName}" deleted successfully.`);
+            },
+            onError: () => setToastMsg('Failed to delete Sub Task from server.'),
           });
-          setToastMsg(`Sub Task "${smjName}" deleted successfully.`);
-        },
-        onError: () => setToastMsg('Failed to delete Sub Task from server.'),
-      });
-    }
+        }
+      },
+    });
   };
 
   // Add or Edit Sub-Subtask (Task)
@@ -238,27 +253,32 @@ export default function TasksPage() {
   };
 
   const handleDeleteSubtask = (smjId: string, taskId: string, taskName: string) => {
-    if (!confirm(`Delete task "${taskName}"?`)) return;
-    if (projectData.id && taskId) {
-      router.delete(`/projects/${projectData.id}/tasks/${taskId}`, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setProjectData(prev => {
-            const newData = { ...prev };
-            newData.mainJobs = newData.mainJobs.map(mj => ({
-              ...mj,
-              subMainJobs: mj.subMainJobs.map(smj => {
-                if (smj.id !== smjId) return smj;
-                return { ...smj, subtasks: smj.subtasks.filter(st => st.id !== taskId) };
-              })
-            }));
-            return recalculateSchedule(recalculateProgress(newData));
+    setDeleteConfirm({
+      title: 'Delete Task',
+      message: `Delete task "${taskName}"?`,
+      onConfirm: () => {
+        if (projectData.id && taskId) {
+          router.delete(`/projects/${projectData.id}/tasks/${taskId}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+              setProjectData(prev => {
+                const newData = { ...prev };
+                newData.mainJobs = newData.mainJobs.map(mj => ({
+                  ...mj,
+                  subMainJobs: mj.subMainJobs.map(smj => {
+                    if (smj.id !== smjId) return smj;
+                    return { ...smj, subtasks: smj.subtasks.filter(st => st.id !== taskId) };
+                  })
+                }));
+                return recalculateSchedule(recalculateProgress(newData));
+              });
+              setToastMsg(`Task "${taskName}" successfully deleted.`);
+            },
+            onError: () => setToastMsg('Failed to delete task from server.'),
           });
-          setToastMsg(`Task "${taskName}" successfully deleted.`);
-        },
-        onError: () => setToastMsg('Failed to delete task from server.'),
-      });
-    }
+        }
+      },
+    });
   };
 
   // Checklist authorization:
@@ -719,6 +739,55 @@ export default function TasksPage() {
       )}
 
       {/* Action Toast Feedback */}
+      {deleteConfirm && (
+        <Modal
+          title={deleteConfirm.title}
+          onClose={() => setDeleteConfirm(null)}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-900">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 text-danger shadow-2xs">
+                <Trash2 size={20} />
+              </div>
+              <div className="text-[12.5px] leading-relaxed pt-0.5">
+                <p className="font-semibold text-neutral-800">
+                  {deleteConfirm.message}
+                </p>
+                <p className="text-[11.5px] text-neutral-500 mt-1">
+                  This action cannot be undone and will permanently remove associated data.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                icon={Trash2}
+                onClick={() => {
+                  const action = deleteConfirm.onConfirm;
+                  setDeleteConfirm(null);
+                  action();
+                }}
+              >
+                Yes, Delete
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Action Toast Feedback */}
       {toastMsg && (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
       )}
@@ -927,9 +996,6 @@ function AddSubMainJobModal({
     onSave(name.trim());
   };
 
-  const nextSubCount = currentSubCount + 1;
-  const estimatedWeight = nextSubCount > 0 ? Math.round((parentWeight / nextSubCount) * 100) / 100 : 0;
-
   return (
     <Modal
       title="Add New Sub Task (Sub Main Job)"
@@ -951,20 +1017,6 @@ function AddSubMainJobModal({
             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
             autoFocus
           />
-        </div>
-
-        {/* Informative Auto-Weight Indicator */}
-        <div className="p-3 rounded-lg bg-blue-50/80 border border-blue-200 text-[12px] text-blue-900 flex items-start gap-2.5">
-          <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
-            <span className="font-bold">Auto-Calculated Weight</span>
-            <p className="text-[11.5px] text-blue-700 leading-relaxed">
-              Sub Task weight is automatically divided equally from Main Task weight ({parentWeight}%).
-              {nextSubCount > 0 && (
-                <> Upon saving, each Sub Task will be allocated <strong>{estimatedWeight}%</strong> (total {nextSubCount} Sub Tasks).</>
-              )}
-            </p>
-          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
@@ -1114,11 +1166,6 @@ function AddSubtaskModal({
   const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
   const [lag, setLag] = useState(initialData?.lag?.toString() || '0');
 
-  const parentWeight = parentSmj?.weight || 0;
-  const currentTaskCount = parentSmj?.subtasks?.length || 0;
-  const nextTaskCount = isEdit ? currentTaskCount : currentTaskCount + 1;
-  const estimatedTaskWeight = nextTaskCount > 0 ? Math.round((parentWeight / nextTaskCount) * 100) / 100 : 0;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -1170,20 +1217,6 @@ function AddSubtaskModal({
               <option key={d.id} value={d.id}>{d.divisi}</option>
             ))}
           </select>
-        </div>
-
-        {/* Informative Auto-Weight Indicator */}
-        <div className="p-3 rounded-lg bg-blue-50/80 border border-blue-200 text-[12px] text-blue-900 flex items-start gap-2.5">
-          <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
-            <span className="font-bold">Auto-Calculated Weight</span>
-            <p className="text-[11.5px] text-blue-700 leading-relaxed">
-              Task weight is automatically divided equally from Sub Task weight ({parentWeight}%) to all tasks in this Sub Task.
-              {nextTaskCount > 0 && (
-                <> Each Task will be allocated <strong>{estimatedTaskWeight}%</strong> (total {nextTaskCount} Tasks).</>
-              )}
-            </p>
-          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
