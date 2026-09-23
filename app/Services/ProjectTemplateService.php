@@ -252,18 +252,23 @@ class ProjectTemplateService
                     'name' => $mjData['name'],
                 ]);
 
-                $mainWbs = MainWbs::create([
-                    'projects_id'            => $project->id,
-                    'list_main_wbs_names_id' => $listMain->id,
-                    'name'                   => $mjData['name'],
-                    'percentage'             => $mjData['weight'],
-                    'start'                  => $project->start ?? Carbon::now(),
-                    'end'                    => $project->end ?? Carbon::now()->addMonths(6),
-                    'actual_start'           => $project->start ?? Carbon::now(),
-                    'actual_end'             => $project->end ?? Carbon::now()->addMonths(6),
-                    'progress'               => 0,
-                    'status'                 => 'Open',
-                ]);
+                // Ubah menjadi updateOrCreate
+                $mainWbs = MainWbs::updateOrCreate(
+                    [
+                        'projects_id'            => $project->id,
+                        'list_main_wbs_names_id' => $listMain->id,
+                    ],
+                    [
+                        'name'                   => $mjData['name'],
+                        'percentage'             => $mjData['weight'],
+                        'start'                  => $project->start ?? Carbon::now(),
+                        'end'                    => $project->end ?? Carbon::now()->addMonths(6),
+                        'actual_start'           => $project->start ?? Carbon::now(),
+                        'actual_end'             => $project->end ?? Carbon::now()->addMonths(6),
+                        'progress'               => 0,
+                        'status'                 => 'Open',
+                    ]
+                );
 
                 foreach ($mjData['sub_main_jobs'] as $smjData) {
                     $listSub = ListSubWbsName::firstOrCreate([
@@ -271,36 +276,51 @@ class ProjectTemplateService
                         'list_main_wbs_names_copy1_id' => $listMain->id,
                     ]);
 
-                    $subWbs = SubWbs::create([
-                        'sub_wbs_id'            => $mainWbs->id,
-                        'list_sub_wbs_names_id' => $listSub->id,
-                        'name'                  => $smjData['name'],
-                        'predecessor'           => '-',
-                        'predecessor_type'      => 'FS',
-                        'start'                 => $project->start ?? Carbon::now(),
-                        'end'                   => $project->end ?? Carbon::now()->addMonths(6),
-                        'actual_start'          => $project->start ?? Carbon::now(),
-                        'actual_end'            => $project->end ?? Carbon::now()->addMonths(6),
-                        'weight'                => $smjData['weight'],
-                        'progress'              => 0,
-                        'status'                => 'Open',
-                    ]);
+                    // Ubah menjadi updateOrCreate
+                    $subWbs = SubWbs::updateOrCreate(
+                        [
+                            'sub_wbs_id'            => $mainWbs->id,
+                            'list_sub_wbs_names_id' => $listSub->id,
+                        ],
+                        [
+                            'name'                  => $smjData['name'],
+                            'predecessor'           => '-',
+                            'predecessor_type'      => 'FS',
+                            'start'                 => $project->start ?? Carbon::now(),
+                            'end'                   => $project->end ?? Carbon::now()->addMonths(6),
+                            'actual_start'          => $project->start ?? Carbon::now(),
+                            'actual_end'            => $project->end ?? Carbon::now()->addMonths(6),
+                            'weight'                => $smjData['weight'],
+                            'progress'              => 0,
+                            'status'                => 'Open',
+                        ]
+                    );
 
                     $picKey = strtolower(trim($smjData['pic'] ?? ''));
                     $divName = $picToDiv[$picKey] ?? $picKey;
                     $divId = $divisions->get($divName)?->id ?? $defaultDivId;
 
-                    Wbs::create([
-                        'id'           => 'st-' . $project->id . '-' . str_replace('.', '_', $smjData['code']) . '-' . ($taskCounter++),
-                        'sub_wbs_id'   => $subWbs->id,
-                        'divisions_id' => $divId,
-                        'name'         => $smjData['name'] . ' (Execution)',
-                        'vendor'       => 'INTERNAL',
-                        'start'        => $project->start ?? Carbon::now(),
-                        'end'          => $project->end ?? Carbon::now()->addMonths(6),
-                        'is_completed' => false,
-                        'status'       => 'Open',
-                    ]);
+                    // Pisahkan inisialisasi ID agar increment berjalan berurutan dan terprediksi
+                    $wbsId = 'st-' . $project->id . '-' . str_replace('.', '_', $smjData['code']) . '-' . $taskCounter;
+
+                    // Ubah menjadi updateOrCreate
+                    Wbs::withTrashed()->updateOrCreate(
+                        ['id' => $wbsId], // Kriteria pencarian
+                        [
+                            'sub_wbs_id'   => $subWbs->id,
+                            'divisions_id' => $divId,
+                            'name'         => $smjData['name'] . ' (Execution)',
+                            'vendor'       => 'INTERNAL',
+                            'start'        => $project->start ?? Carbon::now(),
+                            'end'          => $project->end ?? Carbon::now()->addMonths(6),
+                            'is_completed' => false,
+                            'status'       => 'Open',
+                            'deleted_at'   => null, // Mengaktifkan kembali data jika sebelumnya ter-soft delete
+                        ]
+                    );
+
+                    // Pindahkan increment ke luar logika updateOrCreate
+                    $taskCounter++;
                 }
             }
         });
