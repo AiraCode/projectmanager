@@ -160,7 +160,7 @@ class ProjectController extends Controller
 
         $divisions = Division::select('id', 'divisi')->get();
         $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
-        
+
         $availableProjects = [];
         if ($role === 'worker') {
             $availableProjects = Project::where('companies_id', $user->companies_id)->select('id', 'title')->get();
@@ -521,7 +521,7 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: Only the PIC of this project can modify Sub Tasks.');
         }
 
-        $subWbs = SubWbs::whereHas('mainWbs', function($q) use ($projectId) {
+        $subWbs = SubWbs::whereHas('mainWbs', function ($q) use ($projectId) {
             $q->where('projects_id', $projectId);
         })->where('id', $subWbsId)->firstOrFail();
 
@@ -561,7 +561,7 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: Only the PIC of this project can delete Sub Tasks.');
         }
 
-        $subWbs = SubWbs::whereHas('mainWbs', function($q) use ($projectId) {
+        $subWbs = SubWbs::whereHas('mainWbs', function ($q) use ($projectId) {
             $q->where('projects_id', $projectId);
         })->where('id', $subWbsId)->firstOrFail();
 
@@ -646,7 +646,7 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: Only the PIC of this project can modify Tasks.');
         }
 
-        $task = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($projectId) {
+        $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($projectId) {
             $q->where('projects_id', $projectId);
         })->where('id', $taskId)->firstOrFail();
 
@@ -695,7 +695,7 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: Only the PIC of this project can delete Tasks.');
         }
 
-        $task = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($projectId) {
+        $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($projectId) {
             $q->where('projects_id', $projectId);
         })->where('id', $taskId)->firstOrFail();
 
@@ -762,10 +762,10 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $query = Project::with([
-            'manager', 
-            'company', 
-            'mainWbs.listName', 
-            'mainWbs.subWbs.listName', 
+            'manager',
+            'company',
+            'mainWbs.listName',
+            'mainWbs.subWbs.listName',
             'mainWbs.subWbs.wbsTasks.division',
             'budgetEntries',
             'weeklyProgress',
@@ -778,17 +778,23 @@ class ProjectController extends Controller
                 if ($project->project_manager != $user->id || ($user->companies_id && $project->companies_id != $user->companies_id)) {
                     abort(403, 'Access Denied: PICs cannot access projects belonging to another company.');
                 }
-                if ($project->mainWbs->count() === 0) {
-                    app(ProjectTemplateService::class)->applyTemplateToProject($project);
-                    $project = $query->find($id);
-                }
+
+                // HAPUS ATAU COMMENT BLOK INI:
+                // if ($project->mainWbs->count() === 0) {
+                //     app(ProjectTemplateService::class)->applyTemplateToProject($project);
+                //     $project = $query->find($id);
+                // }
+
                 return $project;
             } else {
                 $project = $query->where('project_manager', $user->id)->first();
-                if ($project && $project->mainWbs->count() === 0) {
-                    app(ProjectTemplateService::class)->applyTemplateToProject($project);
-                    $project = $query->where('project_manager', $user->id)->first();
-                }
+
+                // HAPUS ATAU COMMENT BLOK INI JUGA:
+                // if ($project && $project->mainWbs->count() === 0) {
+                //     app(ProjectTemplateService::class)->applyTemplateToProject($project);
+                //     $project = $query->where('project_manager', $user->id)->first();
+                // }
+
                 return $project;
             }
         } elseif ($role === 'worker') {
@@ -1088,7 +1094,7 @@ class ProjectController extends Controller
         }
 
         // Retrieve all tasks for this project
-        $tasks = Wbs::whereHas('parentSubWbs.mainWbs', function($q) use ($project) {
+        $tasks = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($project) {
             $q->where('projects_id', $project->id);
         })->with(['division', 'parentSubWbs.mainWbs'])->get();
 
@@ -1143,7 +1149,7 @@ class ProjectController extends Controller
             $userDivName = strtolower(trim($user->division?->divisi ?? ''));
             $userDivId   = $user->divisions_id;
             if ($userDivName !== '' || $userDivId) {
-                $divisionGroups = array_filter($divisionGroups, function($g) use ($userDivName, $userDivId) {
+                $divisionGroups = array_filter($divisionGroups, function ($g) use ($userDivName, $userDivId) {
                     return ($userDivName !== '' && strtolower(trim($g['division'])) === $userDivName)
                         || ($userDivId && isset($g['division_id']) && $g['division_id'] == $userDivId);
                 });
