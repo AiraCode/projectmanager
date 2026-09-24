@@ -604,7 +604,7 @@ export default function DivisionProgressPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <span className={`text-[12.5px] font-bold leading-snug line-clamp-2 ${
-                              task.is_completed ? 'line-through text-neutral-400' : 'text-neutral-800'
+                              task.is_completed ? 'text-neutral-400' : 'text-neutral-800'
                             }`}>
                               {task.name}
                             </span>

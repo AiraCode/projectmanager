@@ -668,65 +668,6 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* Today's Tasks Section (Requirement 9) */}
-      <div className="bg-gradient-to-r from-blue-50/70 via-white to-indigo-50/70 rounded-2xl border-2 border-brand/20 p-4 sm:p-5 shadow-xs">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-brand text-white flex items-center justify-center shadow-xs">
-              <CalendarDays size={18} />
-            </div>
-            <div>
-              <h2 className="text-[16px] font-black text-neutral-900 flex items-center gap-2">
-                Today's Tasks
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand text-white">
-                  {todayTasks.length}
-                </span>
-              </h2>
-              <p className="text-[12px] text-neutral-500 font-medium">
-                Active or scheduled tasks for today ({new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })})
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setTodaySectionOpen(!todaySectionOpen)}
-            className="text-[12px] font-bold text-brand hover:underline flex items-center gap-1"
-          >
-            {todaySectionOpen ? 'Collapse' : 'Expand'}
-            <ChevronDown size={14} className={`transform transition-transform ${todaySectionOpen ? 'rotate-180' : ''}`} />
-          </button>
-        </div>
-
-        {todaySectionOpen && (
-          <div>
-            {todayTasks.length === 0 ? (
-              <div className="p-4 rounded-xl bg-white border border-neutral-200/80 text-center text-neutral-500 text-[12.5px]">
-                <CheckCircle2 size={24} className="mx-auto text-emerald-500 mb-1.5" />
-                <p className="font-bold text-neutral-800">No tasks scheduled for today</p>
-                <p className="text-[11.5px] text-neutral-400 mt-0.5">All active project tasks are on schedule. Explore the WBS hierarchy below for upcoming items.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {todayTasks.map(({ st, parentSmj, timingStatus }) => {
-                  const authorized = isAuthorizedToCheck(st.division || parentSmj.pic);
-                  return (
-                    <TodayTaskCard
-                      key={st.id}
-                      st={st}
-                      parentSmj={parentSmj}
-                      timingStatus={timingStatus}
-                      canCheck={authorized}
-                      onCheck={() => handleCheck(st.id, authorized, st.name)}
-                      onProgressChange={(val) => handleProgressChange(st.id, val, authorized, st.name)}
-                      onOpenEvidence={(ev) => setEvidencePreview(ev)}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* Content Rendering based on View Mode */}
       {viewMode === 'checklist' ? (
@@ -904,7 +845,7 @@ export default function TasksPage() {
                             <td className="px-4 py-2 pl-12 font-mono text-[12px] text-neutral-500 font-semibold">{st.code}</td>
                             <td className="px-4 py-2 text-neutral-800 font-medium flex items-center gap-2">
                               {st.checked && <CheckSquare size={14} className="text-success" />}
-                              <span className={st.checked ? 'line-through text-neutral-400' : 'text-neutral-900 font-medium'}>{st.name}</span>
+                              <span className={st.checked ? 'text-neutral-400 font-medium' : 'text-neutral-900 font-medium'}>{st.name}</span>
                             </td>
                             <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">{st.weight ?? 100}%</td>
                             <td className="px-4 py-2 text-neutral-600 text-[11.5px]">{formatDivisionName(st.division || smj.pic)}</td>
@@ -1110,7 +1051,7 @@ function TodayTaskCard({
       </div>
 
       <h4 className={`text-[13.5px] font-bold mb-2.5 leading-snug break-words ${
-        isChecked ? 'line-through text-neutral-400' : 'text-neutral-900'
+        isChecked ? 'text-neutral-400' : 'text-neutral-900'
       }`}>
         {st.name}
       </h4>
@@ -1308,7 +1249,7 @@ function SubtaskRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[12px] font-bold text-neutral-500 font-mono">{st.code}</span>
-            <span className={`text-[13.5px] sm:text-[14.5px] font-semibold break-words ${isChecked ? 'line-through text-neutral-400' : 'text-neutral-900'}`}>
+            <span className={`text-[13.5px] sm:text-[14.5px] font-semibold break-words ${isChecked ? 'text-neutral-400' : 'text-neutral-900'}`}>
               {st.name}
             </span>
             <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">

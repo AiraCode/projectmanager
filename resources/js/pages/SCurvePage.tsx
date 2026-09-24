@@ -247,9 +247,7 @@ export default function SCurvePage() {
         let predVal: number | null = (w as any).predictionCumulative ?? (w as any).prediction ?? null;
         if (predVal === null) {
           if (globalIdx < currentWeekIdx) {
-            predVal = hasActual
-              ? w.actualCumulative
-              : Number(Math.min(100, Math.max(0, w.plannedCumulative * performanceRatio)).toFixed(2));
+            predVal = null; // No prediction in past periods to prevent overlapping actual line
           } else if (globalIdx === currentWeekIdx) {
             predVal = realisasiValue;
           } else {
@@ -356,10 +354,10 @@ export default function SCurvePage() {
 
         const dev = actCum !== null ? Number((actCum - planCum).toFixed(2)) : null;
 
-        // Day Prediction
+        // Day Prediction (starts from today / H+1)
         let predCum: number | null = null;
         if (dStr < todayStr) {
-          predCum = actCum !== null ? actCum : Number(Math.min(100, planCum * performanceRatio).toFixed(2));
+          predCum = null; // No prediction before today
         } else if (dStr === todayStr) {
           predCum = realisasiValue;
         } else {
@@ -424,7 +422,7 @@ export default function SCurvePage() {
 
         let predCum: number | null = null;
         if (yr < currentYr) {
-          predCum = hasActual ? lastWeekInYr.actualCumulative : Number(Math.min(100, lastWeekInYr.plannedCumulative * performanceRatio).toFixed(2));
+          predCum = null; // No prediction for past years
         } else if (yr === currentYr) {
           predCum = realisasiValue;
         } else {

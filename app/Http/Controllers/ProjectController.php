@@ -83,7 +83,7 @@ class ProjectController extends Controller
     /**
      * Single project dashboard.
      */
-    public function dashboard(Request $request, $id = null)
+    public function dashboard(Request $request, int|string|null $id = null)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -108,7 +108,7 @@ class ProjectController extends Controller
     /**
      * Project detail breakdown (ProjectDetailPage).
      */
-    public function projectDetailPage(Request $request, $id = null)
+    public function projectDetailPage(Request $request, int|string|null $id = null)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -133,7 +133,7 @@ class ProjectController extends Controller
     /**
      * Backward-compatible alias for projectPage.
      */
-    public function projectPage(Request $request, $id = null)
+    public function projectPage(Request $request, int|string|null $id = null)
     {
         return $this->projectDetailPage($request, $id);
     }
@@ -141,7 +141,7 @@ class ProjectController extends Controller
     /**
      * Tasks page — scoped by role and company.
      */
-    public function tasks(Request $request, $id = null)
+    public function tasks(Request $request, int|string|null $id = null)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -181,9 +181,50 @@ class ProjectController extends Controller
     }
 
     /**
+     * Dedicated Today's Tasks page.
+     */
+    public function todayTasks(Request $request, int|string|null $id = null)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+        $targetId = $id ?? $request->query('project_id');
+
+        if ($role === 'admin_progres') {
+            if ($targetId) return redirect()->route('scurve', ['project_id' => $targetId]);
+            return redirect()->route('scurve');
+        }
+
+        $project = $this->resolveProjectForUser($targetId);
+        if (!$project) {
+            return redirect()->route('projectlistpage');
+        }
+
+        $divisions = Division::select('id', 'divisi')->get();
+        $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
+
+        $availableProjects = [];
+        if ($role === 'worker') {
+            $projectAccess = $user->permission_matrix['project_access'] ?? [];
+            $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
+            $availableProjects = Project::where('companies_id', $user->companies_id)
+                ->whereIn('id', $allowedIds)
+                ->select('id', 'title')
+                ->get();
+        }
+
+        return Inertia::render('TodayTasksPage', [
+            'project'           => $this->transformProjectData($project, $workerDivisionId),
+            'availableProjects' => $availableProjects,
+            'userRole'          => $role,
+            'division'          => $user->division?->divisi ?? null,
+            'divisions'         => $divisions,
+        ]);
+    }
+
+    /**
      * Timeline / Gantt chart view.
      */
-    public function timeline(Request $request, $id = null)
+    public function timeline(Request $request, int|string|null $id = null)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -210,7 +251,7 @@ class ProjectController extends Controller
     /**
      * Weekly implementation view.
      */
-    public function weekly(Request $request, $id = null)
+    public function weekly(Request $request, int|string|null $id = null)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -235,7 +276,7 @@ class ProjectController extends Controller
     /**
      * Budget tracking view.
      */
-    public function budget(Request $request, $id = null)
+    public function budget(Request $request, int|string|null $id = null)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -261,7 +302,7 @@ class ProjectController extends Controller
      * S-Curve page — accessible by all roles, but scoped.
      * Admin Progres ONLY views this page!
      */
-    public function scurve(Request $request, $id = null)
+    public function scurve(Request $request, int|string|null $id = null)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -285,6 +326,7 @@ class ProjectController extends Controller
      */
     public function store(Request $request)
     {
+        /** @var \App\Models\User $user */
         $user = Auth::user();
         $role = $user->role->name ?? '';
 
@@ -343,7 +385,7 @@ class ProjectController extends Controller
      * Add Main Task (Main Job / Main WBS) to a Project.
      * PIC only!
      */
-    public function addMainWbs(Request $request, $projectId)
+    public function addMainWbs(Request $request, int|string $projectId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -389,7 +431,7 @@ class ProjectController extends Controller
      * Update Main Task (Main WBS).
      * PIC only!
      */
-    public function updateMainWbs(Request $request, $projectId, $mainWbsId)
+    public function updateMainWbs(Request $request, int|string $projectId, int|string $mainWbsId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -431,7 +473,7 @@ class ProjectController extends Controller
      * Delete Main Task (Main WBS) and its descendants.
      * PIC only!
      */
-    public function deleteMainWbs(Request $request, $projectId, $mainWbsId)
+    public function deleteMainWbs(Request $request, int|string $projectId, int|string $mainWbsId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -459,7 +501,7 @@ class ProjectController extends Controller
      * Add Sub Task (Sub Main Job) under a Main WBS.
      * PIC only!
      */
-    public function addSubWbs(Request $request, $projectId)
+    public function addSubWbs(Request $request, int|string $projectId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -516,7 +558,7 @@ class ProjectController extends Controller
      * Update Sub Task (Sub Main WBS).
      * PIC only!
      */
-    public function updateSubWbs(Request $request, $projectId, $subWbsId)
+    public function updateSubWbs(Request $request, int|string $projectId, int|string $subWbsId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -556,7 +598,7 @@ class ProjectController extends Controller
      * Delete Sub Task (Sub Main WBS) and its tasks.
      * PIC only!
      */
-    public function deleteSubWbs(Request $request, $projectId, $subWbsId)
+    public function deleteSubWbs(Request $request, int|string $projectId, int|string $subWbsId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -582,7 +624,7 @@ class ProjectController extends Controller
      * Add Task (Sub-Subtask) under a Sub WBS.
      * PIC only!
      */
-    public function addTask(Request $request, $projectId)
+    public function addTask(Request $request, int|string $projectId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -641,7 +683,7 @@ class ProjectController extends Controller
      * Update Task (Sub-Subtask).
      * PIC only!
      */
-    public function updateTask(Request $request, $projectId, $taskId)
+    public function updateTask(Request $request, int|string $projectId, int|string $taskId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -690,7 +732,7 @@ class ProjectController extends Controller
      * Delete Task (Sub-Subtask).
      * PIC only!
      */
-    public function deleteTask(Request $request, $projectId, $taskId)
+    public function deleteTask(Request $request, int|string $projectId, int|string $taskId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -719,7 +761,7 @@ class ProjectController extends Controller
      * - PIC: CANNOT toggle tasks, only adds/manages tasks & schedule
      * - Worker: can toggle ONLY tasks assigned to their division
      */
-    public function toggleTask(Request $request, $projectId, $taskId)
+    public function toggleTask(Request $request, int|string $projectId, int|string $taskId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -760,7 +802,7 @@ class ProjectController extends Controller
     /**
      * Helper to resolve project for user based on strict multi-tenant and role rules.
      */
-    private function resolveProjectForUser($id = null)
+    private function resolveProjectForUser(int|string|null $id = null)
     {
         $user = Auth::user();
         if (!$user) return null;
@@ -837,7 +879,7 @@ class ProjectController extends Controller
     /**
      * Transform DB project model into clean JSON structure expected by React frontend.
      */
-    private function transformProjectData($p, $workerDivisionId = null)
+    private function transformProjectData(Project $p, int|string|null $workerDivisionId = null)
     {
         $start   = $p->start;
         $end     = $p->end;
@@ -970,7 +1012,7 @@ class ProjectController extends Controller
     /**
      * Store a budget realization entry for a project.
      */
-    public function storeBudgetEntry(Request $request, $projectId)
+    public function storeBudgetEntry(Request $request, int|string $projectId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -1027,7 +1069,7 @@ class ProjectController extends Controller
     /**
      * Delete a budget realization entry.
      */
-    public function deleteBudgetEntry(Request $request, $projectId, $entryId)
+    public function deleteBudgetEntry(Request $request, int|string $projectId, int|string $entryId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -1052,7 +1094,7 @@ class ProjectController extends Controller
     /**
      * Save/update weekly actual progress.
      */
-    public function saveWeeklyProgress(Request $request, $projectId)
+    public function saveWeeklyProgress(Request $request, int|string $projectId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -1090,7 +1132,7 @@ class ProjectController extends Controller
     /**
      * Division Progress page — shows progress per division based on tasks.
      */
-    public function divisionProgress(Request $request, $id = null)
+    public function divisionProgress(Request $request, int|string|null $id = null)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';

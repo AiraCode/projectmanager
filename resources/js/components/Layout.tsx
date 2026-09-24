@@ -3,7 +3,7 @@ import { Link, usePage, router } from '@inertiajs/react';
 import {
   LayoutDashboard, FolderOpen, CheckSquare, GitBranch,
   BarChart2, TrendingUp, DollarSign, Menu, X, LogOut,
-  ChevronRight, ChevronLeft, Shield, User, Users
+  ChevronRight, ChevronLeft, Shield, User, Users, Clock, CalendarDays
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button } from '@/components/ui';
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: '/projectlistpage',   icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/projectdetailpage', icon: FolderOpen,      label: 'Project Detail' },
   { to: '/tasks',             icon: CheckSquare,     label: 'Tasks'     },
+  { to: '/today-tasks',       icon: CalendarDays,    label: "Today's Tasks" },
   { to: '/timeline',          icon: GitBranch,       label: 'Timeline'  },
   { to: '/weekly',            icon: BarChart2,       label: 'Weekly'    },
   { to: '/scurve',            icon: TrendingUp,      label: 'S-Curve'   },
@@ -32,6 +33,22 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     return false;
   });
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  // Real-time 24-hour clock (jam: menit: detik, format 24 jam tanpa am/pm)
+  const [currentTime, setCurrentTime] = useState<string>(() => {
+    const d = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const d = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      setCurrentTime(`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const toggleCollapse = () => {
     setSidebarCollapsed(prev => {
@@ -91,6 +108,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/projectdetailpage', icon: FolderOpen,      label: 'Project Detail' },
     { to: '/tasks',             icon: CheckSquare,     label: 'Tasks' },
+    { to: '/today-tasks',       icon: CalendarDays,    label: "Today's Tasks" },
     { to: '/timeline',          icon: GitBranch,       label: 'Timeline' },
     { to: '/weekly',            icon: BarChart2,       label: 'Weekly Progress' },
     { to: '/scurve',            icon: TrendingUp,      label: 'S-Curve Report' },
@@ -106,6 +124,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   } else if (user.permission_matrix?.sidebar) {
     visibleNav = ALL_NAV_ITEMS.filter(item => {
       if (item.to === '/division-progress' && (isAdminProgres || isAdminUtama || isPIC)) return true;
+      if (item.to === '/today-tasks') return true;
       return user.permission_matrix?.sidebar?.includes(item.label) ?? false;
     });
   } else {
@@ -154,6 +173,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     if (!resolvedId) return basePath;
     if (basePath === '/dashboard') return `/projects/${resolvedId}`;
     if (basePath === '/division-progress') return `/projects/${resolvedId}/division-progress`;
+    if (basePath === '/today-tasks') return `/today-tasks?project_id=${resolvedId}`;
     return `${basePath}?project_id=${resolvedId}`;
   };
 
@@ -246,6 +266,8 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                 isActive = purePath === '/division-progress' || /^\/projects\/[^/]+\/division-progress/.test(purePath);
               } else if (to === '/tasks') {
                 isActive = purePath === '/tasks' || /^\/projects\/[^/]+\/tasks/.test(purePath);
+              } else if (to === '/today-tasks') {
+                isActive = purePath === '/today-tasks' || /^\/projects\/[^/]+\/today-tasks/.test(purePath);
               } else {
                 isActive = purePath === to || purePath.startsWith(to + '/');
               }
@@ -359,6 +381,15 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
           ) : (
             <div className="flex-1" />
           )}
+
+          {/* Real-time 24-hour clock (jam: menit: detik) immediately to the left of profile */}
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-50 border border-neutral-200/80 text-neutral-800 font-mono text-[13px] font-bold tracking-widest select-none shrink-0 shadow-2xs"
+            title="Real-time 24-hour clock"
+          >
+            <Clock size={14} className="text-brand stroke-[2.2]" />
+            <span>{currentTime}</span>
+          </div>
 
           {/* User profile dropdown */}
           <div className="relative" data-profile-menu>

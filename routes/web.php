@@ -6,6 +6,8 @@ use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Middleware\BlockAdminProgres;
 use App\Http\Middleware\SuperAdminOnly;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 // Authentication Routes
@@ -22,7 +24,7 @@ Route::middleware('auth')->group(function () {
 
     // Root redirect based on role
     Route::get('/', function () {
-        $role = auth()->user()->role->name ?? '';
+        $role = Auth::user()?->role?->name ?? '';
         if ($role === 'SuperAdmin') return redirect('/admin');
         if ($role === 'worker') return redirect('/tasks');
         if ($role === 'admin_progres') return redirect('/projectlistpage');
@@ -44,7 +46,7 @@ Route::middleware('auth')->group(function () {
     // ── Project card selector (ProjectListPage) ──
     // Block SuperAdmin from landing here
     Route::get('/projectlistpage', function () {
-        if (auth()->user()->role?->name === 'SuperAdmin') return redirect('/admin');
+        if (Auth::user()?->role?->name === 'SuperAdmin') return redirect('/admin');
         return app(ProjectController::class)->projectListPage(request());
     })->name('projectlistpage');
     Route::get('/projects', [ProjectController::class, 'projectListPage'])->name('projects.index');
@@ -58,6 +60,8 @@ Route::middleware('auth')->group(function () {
 
     // ── Tasks & WBS management ──
     Route::get('/tasks', [ProjectController::class, 'tasks'])->name('tasks.index');
+    Route::get('/today-tasks', [ProjectController::class, 'todayTasks'])->name('today-tasks.index');
+    Route::get('/projects/{id}/today-tasks', [ProjectController::class, 'todayTasks'])->name('projects.today-tasks');
 
     // Main Tasks (Main WBS)
     Route::post('/projects/{id}/main-wbs', [ProjectController::class, 'addMainWbs'])->name('projects.mainwbs.store');
