@@ -12,9 +12,18 @@ export interface SubSubtask {
   daysLeft: number;
   progress: number;
   status: Status;
+  division?: string;
   predecessor?: string;
   depType?: DependencyType;
   lag?: number;
+  lead?: number;
+  evidence?: {
+    name: string;
+    size: string;
+    type: string;
+    previewUrl?: string;
+  };
+  prevProgress?: number;
   weight: number;
   checked: boolean;
 }

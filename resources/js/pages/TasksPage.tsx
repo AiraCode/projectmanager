@@ -1,6 +1,11 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { usePage, router } from '@inertiajs/react';
-import { Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square, Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties, Download, AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import {
+  Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square,
+  Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties,
+  Download, AlertCircle, AlertTriangle, CheckCircle2, Clock, UploadCloud,
+  FileText, Sparkles, X, Eye, CalendarDays, Sliders, Paperclip
+} from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyType } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
 import { recalculateProgress } from '@/utils/progressEngine';
@@ -46,7 +51,7 @@ export default function TasksPage() {
   const [expandedMJ, setExpandedMJ] = useState<Record<string, boolean>>({ 'mj-1': true, 'mj-01': true });
   const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({ 'smj-1': true, 'smj-1-1': true });
   
-  // Modals
+  // Modals & Enhanced Features State
   const [showMainJobModal, setShowMainJobModal] = useState<{
     mode: 'create' | 'edit';
     id?: string;
@@ -63,7 +68,53 @@ export default function TasksPage() {
     message: string;
     onConfirm: () => void;
   } | null>(null);
+  const [uncheckConfirm, setUncheckConfirm] = useState<{
+    taskId: string;
+    taskName: string;
+    prevProgress?: number;
+  } | null>(null);
+  const [evidencePreview, setEvidencePreview] = useState<{
+    name: string;
+    url?: string;
+    size?: string;
+  } | null>(null);
+  const [todaySectionOpen, setTodaySectionOpen] = useState(true);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Dynamic Today's Tasks
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const todayTasks = useMemo(() => {
+    const list: Array<{
+      st: SubSubtask;
+      parentSmj: SubMainJob;
+      parentMj: MainJob;
+      timingStatus: 'active' | 'starting' | 'due' | 'overdue';
+    }> = [];
+
+    projectData.mainJobs.forEach(mj => {
+      mj.subMainJobs.forEach(smj => {
+        smj.subtasks.forEach(st => {
+          if (!st.startDate && !st.finishDate) return;
+          const start = st.startDate || '';
+          const end = st.finishDate || st.startDate || '';
+          const isDone = st.checked || st.progress >= 100;
+
+          if (end < todayStr && !isDone) {
+            list.push({ st, parentSmj: smj, parentMj: mj, timingStatus: 'overdue' });
+          } else if (end === todayStr) {
+            list.push({ st, parentSmj: smj, parentMj: mj, timingStatus: 'due' });
+          } else if (start === todayStr) {
+            list.push({ st, parentSmj: smj, parentMj: mj, timingStatus: 'starting' });
+          } else if (start <= todayStr && end >= todayStr) {
+            list.push({ st, parentSmj: smj, parentMj: mj, timingStatus: 'active' });
+          }
+        });
+      });
+    });
+
+    return list;
+  }, [projectData, todayStr]);
 
   const toggleMJ = (id: string) => setExpandedMJ(p => ({ ...p, [id]: !p[id] }));
   const toggleSMJ = (id: string) => setExpandedSMJ(p => ({ ...p, [id]: !p[id] }));
@@ -201,6 +252,7 @@ export default function TasksPage() {
       predecessor: taskData.predecessor || null,
       dep_type: taskData.depType || 'FS',
       lag: taskData.lag || 0,
+      weight: taskData.weight !== undefined ? taskData.weight : 100,
     };
 
     if (taskData.id) {
@@ -220,10 +272,14 @@ export default function TasksPage() {
                     return {
                       ...st,
                       name: taskData.name || st.name,
+                      weight: taskData.weight !== undefined ? taskData.weight : st.weight,
                       duration: taskData.duration ?? st.duration,
                       startDate: taskData.startDate ?? st.startDate,
                       predecessor: taskData.predecessor !== undefined ? taskData.predecessor : st.predecessor,
                       depType: taskData.depType || st.depType,
+                      lag: taskData.lag ?? st.lag,
+                      lead: taskData.lead ?? st.lead,
+                      evidence: taskData.evidence ?? st.evidence,
                     };
                   })
                 };
@@ -244,6 +300,44 @@ export default function TasksPage() {
       router.post(`/projects/${projectData.id}/tasks`, payload, {
         preserveScroll: true,
         onSuccess: () => {
+          setProjectData(prev => {
+            const newData = { ...prev };
+            const newTaskId = `st-custom-${Date.now()}`;
+            const targetSmj = newData.mainJobs.flatMap(m => m.subMainJobs).find(s => s.id === smjId);
+            const nextIndex = (targetSmj?.subtasks?.length || 0) + 1;
+            const generatedCode = targetSmj ? `${targetSmj.code}.${nextIndex}` : `1.1.${nextIndex}`;
+
+            newData.mainJobs = newData.mainJobs.map(mj => ({
+              ...mj,
+              subMainJobs: mj.subMainJobs.map(smj => {
+                if (smj.id !== smjId) return smj;
+                const newSubtask: SubSubtask = {
+                  id: newTaskId,
+                  code: generatedCode,
+                  name: taskData.name!,
+                  weight: taskData.weight !== undefined ? taskData.weight : 100,
+                  division: divisions.find(d => d.id === taskData.divisionId)?.divisi || smj.pic,
+                  duration: taskData.duration || 1,
+                  startDate: taskData.startDate || new Date().toISOString().slice(0, 10),
+                  finishDate: taskData.startDate || new Date().toISOString().slice(0, 10),
+                  daysLeft: taskData.duration || 1,
+                  progress: 0,
+                  status: 'Open',
+                  predecessor: taskData.predecessor,
+                  depType: taskData.depType || 'FS',
+                  lag: taskData.lag || 0,
+                  lead: taskData.lead || 0,
+                  evidence: taskData.evidence,
+                  checked: false,
+                };
+                return {
+                  ...smj,
+                  subtasks: [...smj.subtasks, newSubtask]
+                };
+              })
+            }));
+            return recalculateSchedule(recalculateProgress(newData));
+          });
           setToastMsg(`Task "${taskData.name}" added successfully.`);
           setShowAddTaskModal(null);
         },
@@ -299,6 +393,57 @@ export default function TasksPage() {
     return false;
   };
 
+  // Continuous Progress Slider Update (0–100%)
+  const handleProgressChange = (taskId: string, newProgress: number, authorized: boolean, taskName: string) => {
+    if (!authorized) {
+      if (isAdmin) {
+        setToastMsg('Action Restricted: Admin role is Read-Only.');
+      } else if (isPIC) {
+        setToastMsg('Action Restricted: Progress slider can only be updated by workers of the assigned division.');
+      } else {
+        setToastMsg('You do not have permission to update progress for this task.');
+      }
+      return;
+    }
+
+    const clamped = Math.max(0, Math.min(100, Math.round(newProgress)));
+    const isCompleted = clamped === 100;
+
+    setProjectData(prev => {
+      const newData = { ...prev };
+      newData.mainJobs = newData.mainJobs.map(mj => ({
+        ...mj,
+        subMainJobs: mj.subMainJobs.map(smj => ({
+          ...smj,
+          subtasks: smj.subtasks.map(st => {
+            if (st.id === taskId) {
+              const prev = st.progress < 100 ? st.progress : (st.prevProgress || 0);
+              return {
+                ...st,
+                progress: clamped,
+                checked: isCompleted,
+                prevProgress: prev,
+              };
+            }
+            return st;
+          })
+        }))
+      }));
+      return recalculateSchedule(recalculateProgress(newData));
+    });
+
+    if (clamped === 100) {
+      setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
+      if (projectData.id) {
+        router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
+          preserveScroll: true,
+          preserveState: true,
+        });
+      }
+    }
+  };
+
+  // Checkbox toggle with Uncheck Confirmation Modal
   const handleCheck = (taskId: string, authorized: boolean, taskName: string) => {
     if (!authorized) {
       if (isAdmin) {
@@ -312,17 +457,42 @@ export default function TasksPage() {
       }
       return;
     }
-    
-    // Send toggle to backend
-    if (projectData.id) {
-      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
-        preserveScroll: true,
-        preserveState: true,
-      });
+
+    // Find current task state
+    let currentTask: SubSubtask | undefined;
+    for (const mj of projectData.mainJobs) {
+      for (const smj of mj.subMainJobs) {
+        const found = smj.subtasks.find(st => st.id === taskId);
+        if (found) {
+          currentTask = found;
+          break;
+        }
+      }
+      if (currentTask) break;
     }
 
+    if (!currentTask) return;
+
+    // Requirement 3: If already completed/checked, show confirmation modal to prevent accidental uncheck!
+    if (currentTask.checked || currentTask.progress >= 100) {
+      setUncheckConfirm({
+        taskId,
+        taskName,
+        prevProgress: currentTask.prevProgress,
+      });
+      return;
+    }
+
+    // If incomplete, mark completed (100%)
+    handleProgressChange(taskId, 100, true, taskName);
+  };
+
+  const confirmUncheck = () => {
+    if (!uncheckConfirm) return;
+    const { taskId, taskName, prevProgress } = uncheckConfirm;
+    const revertProgress = (prevProgress !== undefined && prevProgress < 100) ? prevProgress : 0;
+
     setProjectData(prev => {
-      let isCheckedNow = false;
       const newData = { ...prev };
       newData.mainJobs = newData.mainJobs.map(mj => ({
         ...mj,
@@ -330,19 +500,28 @@ export default function TasksPage() {
           ...smj,
           subtasks: smj.subtasks.map(st => {
             if (st.id === taskId) {
-              isCheckedNow = !st.checked;
-              return { ...st, checked: isCheckedNow };
+              return {
+                ...st,
+                progress: revertProgress,
+                checked: false,
+              };
             }
             return st;
           })
         }))
       }));
-      
       return recalculateSchedule(recalculateProgress(newData));
     });
-    
-    const wasChecked = projectData.mainJobs.some(mj => mj.subMainJobs.some(smj => smj.subtasks.some(st => st.id === taskId && st.checked)));
-    setToastMsg(wasChecked ? `Task "${taskName}" marked as incomplete.` : `Task "${taskName}" marked as completed ✓`);
+
+    if (projectData.id) {
+      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
+        preserveScroll: true,
+        preserveState: true,
+      });
+    }
+
+    setToastMsg(`Task "${taskName}" marked as incomplete.`);
+    setUncheckConfirm(null);
   };
 
   const filteredMJs = projectData.mainJobs.map(mj => {
@@ -489,6 +668,66 @@ export default function TasksPage() {
         </div>
       </div>
 
+      {/* Today's Tasks Section (Requirement 9) */}
+      <div className="bg-gradient-to-r from-blue-50/70 via-white to-indigo-50/70 rounded-2xl border-2 border-brand/20 p-4 sm:p-5 shadow-xs">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-brand text-white flex items-center justify-center shadow-xs">
+              <CalendarDays size={18} />
+            </div>
+            <div>
+              <h2 className="text-[16px] font-black text-neutral-900 flex items-center gap-2">
+                Today's Tasks
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand text-white">
+                  {todayTasks.length}
+                </span>
+              </h2>
+              <p className="text-[12px] text-neutral-500 font-medium">
+                Active or scheduled tasks for today ({new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })})
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTodaySectionOpen(!todaySectionOpen)}
+            className="text-[12px] font-bold text-brand hover:underline flex items-center gap-1"
+          >
+            {todaySectionOpen ? 'Collapse' : 'Expand'}
+            <ChevronDown size={14} className={`transform transition-transform ${todaySectionOpen ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+
+        {todaySectionOpen && (
+          <div>
+            {todayTasks.length === 0 ? (
+              <div className="p-4 rounded-xl bg-white border border-neutral-200/80 text-center text-neutral-500 text-[12.5px]">
+                <CheckCircle2 size={24} className="mx-auto text-emerald-500 mb-1.5" />
+                <p className="font-bold text-neutral-800">No tasks scheduled for today</p>
+                <p className="text-[11.5px] text-neutral-400 mt-0.5">All active project tasks are on schedule. Explore the WBS hierarchy below for upcoming items.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {todayTasks.map(({ st, parentSmj, timingStatus }) => {
+                  const authorized = isAuthorizedToCheck(st.division || parentSmj.pic);
+                  return (
+                    <TodayTaskCard
+                      key={st.id}
+                      st={st}
+                      parentSmj={parentSmj}
+                      timingStatus={timingStatus}
+                      canCheck={authorized}
+                      onCheck={() => handleCheck(st.id, authorized, st.name)}
+                      onProgressChange={(val) => handleProgressChange(st.id, val, authorized, st.name)}
+                      onOpenEvidence={(ev) => setEvidencePreview(ev)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Content Rendering based on View Mode */}
       {viewMode === 'checklist' ? (
         <div className="space-y-3">
@@ -590,6 +829,8 @@ export default function TasksPage() {
                       onDeleteSubMainJob={() => handleDeleteSubMainJob(mj.id, smj.id, (smj as any).dbId, smj.name)}
                       onDeleteTask={(taskId, taskName) => handleDeleteSubtask(smj.id, taskId, taskName)}
                       onCheck={handleCheck}
+                      onProgressChange={handleProgressChange}
+                      onOpenEvidence={(ev) => setEvidencePreview(ev)}
                     />
                   ))}
                   {mj.subMainJobs.length === 0 && (
@@ -792,6 +1033,23 @@ export default function TasksPage() {
         </Modal>
       )}
 
+      {/* Uncheck Confirmation Modal (Requirement 3) */}
+      {uncheckConfirm && (
+        <UncheckConfirmModal
+          taskName={uncheckConfirm.taskName}
+          onClose={() => setUncheckConfirm(null)}
+          onConfirm={confirmUncheck}
+        />
+      )}
+
+      {/* Evidence Preview Modal (Requirement 8) */}
+      {evidencePreview && (
+        <EvidencePreviewModal
+          evidence={evidencePreview}
+          onClose={() => setEvidencePreview(null)}
+        />
+      )}
+
       {/* Action Toast Feedback */}
       {toastMsg && (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
@@ -800,8 +1058,120 @@ export default function TasksPage() {
   );
 }
 
+function TodayTaskCard({
+  st,
+  parentSmj,
+  timingStatus,
+  canCheck,
+  onCheck,
+  onProgressChange,
+  onOpenEvidence
+}: {
+  st: SubSubtask;
+  parentSmj: SubMainJob;
+  timingStatus: 'active' | 'starting' | 'due' | 'overdue';
+  canCheck: boolean;
+  onCheck: () => void;
+  onProgressChange: (val: number) => void;
+  onOpenEvidence: (evidence: any) => void;
+}) {
+  const isChecked = st.checked || st.progress >= 100;
+
+  return (
+    <div className={`p-3.5 rounded-xl border bg-white shadow-xs transition-all ${
+      isChecked ? 'border-success/30 bg-emerald-50/20' : 'border-neutral-200 hover:border-neutral-300'
+    }`}>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          <span className="font-mono text-[11.5px] font-bold text-neutral-500">{st.code}</span>
+          <span className="px-2 py-0.5 rounded bg-neutral-100 text-neutral-700 text-[10.5px] font-bold">
+            {formatDivisionName(st.division || parentSmj.pic)}
+          </span>
+          {timingStatus === 'overdue' && (
+            <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10.5px] font-bold">
+              Overdue
+            </span>
+          )}
+          {timingStatus === 'due' && (
+            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10.5px] font-bold">
+              Due Today
+            </span>
+          )}
+          {timingStatus === 'starting' && (
+            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10.5px] font-bold">
+              Starts Today
+            </span>
+          )}
+          <span className="px-1.5 py-0.5 rounded text-[10.5px] font-semibold text-blue-700 bg-blue-50 border border-blue-200">
+            Weight {st.weight ?? 100}%
+          </span>
+        </div>
+        <StatusBadge status={isChecked ? 'Completed' : st.status} size="xs" />
+      </div>
+
+      <h4 className={`text-[13.5px] font-bold mb-2.5 leading-snug break-words ${
+        isChecked ? 'line-through text-neutral-400' : 'text-neutral-900'
+      }`}>
+        {st.name}
+      </h4>
+
+      {/* Progress Slider & Checkbox */}
+      <div className="space-y-2 pt-2 border-t border-neutral-100">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 flex-1">
+            <button
+              type="button"
+              onClick={onCheck}
+              className={`flex-shrink-0 transition-transform active:scale-95 ${
+                canCheck ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
+              }`}
+              title={isChecked ? "Click to uncheck (will prompt confirmation)" : "Click to mark 100% completed"}
+            >
+              {isChecked ? (
+                <CheckSquare size={18} className="text-success" />
+              ) : (
+                <Square size={18} className="text-neutral-300 hover:text-neutral-500" />
+              )}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={st.progress}
+              disabled={!canCheck}
+              onChange={(e) => onProgressChange(parseInt(e.target.value))}
+              className={`w-full h-2 rounded-lg appearance-none cursor-pointer bg-neutral-200 accent-brand ${
+                !canCheck ? 'opacity-40 cursor-not-allowed' : 'hover:accent-blue-700'
+              }`}
+            />
+          </div>
+          <span className="text-[12.5px] font-black text-neutral-800 w-11 text-right tabular-nums">
+            {st.progress}%
+          </span>
+        </div>
+
+        {/* Evidence badge & details */}
+        <div className="flex items-center justify-between text-[11px] pt-1 text-neutral-500">
+          <span>{formatDateDisplay(st.startDate)} – {formatDateDisplay(st.finishDate)}</span>
+          {st.evidence && (
+            <button
+              type="button"
+              onClick={() => onOpenEvidence(st.evidence)}
+              className="inline-flex items-center gap-1 text-brand font-bold hover:underline"
+            >
+              <Paperclip size={12} />
+              Evidence ({st.evidence.name})
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SubMainJobSection({
-  smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onCheck
+  smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onCheck, onProgressChange, onOpenEvidence
 }: {
   smj: SubMainJob;
   expanded: boolean;
@@ -814,6 +1184,8 @@ function SubMainJobSection({
   onDeleteSubMainJob: () => void;
   onDeleteTask: (taskId: string, taskName: string) => void;
   onCheck: (id: string, auth: boolean, name: string) => void;
+  onProgressChange: (id: string, progress: number, auth: boolean, name: string) => void;
+  onOpenEvidence: (evidence: any) => void;
 }) {
   return (
     <div className="transition-colors">
@@ -863,7 +1235,7 @@ function SubMainJobSection({
 
       {/* Level 3: Sub-Subtasks (Tasks) */}
       {expanded && (
-        <div className="pl-12 sm:pl-16 pr-4 pb-3 pt-1 space-y-2">
+        <div className="pl-6 sm:pl-16 pr-4 pb-3 pt-1 space-y-2">
           {smj.subtasks.length === 0 ? (
             <div className="py-2 text-[12.5px] text-neutral-400 italic">
               No tasks yet.{isPIC && " Click 'Add Task' to add task items."}
@@ -876,12 +1248,14 @@ function SubMainJobSection({
                   key={st.id}
                   st={st}
                   divisi={st.division || smj.pic}
-                  isChecked={st.checked}
+                  isChecked={st.checked || st.progress >= 100}
                   canCheck={authorized}
                   canEdit={isPIC}
                   onCheck={() => onCheck(st.id, authorized, st.name)}
+                  onProgressChange={(val) => onProgressChange(st.id, val, authorized, st.name)}
                   onEdit={() => onOpenEditModal(st)}
                   onDelete={() => onDeleteTask(st.id, st.name)}
+                  onOpenEvidence={onOpenEvidence}
                 />
               );
             })
@@ -892,78 +1266,136 @@ function SubMainJobSection({
   );
 }
 
-function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit, onDelete }: {
+function SubtaskRow({
+  st, divisi, isChecked, canCheck, canEdit, onCheck, onProgressChange, onEdit, onDelete, onOpenEvidence
+}: {
   st: SubSubtask;
   divisi: string;
   isChecked: boolean;
   canCheck: boolean;
   canEdit: boolean;
   onCheck: () => void;
+  onProgressChange: (val: number) => void;
   onEdit: () => void;
   onDelete: () => void;
+  onOpenEvidence: (evidence: any) => void;
 }) {
   return (
     <div
-      className={`group flex items-start sm:items-center gap-3 p-3 rounded-lg border transition-all ${
+      className={`group flex flex-col sm:flex-row sm:items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all ${
         isChecked
           ? 'bg-success-light/40 border-success/30'
           : 'bg-white border-neutral-200/80 hover:border-neutral-300 shadow-xs'
       }`}
     >
-      {/* Checkbox */}
-      <button
-        onClick={onCheck}
-        aria-label={`Toggle checklist for ${st.name}`}
-        className={`mt-0.5 sm:mt-0 flex-shrink-0 transition-transform active:scale-90 ${
-          canCheck ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
-        }`}
-      >
-        {isChecked ? (
-          <CheckSquare size={19} className="text-success" />
-        ) : (
-          <Square size={19} className="text-neutral-300 hover:text-neutral-500" />
-        )}
-      </button>
+      <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+        {/* Checkbox */}
+        <button
+          onClick={onCheck}
+          aria-label={`Toggle checklist for ${st.name}`}
+          className={`mt-0.5 sm:mt-0 flex-shrink-0 transition-transform active:scale-90 ${
+            canCheck ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
+          }`}
+          title={isChecked ? "Click to uncheck (will prompt confirmation)" : "Click to complete 100%"}
+        >
+          {isChecked ? (
+            <CheckSquare size={19} className="text-success" />
+          ) : (
+            <Square size={19} className="text-neutral-300 hover:text-neutral-500" />
+          )}
+        </button>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[12px] font-bold text-neutral-500 font-mono">{st.code}</span>
-          <span className={`text-[13.5px] sm:text-[14.5px] font-semibold ${isChecked ? 'line-through text-neutral-400' : 'text-neutral-900'}`}>
-            {st.name}
-          </span>
-          <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
-            Weight {st.weight ?? 100}%
-          </span>
-          {!canCheck && <Lock size={12} className="text-neutral-300" title="You are not authorized to check this task" />}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
-            <Shield size={10} />
-            Division: {formatDivisionName(divisi)}
-          </span>
-          <span className="inline-flex items-center gap-1 font-semibold text-neutral-700 bg-neutral-50 px-2 py-0.5 rounded border border-neutral-200">
-            <Calendar size={12} className="text-brand" />
-            Schedule: {formatDateDisplay(st.startDate)} to {formatDateDisplay(st.finishDate)}
-          </span>
-          <span className="text-neutral-600 font-medium">Duration: {st.duration} days</span>
-          {st.daysLeft !== undefined && st.daysLeft > 0 && !isChecked && (
-            <span className="text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px]">
-              {st.daysLeft} days left
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[12px] font-bold text-neutral-500 font-mono">{st.code}</span>
+            <span className={`text-[13.5px] sm:text-[14.5px] font-semibold break-words ${isChecked ? 'line-through text-neutral-400' : 'text-neutral-900'}`}>
+              {st.name}
             </span>
-          )}
-          {st.predecessor && (
-            <span className="font-medium text-neutral-600">
-              Pred: {st.predecessor} ({st.depType || 'FS'}{st.lag ? ` +${st.lag}d` : ''})
+            <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
+              Weight {st.weight ?? 100}%
             </span>
-          )}
+            {!canCheck && <Lock size={12} className="text-neutral-300" title="You are not authorized to check or adjust progress for this task" />}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
+              <Shield size={10} />
+              Division: {formatDivisionName(divisi)}
+            </span>
+            <span className="inline-flex items-center gap-1 font-semibold text-neutral-700 bg-neutral-50 px-2 py-0.5 rounded border border-neutral-200">
+              <Calendar size={12} className="text-brand" />
+              Schedule: {formatDateDisplay(st.startDate)} to {formatDateDisplay(st.finishDate)}
+            </span>
+            <span className="text-neutral-600 font-medium">Duration: {st.duration} days</span>
+            {st.daysLeft !== undefined && st.daysLeft > 0 && !isChecked && (
+              <span className="text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px]">
+                {st.daysLeft} days left
+              </span>
+            )}
+            {st.predecessor && (
+              <span className="font-medium text-neutral-600">
+                Pred: {st.predecessor} ({st.depType || 'FS'}
+                {st.lag ? ` +${st.lag}d lag` : ''}
+                {st.lead ? ` -${st.lead}d lead` : ''})
+              </span>
+            )}
+            {st.evidence && (
+              <button
+                type="button"
+                onClick={() => onOpenEvidence(st.evidence)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold hover:bg-emerald-100 transition-colors"
+                title="View attached evidence"
+              >
+                <Paperclip size={11} />
+                Evidence Attached
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5 flex-shrink-0 self-end sm:self-center">
+      {/* Progress Slider (0–100%) & Status Badges */}
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 self-stretch sm:self-center border-t sm:border-t-0 border-neutral-100 pt-2 sm:pt-0">
+        {/* Progress Slider */}
+        <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={st.progress}
+            disabled={!canCheck}
+            onChange={(e) => onProgressChange(parseInt(e.target.value))}
+            className={`w-28 sm:w-32 h-2 rounded-lg appearance-none cursor-pointer bg-neutral-200 accent-brand ${
+              !canCheck ? 'opacity-40 cursor-not-allowed' : 'hover:accent-blue-700'
+            }`}
+            title={`Adjust task progress (Current: ${st.progress}%)`}
+          />
+          <span className="text-[12.5px] font-black text-neutral-800 w-11 text-right tabular-nums">
+            {st.progress}%
+          </span>
+        </div>
+
+        {/* Quick Presets for Desktop */}
+        {canCheck && (
+          <div className="hidden xl:flex items-center gap-0.5 bg-neutral-100 p-0.5 rounded border border-neutral-200 text-[10px] font-bold text-neutral-600">
+            {[0, 25, 50, 75, 100].map(val => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => onProgressChange(val)}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  st.progress === val ? 'bg-brand text-white font-extrabold' : 'hover:bg-neutral-200 text-neutral-700'
+                }`}
+                title={`Set to ${val}%`}
+              >
+                {val}%
+              </button>
+            ))}
+          </div>
+        )}
+
         <StatusBadge status={isChecked ? 'Completed' : st.status} size="sm" />
-        <span className="text-[13px] sm:text-[14px] font-bold text-neutral-800 w-10 text-right">
-          {isChecked ? 100 : st.progress}%
-        </span>
+
         {/* Edit / Delete: PIC only */}
         {canEdit && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
@@ -976,6 +1408,273 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function UncheckConfirmModal({
+  taskName,
+  onClose,
+  onConfirm
+}: {
+  taskName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      title="Uncheck Task?"
+      subtitle="Confirm marking task as incomplete"
+      onClose={onClose}
+      size="sm"
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 p-3.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-amber-900">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-700 shadow-2xs">
+            <AlertTriangle size={20} />
+          </div>
+          <div className="text-[12.5px] leading-relaxed pt-0.5">
+            <p className="font-semibold text-neutral-800">
+              Are you sure you want to mark this task as incomplete?
+            </p>
+            <p className="font-bold text-neutral-900 mt-1">
+              "{taskName}"
+            </p>
+            <p className="text-[11.5px] text-neutral-500 mt-1">
+              This will unmark the task from 100% completion. Progress will be restored to in-progress.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={onConfirm}
+            className="bg-amber-600 hover:bg-amber-700 border-amber-600 text-white"
+          >
+            Uncheck
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function EvidencePreviewModal({
+  evidence,
+  onClose
+}: {
+  evidence: { name: string; url?: string; size?: string };
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      title="Task Evidence Preview"
+      subtitle={evidence.name}
+      onClose={onClose}
+      size="md"
+    >
+      <div className="space-y-4">
+        {evidence.url ? (
+          <div className="rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900 flex items-center justify-center max-h-[60vh]">
+            <img src={evidence.url} alt={evidence.name} className="max-w-full max-h-[60vh] object-contain" />
+          </div>
+        ) : (
+          <div className="p-8 rounded-xl border border-neutral-200 bg-neutral-50 text-center">
+            <FileText size={48} className="mx-auto text-brand mb-2" />
+            <h4 className="font-bold text-neutral-800 text-[14px]">{evidence.name}</h4>
+            <p className="text-[12px] text-neutral-500 mt-1">{evidence.size || 'Attached file'}</p>
+          </div>
+        )}
+        <div className="flex justify-end pt-2 border-t border-neutral-100">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SearchablePredecessorSelect({
+  value,
+  onChange,
+  availableSubMainJobs,
+  currentTaskId,
+  currentTaskCode
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  availableSubMainJobs: SubMainJob[];
+  currentTaskId?: string;
+  currentTaskCode?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const query = search.trim().toLowerCase();
+
+  // Find currently selected label
+  let selectedLabel = 'None (No Predecessor)';
+  if (value) {
+    for (const smj of availableSubMainJobs) {
+      if (smj.code === value) {
+        selectedLabel = `${smj.code} - ${smj.name} (Sub Task)`;
+        break;
+      }
+      const st = (smj.subtasks || []).find(s => s.code === value);
+      if (st) {
+        selectedLabel = `${st.code} - ${st.name}`;
+        break;
+      }
+    }
+  }
+
+  // Filter tasks
+  const filteredGroups = availableSubMainJobs.map(smj => {
+    const smjMatches = !query || smj.name.toLowerCase().includes(query) || smj.code.toLowerCase().includes(query);
+    const matchingTasks = (smj.subtasks || []).filter(st => {
+      if (st.id === currentTaskId || st.code === currentTaskCode) return false;
+      if (!query) return true;
+      return st.name.toLowerCase().includes(query) ||
+             st.code.toLowerCase().includes(query) ||
+             (st.division && st.division.toLowerCase().includes(query));
+    });
+
+    return {
+      smj,
+      matchingTasks,
+      visible: smjMatches || matchingTasks.length > 0,
+    };
+  }).filter(g => g.visible);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] bg-white cursor-pointer flex items-center justify-between hover:border-neutral-300 focus:border-brand"
+      >
+        <span className={`truncate ${value ? 'font-bold text-neutral-800' : 'text-neutral-400'}`}>
+          {selectedLabel}
+        </span>
+        <ChevronDown size={14} className={`text-neutral-400 transform transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white rounded-xl border border-neutral-200 shadow-xl max-h-64 flex flex-col overflow-hidden">
+          {/* Search box inside dropdown */}
+          <div className="p-2 border-b border-neutral-100 bg-neutral-50 flex items-center gap-1.5">
+            <Search size={14} className="text-neutral-400 ml-1" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search predecessor by name or code (e.g. civil, WBS)..."
+              className="w-full px-2 py-1 text-[12px] bg-transparent outline-none font-medium"
+              autoFocus
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="text-neutral-400 hover:text-neutral-600 p-1"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          <div className="overflow-y-auto divide-y divide-neutral-100 flex-1 p-1">
+            {/* None Option */}
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                setIsOpen(false);
+              }}
+              className={`w-full text-left px-3 py-2 text-[12.5px] rounded-lg transition-colors font-medium ${
+                !value ? 'bg-brand/10 text-brand font-bold' : 'text-neutral-600 hover:bg-neutral-50'
+              }`}
+            >
+              None (No Predecessor)
+            </button>
+
+            {filteredGroups.length === 0 ? (
+              <div className="py-4 text-center text-[12px] text-neutral-400 italic">
+                No matching tasks found for "{search}"
+              </div>
+            ) : (
+              filteredGroups.map(({ smj, matchingTasks }) => (
+                <div key={smj.id || smj.code} className="pt-1.5 pb-1">
+                  <div className="px-3 py-1 text-[11px] font-black text-neutral-400 uppercase tracking-wider">
+                    {smj.code} · {smj.name}
+                  </div>
+                  {/* Sub-Task option */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(smj.code);
+                      setIsOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg transition-colors flex items-center justify-between ${
+                      value === smj.code ? 'bg-brand text-white font-bold' : 'text-neutral-800 hover:bg-neutral-50'
+                    }`}
+                  >
+                    <span className="truncate">
+                      <strong>{smj.code}</strong> - {smj.name}
+                    </span>
+                    <span className={`text-[10.5px] px-1.5 py-0.5 rounded font-bold ${
+                      value === smj.code ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-600'
+                    }`}>
+                      Sub-Task
+                    </span>
+                  </button>
+
+                  {/* Specific Task items */}
+                  {matchingTasks.map(st => (
+                    <button
+                      key={st.id || st.code}
+                      type="button"
+                      onClick={() => {
+                        onChange(st.code);
+                        setIsOpen(false);
+                      }}
+                      className={`w-full text-left pl-6 pr-3 py-1.5 text-[12px] rounded-lg transition-colors flex items-center justify-between ${
+                        value === st.code ? 'bg-brand text-white font-bold' : 'text-neutral-700 hover:bg-neutral-50'
+                      }`}
+                    >
+                      <span className="truncate">
+                        <strong>{st.code}</strong> - {st.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1162,6 +1861,7 @@ function AddSubtaskModal({
 }) {
   const isEdit = !!initialData?.id;
   const [name, setName] = useState(initialData?.name || '');
+  const [weight, setWeight] = useState(initialData?.weight !== undefined ? initialData.weight.toString() : '100');
   const [startDate, setStartDate] = useState(initialData?.startDate || new Date().toISOString().slice(0, 10));
   const [duration, setDuration] = useState(initialData?.duration?.toString() || '5');
   const [divisionId, setDivisionId] = useState<string>(
@@ -1171,20 +1871,31 @@ function AddSubtaskModal({
   );
   const [predecessor, setPredecessor] = useState(initialData?.predecessor || '');
   const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
-  const [lag, setLag] = useState(initialData?.lag?.toString() || '0');
+  const [lag, setLag] = useState(initialData?.lag ? initialData.lag.toString() : '0');
+  const [lead, setLead] = useState(initialData?.lead ? initialData.lead.toString() : '0');
+  const [evidence, setEvidence] = useState<{
+    name: string;
+    size: string;
+    type: string;
+    previewUrl?: string;
+  } | null>(initialData?.evidence || null);
 
-  // Collect Sub-Tasks across the project to populate predecessor dropdown
+  // Available SubMainJobs across the project
   const availableSubMainJobs = (mainJobs && mainJobs.length > 0)
     ? mainJobs.flatMap(mj => mj.subMainJobs || [])
     : (parentSmj ? [parentSmj] : []);
 
-  const allKnownCodes = new Set<string>();
-  availableSubMainJobs.forEach(smj => {
-    if (smj.code) allKnownCodes.add(smj.code);
-    (smj.subtasks || []).forEach(st => {
-      if (st.code) allKnownCodes.add(st.code);
-    });
-  });
+  // Calculate finish date preview
+  const finishDatePreview = useMemo(() => {
+    try {
+      const d = new Date(startDate);
+      const dur = parseInt(duration) || 1;
+      d.setDate(d.getDate() + dur);
+      return d.toISOString().slice(0, 10);
+    } catch {
+      return startDate;
+    }
+  }, [startDate, duration]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1194,44 +1905,71 @@ function AddSubtaskModal({
       id: initialData?.id,
       smjDbId,
       name: name.trim(),
+      weight: parseFloat(weight) || 100,
       divisionId: divisionId ? parseInt(divisionId) : undefined,
       startDate,
       duration: parseInt(duration) || 1,
       predecessor: predecessor || undefined,
       depType,
-      lag: parseInt(lag) || 0
+      lag: parseInt(lag) || 0,
+      lead: parseInt(lead) || 0,
+      evidence: evidence || undefined,
     });
   };
 
   return (
     <Modal
       title={isEdit ? "Edit Task (Sub-task Item)" : "Add New Task (Sub-task Item)"}
-      subtitle={isEdit ? `Editing: ${initialData.code} — ${initialData.name}` : "Add specific project task breakdown item"}
+      subtitle={isEdit ? `Editing: ${initialData.code} — ${initialData.name}` : "Add project task breakdown item with single-column layout"}
       onClose={onClose}
       size="md"
     >
-      <form onSubmit={handleSubmit} className="space-y-3.5">
+      <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+        {/* 1. Task Name / Description */}
         <div>
-          <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
-            Task Description <span className="text-danger">*</span>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Task Description / Name <span className="text-danger">*</span>
           </label>
           <input
             type="text"
             required
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="e.g. Preparation and review of vendor documents..."
+            placeholder="e.g. Build 15 Concrete Columns / Review vendor documents"
             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
             autoFocus
           />
         </div>
 
+        {/* 2. Weight (%) */}
         <div>
-          <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Responsible Division</label>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Weight Allocation (%) <span className="text-danger">*</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            required
+            value={weight}
+            onChange={e => setWeight(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand font-bold bg-white"
+          />
+          <span className="text-[11px] text-neutral-400 mt-1 block">
+            Relative weight contribution to the parent Sub Task.
+          </span>
+        </div>
+
+        {/* 3. Responsible Division */}
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Responsible Division <span className="text-danger">*</span>
+          </label>
           <select
             value={divisionId}
             onChange={e => setDivisionId(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
           >
             {divisions.map(d => (
               <option key={d.id} value={d.id}>{formatDivisionName(d.divisi)}</option>
@@ -1239,77 +1977,197 @@ function AddSubtaskModal({
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Duration (Days)</label>
-            <input
-              type="number"
-              min="1"
-              value={duration}
-              onChange={e => setDuration(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            />
+        {/* 4. Start Date */}
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Start Date <span className="text-danger">*</span>
+          </label>
+          <input
+            type="date"
+            required
+            value={startDate}
+            onChange={e => setStartDate(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+          />
+        </div>
+
+        {/* 5. Duration (Days) & Calculated Finish Date */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-[12px] font-bold text-neutral-700">
+              Duration (Days) <span className="text-danger">*</span>
+            </label>
+            <span className="text-[11px] text-neutral-500 font-semibold">
+              Finish Date: <strong className="text-brand">{formatDateDisplay(finishDatePreview)}</strong>
+            </span>
           </div>
-          <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            />
+          <input
+            type="number"
+            min="1"
+            required
+            value={duration}
+            onChange={e => setDuration(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
+          />
+        </div>
+
+        {/* 6. Predecessor (Searchable) */}
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Predecessor (Searchable)
+          </label>
+          <SearchablePredecessorSelect
+            value={predecessor}
+            onChange={setPredecessor}
+            availableSubMainJobs={availableSubMainJobs}
+            currentTaskId={initialData?.id}
+            currentTaskCode={initialData?.code}
+          />
+        </div>
+
+        {/* 7. Dependency Type */}
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Dependency Type
+          </label>
+          <select
+            value={depType}
+            onChange={e => setDepType(e.target.value as DependencyType)}
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
+          >
+            <option value="FS">Finish-to-Start (FS) — default</option>
+            <option value="SS">Start-to-Start (SS)</option>
+            <option value="FF">Finish-to-Finish (FF)</option>
+            <option value="SF">Start-to-Finish (SF)</option>
+          </select>
+        </div>
+
+        {/* 8. Lag & Lead UI Inputs (Clearly separated) */}
+        <div className="space-y-2 pt-1 border-t border-neutral-100">
+          <div className="flex items-center justify-between">
+            <label className="block text-[12px] font-bold text-neutral-700">
+              Lag & Lead Timing
+            </label>
+            <span className="text-[11px] text-neutral-400">Dependency adjustments</span>
+          </div>
+
+          <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/70 space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[12px] font-bold text-neutral-800 flex items-center gap-1.5">
+                  <Clock size={13} className="text-amber-600" />
+                  Lag (Delay)
+                </span>
+                <span className="text-[11px] text-neutral-400 font-semibold">[ +days ]</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={lag}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setLag(v);
+                    if (parseInt(v) > 0) setLead('0');
+                  }}
+                  className="w-full px-3 py-1.5 rounded border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+                  placeholder="0"
+                />
+                <span className="text-[12px] text-neutral-500 font-medium">days</span>
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1 leading-tight">
+                Wait N days after predecessor finishes before starting this task.
+              </p>
+            </div>
+
+            <div className="border-t border-neutral-200/60 pt-2.5">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[12px] font-bold text-neutral-800 flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-blue-600" />
+                  Lead (Acceleration)
+                </span>
+                <span className="text-[11px] text-neutral-400 font-semibold">[ -days ]</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={lead}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setLead(v);
+                    if (parseInt(v) > 0) setLag('0');
+                  }}
+                  className="w-full px-3 py-1.5 rounded border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+                  placeholder="0"
+                />
+                <span className="text-[12px] text-neutral-500 font-medium">days</span>
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1 leading-tight">
+                Start N days earlier before predecessor finishes (work overlap).
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Predecessor</label>
-            <select
-              value={predecessor}
-              onChange={e => setPredecessor(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium truncate"
-            >
-              <option value="">None (No Predecessor)</option>
-              {predecessor && !allKnownCodes.has(predecessor) && (
-                <option value={predecessor}>{predecessor} (Current)</option>
-              )}
-              {availableSubMainJobs.map(smj => {
-                const availableTasks = (smj.subtasks || []).filter(
-                  st => st.id !== initialData?.id && st.code !== initialData?.code
-                );
-
-                return (
-                  <optgroup key={smj.id || smj.code} label={`${smj.code} · ${smj.name}`}>
-                    {/* Sub-Task option */}
-                    <option value={smj.code}>
-                      {smj.code} - {smj.name} (Sub-Task)
-                    </option>
-                    {/* Specific Task items under this Sub-Task */}
-                    {availableTasks.map(st => (
-                      <option key={st.id || st.code} value={st.code}>
-                        {st.code} - {st.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                );
-              })}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Dependency Type</label>
-            <select
-              value={depType}
-              onChange={e => setDepType(e.target.value as DependencyType)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            >
-              <option value="FS">Finish-to-Start (FS)</option>
-              <option value="SS">Start-to-Start (SS)</option>
-              <option value="FF">Finish-to-Finish (FF)</option>
-              <option value="SF">Start-to-Finish (SF)</option>
-            </select>
-          </div>
+        {/* 9. Task Evidence Upload (Requirement 8) */}
+        <div className="space-y-1.5 pt-1 border-t border-neutral-100">
+          <label className="block text-[12px] font-bold text-neutral-700">
+            Task Evidence (Photo / Document)
+          </label>
+          {evidence ? (
+            <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                {evidence.previewUrl ? (
+                  <img src={evidence.previewUrl} alt="Evidence preview" className="w-11 h-11 rounded-lg object-cover border border-neutral-200 flex-shrink-0" />
+                ) : (
+                  <div className="w-11 h-11 rounded-lg bg-brand/10 text-brand flex items-center justify-center flex-shrink-0">
+                    <FileText size={20} />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="text-[12.5px] font-bold text-neutral-800 truncate">{evidence.name}</div>
+                  <div className="text-[11px] text-neutral-500">{evidence.size} · Attached</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEvidence(null)}
+                className="p-1.5 rounded text-neutral-400 hover:text-danger hover:bg-red-50 transition-colors"
+                title="Remove evidence"
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-neutral-200 hover:border-brand rounded-xl cursor-pointer bg-neutral-50/50 hover:bg-brand/5 transition-colors">
+              <UploadCloud size={24} className="text-neutral-400 mb-1" />
+              <span className="text-[12.5px] font-bold text-neutral-700">Click or drag & drop evidence file / photo</span>
+              <span className="text-[11px] text-neutral-400 mt-0.5">Supports PNG, JPG, or PDF up to 10MB</span>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const isImg = file.type.startsWith('image/');
+                    const sizeFormatted = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+                    const previewUrl = isImg ? URL.createObjectURL(file) : undefined;
+                    setEvidence({
+                      name: file.name,
+                      size: sizeFormatted,
+                      type: file.type,
+                      previewUrl,
+                    });
+                  }
+                }}
+              />
+            </label>
+          )}
         </div>
 
+        {/* Action Buttons */}
         <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
           <Button variant="outline" size="sm" type="button" onClick={onClose}>
             Cancel
