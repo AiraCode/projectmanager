@@ -243,14 +243,14 @@ export default function ProjectDetailPage() {
                     Admin Ownership Limit Reached (1 Admin = 1 Project)
                   </div>
                   <p className="text-amber-800 leading-relaxed">
-                    Under JEKER business rules, <strong>one Admin can own exactly one Project in total</strong> across all companies.
+                    Under PROVIS business rules, <strong>one Admin can own exactly one Project in total</strong> across all companies.
                     You are currently the registered owner of:
                   </p>
                   <div className="p-2.5 rounded-lg bg-white border border-amber-200 font-semibold text-neutral-800 mt-2">
                     📁 {user?.ownedProject?.name || p.name}
                   </div>
                   <p className="text-amber-700 text-[11.5px] mt-2">
-                    To instantiate another project with the master template, sign in with an unassigned Admin account (such as <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-amber-900">admin2@jeker.id</code>).
+                    To instantiate another project with the master template, sign in with an unassigned Admin account (such as <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-amber-900">admin2@provis.id</code>).
                   </p>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import { Users, CheckCircle2, Clock, ListChecks, ChevronDown, ChevronRight, CheckSquare, Square, Shield } from 'lucide-react';
-import { PageHeader, Card, ProgressBar, StatusBadge, formatDateDisplay } from '@/components/ui';
+import { PageHeader, Card, ProgressBar, StatusBadge, formatDateDisplay, formatDivisionName } from '@/components/ui';
 
 interface TaskItem {
   id: string;
@@ -29,6 +29,7 @@ export default function DivisionProgressPage() {
 
   const isWorkerDivision = userRole === 'worker' || !!userDivision;
   const activeDivisionName = userDivision || (divisionGroups.length === 1 ? divisionGroups[0]?.division : null);
+  const formattedActiveDivision = formatDivisionName(activeDivisionName);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
@@ -51,21 +52,21 @@ export default function DivisionProgressPage() {
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-6">
       <PageHeader
         title={
-          isWorkerDivision && activeDivisionName
-            ? `Division Progress: ${activeDivisionName} ${project?.name ? `· ${project.name}` : ''}`
+          isWorkerDivision && formattedActiveDivision
+            ? `Division Progress: ${formattedActiveDivision} ${project?.name ? `· ${project.name}` : ''}`
             : `Division Progress ${project?.name ? `· ${project.name}` : ''}`
         }
         subtitle={
-          isWorkerDivision && activeDivisionName
-            ? `Task completion and workload monitoring specifically for the ${activeDivisionName} division on this project`
+          isWorkerDivision && formattedActiveDivision
+            ? `Task completion and workload monitoring specifically for the ${formattedActiveDivision} division on this project`
             : "Workload and completion monitoring per division based on WBS structure"
         }
         actions={
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-brand-light text-brand border border-brand-border shadow-2xs">
               <Users size={14} />
-              {isWorkerDivision && activeDivisionName
-                ? `${activeDivisionName} Division`
+              {isWorkerDivision && formattedActiveDivision
+                ? `${formattedActiveDivision} Division`
                 : `${divisionGroups.length} Involved Divisions`}
             </span>
           </div>
@@ -141,12 +142,12 @@ export default function DivisionProgressPage() {
                   </button>
 
                   <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 text-brand flex items-center justify-center flex-shrink-0 font-bold text-sm">
-                    {group.division.slice(0, 2).toUpperCase()}
+                    {formatDivisionName(group.division).slice(0, 2).toUpperCase()}
                   </div>
 
                   <div className="min-w-0">
                     <h3 className="text-[15px] sm:text-[16px] font-black text-neutral-900 tracking-tight truncate">
-                      {group.division}
+                      {formatDivisionName(group.division)}
                     </h3>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-neutral-500 mt-0.5">
                       <span>Total: <strong className="text-neutral-800">{group.total}</strong></span>

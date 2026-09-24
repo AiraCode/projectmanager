@@ -111,7 +111,7 @@ export default function WeeklyPage() {
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
       <PageHeader
-        title="Weekly Implementation"
+        title="Weekly Progress"
         subtitle="System-generated weekly schedule with Planned vs. Actual tracking"
       />
 
@@ -121,7 +121,7 @@ export default function WeeklyPage() {
           { label: 'Total Periods', value: `${weeks.length} Weeks`, sub: 'Total project span' },
           { label: 'Reported Periods', value: `${weeks.filter(w => w.actual > 0).length} Weeks`, sub: 'With actual progress' },
           { label: 'Planned Target', value: `${totalPlanned.toFixed(1)}%`, sub: 'Total scheduled weight' },
-          { label: 'Realized Progress', value: `${totalActual.toFixed(1)}%`, sub: 'Cumulative actual progress' },
+          { label: 'Actual Progress', value: `${totalActual.toFixed(1)}%`, sub: 'Cumulative actual progress' },
         ].map(({ label, value, sub }) => (
           <Card key={label} className="p-4">
             <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide mb-1">{label}</div>
@@ -176,9 +176,9 @@ export default function WeeklyPage() {
                 <th className="px-4 py-3 text-left">Period Range</th>
                 <th className="px-4 py-3 text-left">Planned (%)</th>
                 <th className="px-4 py-3 text-left">Actual (%)</th>
-                <th className="px-4 py-3 text-right">Plan. Cumulative</th>
-                <th className="px-4 py-3 text-right">Act. Cumulative</th>
-                <th className="px-4 py-3 text-right">Deviation</th>
+                <th className="px-4 py-3 text-right">Planned Cumulative (%)</th>
+                <th className="px-4 py-3 text-right">Actual Cumulative (%)</th>
+                <th className="px-4 py-3 text-right">Deviation (%)</th>
                 <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>

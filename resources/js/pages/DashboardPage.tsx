@@ -213,7 +213,7 @@ export default function DashboardPage() {
                 <div className="pl-7.5">
                   <ProgressBar value={mj.progress} size="xs" showLabel={false} />
                   <div className="flex justify-between items-center text-[10.5px] text-neutral-400 mt-1">
-                    <span>{mj.subMainJobs.length} Sub Main Jobs</span>
+                    <span>{mj.subMainJobs.length} Sub Tasks</span>
                     <span>Weight: {mj.weight}%</span>
                   </div>
                 </div>

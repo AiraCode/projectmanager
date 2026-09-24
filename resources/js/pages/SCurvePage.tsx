@@ -373,7 +373,7 @@ export default function SCurvePage() {
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
       <PageHeader
         title={`S-Curve Analysis ${project?.name || projectData?.name ? `· ${project?.name || projectData?.name}` : ''}`}
-        subtitle={userRole === 'admin_progres' ? 'Admin Progres View — Cumulative S-Curve progress monitoring' : 'Planned vs. Actual cumulative progress tracking over project lifecycle'}
+        subtitle={userRole === 'admin_progres' ? 'Progress Admin View — Cumulative S-Curve progress monitoring' : 'Planned vs. Actual cumulative progress tracking over project lifecycle'}
         actions={
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
@@ -414,9 +414,9 @@ export default function SCurvePage() {
             sub: weeks.length > 0 ? `Target at completion (W${weeks.length})` : 'No schedule available',
           },
           {
-            label: 'Cumulative Actual',
+            label: 'Actual Progress',
             value: `${realisasiValue.toFixed(1)}%`,
-            sub: currentLabel ? `Reported as of ${currentLabel}` : 'No active period',
+            sub: currentLabel ? `Cumulative actual as of ${currentLabel}` : 'No active period',
           },
           {
             label: 'Progress Deviation',
@@ -583,7 +583,7 @@ export default function SCurvePage() {
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-success" />
-              <span>Actual Realization</span>
+              <span>Actual Progress</span>
             </div>
           </div>
         </div>

@@ -5,7 +5,7 @@ import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyTy
 import { recalculateSchedule } from '@/utils/scheduleEngine';
 import { recalculateProgress } from '@/utils/progressEngine';
 import { exportToCSV } from '@/utils/exportEngine';
-import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast, EmptyState, formatDateDisplay } from '@/components/ui';
+import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast, EmptyState, formatDateDisplay, formatDivisionName } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
 const STATUSES: Status[] = ['Open', 'On Track', 'At Risk', 'Delayed', 'Cancelled', 'Completed'];
@@ -646,7 +646,7 @@ export default function TasksPage() {
                           <td className="px-4 py-2.5 text-right font-bold text-neutral-800 text-[12.5px]">{smj.weight}%</td>
                           <td className="px-4 py-2.5">
                             <span className="px-2 py-0.5 bg-white border border-neutral-200 rounded text-[11px] font-bold text-neutral-600">
-                              {smj.pic}
+                              {formatDivisionName(smj.pic)}
                             </span>
                           </td>
                           <td className="px-4 py-2.5"><StatusBadge status={smj.status} size="xs" /></td>
@@ -666,7 +666,7 @@ export default function TasksPage() {
                               <span className={st.checked ? 'line-through text-neutral-400' : 'text-neutral-900 font-medium'}>{st.name}</span>
                             </td>
                             <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">{st.weight ?? 100}%</td>
-                            <td className="px-4 py-2 text-neutral-600 text-[11.5px]">{st.division || smj.pic}</td>
+                            <td className="px-4 py-2 text-neutral-600 text-[11.5px]">{formatDivisionName(st.division || smj.pic)}</td>
                             <td className="px-4 py-2"><StatusBadge status={st.checked ? 'Completed' : st.status} size="xs" /></td>
                             <td className="px-4 py-2 text-right font-bold text-neutral-800 text-[13px]">
                               {st.checked ? '100' : st.progress}%
@@ -939,7 +939,7 @@ function SubtaskRow({ st, divisi, isChecked, canCheck, canEdit, onCheck, onEdit,
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
             <Shield size={10} />
-            Division: {divisi}
+            Division: {formatDivisionName(divisi)}
           </span>
           <span className="inline-flex items-center gap-1 font-semibold text-neutral-700 bg-neutral-50 px-2 py-0.5 rounded border border-neutral-200">
             <Calendar size={12} className="text-brand" />
@@ -1234,7 +1234,7 @@ function AddSubtaskModal({
             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
           >
             {divisions.map(d => (
-              <option key={d.id} value={d.id}>{d.divisi}</option>
+              <option key={d.id} value={d.id}>{formatDivisionName(d.divisi)}</option>
             ))}
           </select>
         </div>

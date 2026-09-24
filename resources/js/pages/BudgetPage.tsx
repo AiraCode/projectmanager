@@ -201,7 +201,7 @@ export default function BudgetPage() {
   })).filter(k => k.total > 0);
 
   const handleExportCSV = () => {
-    const headers = ['Date', 'WBS Code', 'WBS Sub-task', 'Category', 'Item Name', 'Specification', 'Qty', 'Unit', 'Unit Price (Rp)', 'Total Price (Rp)', 'Reference', 'Location', 'Remarks'];
+    const headers = ['Date', 'WBS Code', 'WBS Sub Task', 'Category', 'Item Name', 'Specification', 'Qty', 'Unit', 'Unit Price (Rp)', 'Total Price (Rp)', 'Reference', 'Location', 'Remarks'];
     const rows = filtered.map(e => [
       e.tanggal,
       e.codeSubWbs,
@@ -347,7 +347,7 @@ export default function BudgetPage() {
               <tr className="border-b border-neutral-200 bg-neutral-50 text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
                 <th className="px-3.5 py-3 text-left">Date</th>
                 <th className="px-3.5 py-3 text-left">WBS Code</th>
-                <th className="px-3.5 py-3 text-left">WBS Subtask</th>
+                <th className="px-3.5 py-3 text-left">WBS Sub Task</th>
                 <th className="px-3.5 py-3 text-left">Category</th>
                 <th className="px-3.5 py-3 text-left">Item Name & Specification</th>
                 <th className="px-3.5 py-3 text-right">Qty</th>

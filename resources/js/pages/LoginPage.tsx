@@ -48,10 +48,10 @@ export default function LoginPage() {
         <div className="relative z-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand to-blue-500 flex items-center justify-center shadow-lg shadow-brand/25 transition-all duration-300 hover:scale-105 cursor-pointer">
-              <span className="text-white font-black text-lg tracking-tight">J</span>
+              <span className="text-white font-black text-lg tracking-tight">P</span>
             </div>
             <div className="font-black text-2xl tracking-tight text-white flex items-center gap-2">
-              JEKER
+              PROVIS
             </div>
           </div>
         </div>
@@ -89,10 +89,10 @@ export default function LoginPage() {
           {/* Mobile logo header */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
             <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center shadow-md shadow-brand/20">
-              <span className="text-white font-black text-lg">J</span>
+              <span className="text-white font-black text-lg">P</span>
             </div>
             <div className="font-black text-2xl text-neutral-900 tracking-tight">
-              JEKER
+              PROVIS
             </div>
           </div>
 
@@ -120,7 +120,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={e => { setEmail(e.target.value); setError(''); }}
-                placeholder="name@jeker.id"
+                placeholder="name@provis.id"
                 autoComplete="email"
                 className={`w-full px-3.5 py-2.5 rounded-xl border text-[14px] outline-none transition-all duration-200
                   ${error ? 'border-danger focus:ring-4 focus:ring-danger/15' : 'border-slate-200 focus:border-brand focus:ring-4 focus:ring-brand/10'}
@@ -194,7 +194,7 @@ export default function LoginPage() {
           {/* Clean Footer without PT Indoprima Gemilang */}
           <div className="mt-12 pt-6 border-t border-slate-200/80">
             <p className="text-center text-[12px] text-slate-400 font-medium">
-              JEKER v1.0
+              PROVIS v1.0
             </p>
           </div>
         </div>

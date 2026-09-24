@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { usePage } from '@inertiajs/react';
 import { PROJECT } from '@/data/mockData';
-import { PageHeader, Card, Button, formatDateDisplay } from '@/components/ui';
+import { PageHeader, Card, Button, formatDateDisplay, formatDivisionName } from '@/components/ui';
 import {
   Calendar, ChevronDown, ChevronRight, Sparkles, Flag,
   LayoutGrid, ListTree, CheckCircle2, Clock, ArrowRight,
@@ -805,7 +805,7 @@ function GanttTreeMJ({
                     <button
                       onClick={() => onToggleSMJ(smj.id)}
                       className="text-neutral-400 hover:text-neutral-700 flex-shrink-0 p-0.5 rounded hover:bg-neutral-100 transition-colors"
-                      title={smjExpanded ? 'Collapse Sub-tasks' : 'Expand Sub-tasks'}
+                      title={smjExpanded ? 'Collapse Sub Tasks' : 'Expand Sub Tasks'}
                     >
                       {smjExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                     </button>
@@ -824,7 +824,7 @@ function GanttTreeMJ({
 
                   {/* PIC Pill */}
                   <span className="text-[10px] font-medium text-neutral-500 bg-neutral-50 px-1.5 py-0.5 rounded border border-neutral-200/70 flex-shrink-0 truncate max-w-[85px]">
-                    {smj.pic || 'Internal'}
+                    {formatDivisionName(smj.pic) || 'Internal'}
                   </span>
 
                   {/* Progress */}
@@ -867,7 +867,7 @@ function GanttTreeMJ({
                         sub: `Sub Main Job`,
                         details: [
                           `Schedule: ${formatDateDisplay(smj.startDate)} to ${formatDateDisplay(smj.finishDate)}`,
-                          `PIC / Division: ${smj.pic || 'Internal'}`,
+                          `PIC / Division: ${formatDivisionName(smj.pic) || 'Internal'}`,
                           `Progress: ${smj.progress}%`,
                         ],
                       })

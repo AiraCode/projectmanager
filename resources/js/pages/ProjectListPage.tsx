@@ -67,7 +67,7 @@ export default function ProjectListPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-7 max-w-7xl mx-auto space-y-4 sm:space-y-5">
       <PageHeader
-        title="All Projects"
+        title="Project List"
         subtitle="Select a project to view its details and progress."
         actions={
           <div className="flex items-center gap-2">

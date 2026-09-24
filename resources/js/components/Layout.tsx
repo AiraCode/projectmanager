@@ -27,7 +27,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('jeker_sidebar_collapsed') === 'true';
+      return localStorage.getItem('provis_sidebar_collapsed') === 'true' || localStorage.getItem('jeker_sidebar_collapsed') === 'true';
     }
     return false;
   });
@@ -37,6 +37,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     setSidebarCollapsed(prev => {
       const next = !prev;
       if (typeof window !== 'undefined') {
+        localStorage.setItem('provis_sidebar_collapsed', String(next));
         localStorage.setItem('jeker_sidebar_collapsed', String(next));
       }
       return next;
@@ -125,18 +126,22 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
 
   useEffect(() => {
     if (activeProjectId && typeof window !== 'undefined') {
+      localStorage.setItem('provis_last_project_id', String(activeProjectId));
       localStorage.setItem('jeker_last_project_id', String(activeProjectId));
     }
   }, [activeProjectId]);
 
   const handleLogout = () => {
-    if (typeof window !== 'undefined') localStorage.removeItem('jeker_last_project_id');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('provis_last_project_id');
+      localStorage.removeItem('jeker_last_project_id');
+    }
     router.post('/logout');
   };
 
   const getNavUrl = (basePath: string) => {
     if (basePath === '/projectlistpage' || basePath === '/projects') return basePath;
-    const resolvedId = activeProjectId || (typeof window !== 'undefined' ? localStorage.getItem('jeker_last_project_id') : null);
+    const resolvedId = activeProjectId || (typeof window !== 'undefined' ? (localStorage.getItem('provis_last_project_id') || localStorage.getItem('jeker_last_project_id')) : null);
     if (!resolvedId) return basePath;
     if (basePath === '/dashboard') return `/projects/${resolvedId}`;
     if (basePath === '/division-progress') return `/projects/${resolvedId}/division-progress`;
@@ -170,17 +175,17 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                 className="flex items-center justify-center w-9 h-9 rounded-xl bg-brand cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all"
                 title="Click to expand sidebar"
               >
-                <span className="text-white font-black text-base tracking-tight">J</span>
+                <span className="text-white font-black text-base tracking-tight">P</span>
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-brand flex-shrink-0 shadow-sm">
-                    <span className="text-white font-bold text-sm tracking-tight">J</span>
+                    <span className="text-white font-bold text-sm tracking-tight">P</span>
                   </div>
                   <div className="min-w-0">
                     <div className="font-bold text-base tracking-tight text-white leading-none">
-                      JEKER
+                      PROVIS
                     </div>
                     <div className="text-[11px] text-white/40 mt-1 font-medium truncate">Project Management</div>
                   </div>
@@ -291,13 +296,13 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
           {/* Sidebar Footer */}
           <div className="border-t border-white/10 flex-shrink-0 transition-all duration-300">
             {sidebarCollapsed ? (
-              <div className="py-3.5 text-center" title="Jeker v1.0 © 2026">
+              <div className="py-3.5 text-center" title="PROVIS v1.0 © 2026">
                 <span className="text-[10px] text-white/40 font-mono font-bold">v1.0</span>
               </div>
             ) : (
               <div className="p-4 text-center">
                 <div className="text-[11.5px] text-white/50 font-medium tracking-wide">
-                  Jeker, 2026. All rights reserved.
+                  PROVIS, 2026. All rights reserved.
                 </div>
                 <div className="text-[10px] text-white/30 font-mono mt-0.5 font-medium">
                   Version 1.0
@@ -322,8 +327,8 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
 
           {/* Mobile title */}
           <div className="flex items-center gap-2 lg:hidden">
-            <div className="flex items-center justify-center w-6 h-6 rounded bg-brand text-white font-bold text-xs">J</div>
-            <span className="font-bold text-neutral-900 text-sm tracking-tight">JEKER</span>
+            <div className="flex items-center justify-center w-6 h-6 rounded bg-brand text-white font-bold text-xs">P</div>
+            <span className="font-bold text-neutral-900 text-sm tracking-tight">PROVIS</span>
           </div>
 
           {/* Project Title Header (Format: [Company Name] — [Project Name]) */}
@@ -397,12 +402,12 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
         isOpen={showExitConfirm}
         onClose={() => setShowExitConfirm(false)}
         title="Exit Project?"
-        subtitle="Confirm return to all projects list"
+        subtitle="Confirm return to Project List"
         size="sm"
       >
         <div className="space-y-4">
           <p className="text-[13px] text-neutral-600 leading-relaxed">
-            You are currently viewing an active project. Are you sure you want to return to the <strong>All Projects</strong> list?
+            You are currently viewing an active project. Are you sure you want to return to the <strong>Project List</strong>?
           </p>
           <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">
             <Button
@@ -420,7 +425,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                 router.visit('/projectlistpage');
               }}
             >
-              Yes, Back to All Projects
+              Yes, Back to Project List
             </Button>
           </div>
         </div>

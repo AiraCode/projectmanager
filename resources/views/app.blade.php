@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>JEKER Project Manager</title>
+        <title>PROVIS Project Manager</title>
         @viteReactRefresh
         @vite(['resources/js/index.css', 'resources/js/main.tsx'])
         @inertiaHead

@@ -20,7 +20,7 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
   const [profileOpen, setProfileOpen]       = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('jeker_sa_sidebar_collapsed') === 'true';
+      return localStorage.getItem('provis_sa_sidebar_collapsed') === 'true' || localStorage.getItem('jeker_sa_sidebar_collapsed') === 'true';
     }
     return false;
   });
@@ -31,6 +31,7 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
     setSidebarCollapsed(prev => {
       const next = !prev;
       if (typeof window !== 'undefined') {
+        localStorage.setItem('provis_sa_sidebar_collapsed', String(next));
         localStorage.setItem('jeker_sa_sidebar_collapsed', String(next));
       }
       return next;
@@ -57,7 +58,10 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
   const purePath   = currentUrl.split('?')[0];
 
   const handleLogout = () => {
-    if (typeof window !== 'undefined') localStorage.removeItem('jeker_last_project_id');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('provis_last_project_id');
+      localStorage.removeItem('jeker_last_project_id');
+    }
     router.post('/logout');
   };
 
@@ -104,7 +108,7 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
                 </div>
                 <div className="min-w-0">
                   <div className="font-black text-[13px] tracking-tight text-white leading-none">SUPER ADMIN</div>
-                  <div className="text-[10px] mt-0.5 font-medium truncate" style={{ color: 'rgba(167,139,250,0.6)' }}>JEKER Control Panel</div>
+                  <div className="text-[10px] mt-0.5 font-medium truncate" style={{ color: 'rgba(167,139,250,0.6)' }}>PROVIS Control Panel</div>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -161,7 +165,7 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
         <div className="flex-shrink-0 p-3" style={{ borderTop: '1px solid rgba(139,92,246,0.15)' }}>
           {!sidebarCollapsed && (
             <div className="text-center">
-              <div className="text-[10px] font-mono font-medium" style={{ color: 'rgba(167,139,250,0.3)' }}>JEKER v1.0 © 2026</div>
+              <div className="text-[10px] font-mono font-medium" style={{ color: 'rgba(167,139,250,0.3)' }}>PROVIS v1.0 © 2026</div>
             </div>
           )}
         </div>

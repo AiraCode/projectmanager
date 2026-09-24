@@ -65,7 +65,7 @@ export default function SuperAdminDashboardPage({
 }: { stats: Stats; recentUsers: RecentUser[]; recentAuditLogs: AuditEntry[] }) {
   return (
     <SuperAdminLayout>
-      <Head title="SuperAdmin Dashboard — JEKER" />
+      <Head title="SuperAdmin Dashboard — PROVIS" />
       <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
 
         {/* Header */}
