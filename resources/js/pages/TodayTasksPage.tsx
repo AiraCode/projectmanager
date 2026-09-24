@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import {
-  CalendarDays, Search, CheckSquare, Square, CheckCircle2,
+  CalendarDays, Search, CheckCircle2,
   AlertCircle, Clock, Filter, Paperclip, X, Eye, Download,
-  Layers, ArrowUpRight, Shield, AlertTriangle
+  Layers, ArrowUpRight, Shield, AlertTriangle, UploadCloud, Edit2, FileText
 } from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, EvidenceItem } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
@@ -45,12 +45,54 @@ export default function TodayTasksPage() {
   // Evidence preview modal state
   const [evidencePreview, setEvidencePreview] = useState<EvidenceItem | null>(null);
 
+  // Upload evidence modal state
+  const [uploadEvidenceTask, setUploadEvidenceTask] = useState<{
+    task: SubSubtask;
+    requireComplete?: boolean;
+  } | null>(null);
+
   // Uncheck confirmation modal state
   const [uncheckConfirm, setUncheckConfirm] = useState<{
     taskId: string;
     taskName: string;
     prevProgress?: number;
   } | null>(null);
+
+  const handleSaveEvidence = (taskId: string, evidence: EvidenceItem, completeTo100: boolean = false) => {
+    setProjectData(prev => {
+      const newData = { ...prev };
+      newData.mainJobs = newData.mainJobs.map(mj => ({
+        ...mj,
+        subMainJobs: mj.subMainJobs.map(smj => ({
+          ...smj,
+          subtasks: smj.subtasks.map(st => {
+            if (st.id === taskId) {
+              const targetProg = completeTo100 ? 100 : st.progress;
+              const isDone = targetProg >= 100;
+              return {
+                ...st,
+                evidence,
+                progress: targetProg,
+                checked: isDone,
+              };
+            }
+            return st;
+          })
+        }))
+      }));
+      return recalculateSchedule(recalculateProgress(newData));
+    });
+
+    if (completeTo100 && projectData.id) {
+      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
+        preserveScroll: true,
+        preserveState: true,
+      });
+    }
+
+    setToastMsg(completeTo100 ? `Bukti berhasil diunggah & task ditandai 100% selesai ✓` : `Bukti berhasil disimpan.`);
+    setUploadEvidenceTask(null);
+  };
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -112,6 +154,29 @@ export default function TodayTasksPage() {
 
     const clamped = Math.max(0, Math.min(100, Math.round(newProgress)));
     const isCompleted = clamped === 100;
+
+    // Find current task state to verify evidence
+    let currentTask: SubSubtask | undefined;
+    for (const mj of projectData.mainJobs) {
+      for (const smj of mj.subMainJobs) {
+        const found = smj.subtasks.find(st => st.id === taskId);
+        if (found) {
+          currentTask = found;
+          break;
+        }
+      }
+      if (currentTask) break;
+    }
+
+    // MANDATORY EVIDENCE RULE: Must have evidence before reaching 100%
+    if (isCompleted && currentTask && !currentTask.evidence) {
+      setToastMsg(`Bukti (evidence) WAJIB dilampirkan sebelum menyelesaikan task "${taskName}" (100%).`);
+      setUploadEvidenceTask({
+        task: currentTask,
+        requireComplete: true,
+      });
+      return;
+    }
 
     setProjectData(prev => {
       const newData = { ...prev };
@@ -433,10 +498,10 @@ export default function TodayTasksPage() {
             return (
               <div
                 key={st.id}
-                className={`p-4 rounded-xl border bg-white shadow-xs transition-all flex flex-col justify-between gap-3 ${
+                className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
                   isChecked
-                    ? 'border-emerald-200/60 bg-emerald-50/20'
-                    : 'border-neutral-200 hover:border-neutral-300 hover:shadow-sm'
+                    ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/20 shadow-xs'
+                    : 'border-neutral-200 hover:border-neutral-300 bg-white shadow-xs'
                 }`}
               >
                 <div>
@@ -471,10 +536,10 @@ export default function TodayTasksPage() {
                     <StatusBadge status={isChecked ? 'Completed' : st.status} size="xs" />
                   </div>
 
-                  {/* Task Name - Grey if completed, NO line-through */}
+                  {/* Task Name - Green if completed, clear text */}
                   <h4
                     className={`text-[14px] font-bold mb-1 leading-snug break-words ${
-                      isChecked ? 'text-neutral-400' : 'text-neutral-900'
+                      isChecked ? 'text-emerald-950 font-bold' : 'text-neutral-900'
                     }`}
                   >
                     {st.name}
@@ -488,24 +553,10 @@ export default function TodayTasksPage() {
                   </div>
                 </div>
 
-                {/* Progress Slider & Interactive Checkbox */}
+                {/* Progress Slider */}
                 <div className="space-y-2 pt-2.5 border-t border-neutral-100">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => handleCheck(st.id, authorized, st.name)}
-                        className={`flex-shrink-0 transition-transform active:scale-95 ${
-                          authorized ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
-                        }`}
-                        title={isChecked ? "Click to uncheck (will prompt confirmation)" : "Click to mark 100% completed"}
-                      >
-                        {isChecked ? (
-                          <CheckSquare size={19} className="text-emerald-600" />
-                        ) : (
-                          <Square size={19} className="text-neutral-300 hover:text-neutral-500" />
-                        )}
-                      </button>
+                    <div className="flex items-center gap-2 flex-1">
                       <input
                         type="range"
                         min="0"
@@ -519,7 +570,27 @@ export default function TodayTasksPage() {
                         }`}
                       />
                     </div>
-                    <span className="text-[13px] font-black text-neutral-800 w-12 text-right tabular-nums">
+
+                    {/* Quick Presets */}
+                    {authorized && (
+                      <div className="hidden sm:flex items-center gap-0.5 bg-neutral-100 p-0.5 rounded border border-neutral-200 text-[10px] font-bold text-neutral-600">
+                        {[0, 25, 50, 75, 100].map(val => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => handleProgressChange(st.id, val, authorized, st.name)}
+                            className={`px-1.5 py-0.5 rounded transition-colors ${
+                              st.progress === val ? 'bg-brand text-white font-extrabold' : 'hover:bg-neutral-200 text-neutral-700'
+                            }`}
+                            title={`Set to ${val}%`}
+                          >
+                            {val}%
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <span className={`text-[13px] font-black w-12 text-right tabular-nums ${isChecked ? 'text-emerald-700' : 'text-neutral-800'}`}>
                       {st.progress}%
                     </span>
                   </div>
@@ -529,15 +600,40 @@ export default function TodayTasksPage() {
                     <span>
                       {formatDateDisplay(st.startDate)} – {formatDateDisplay(st.finishDate)}
                     </span>
-                    {st.evidence && (
-                      <button
-                        type="button"
-                        onClick={() => setEvidencePreview(st.evidence || null)}
-                        className="inline-flex items-center gap-1 text-brand font-bold hover:underline"
-                      >
-                        <Paperclip size={12} />
-                        Evidence ({st.evidence.name})
-                      </button>
+                    {st.evidence ? (
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setEvidencePreview(st.evidence || null)}
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-bold hover:bg-emerald-200 transition-colors shadow-2xs"
+                          title={`Lihat bukti: ${st.evidence.name}`}
+                        >
+                          <Paperclip size={11} className="text-emerald-700" />
+                          Bukti: {st.evidence.name}
+                        </button>
+                        {authorized && (
+                          <button
+                            type="button"
+                            onClick={() => setUploadEvidenceTask({ task: st })}
+                            className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
+                            title="Ganti berkas bukti"
+                          >
+                            <Edit2 size={11} />
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      authorized && (
+                        <button
+                          type="button"
+                          onClick={() => setUploadEvidenceTask({ task: st })}
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
+                          title="Upload bukti penyelesaian (wajib untuk 100%)"
+                        >
+                          <UploadCloud size={11} className="text-amber-600" />
+                          <span>Upload Bukti (Wajib)</span>
+                        </button>
+                      )
                     )}
                   </div>
                 </div>
@@ -623,10 +719,172 @@ export default function TodayTasksPage() {
         </Modal>
       )}
 
+      {/* Upload Evidence Modal */}
+      {uploadEvidenceTask && (
+        <UploadEvidenceModal
+          task={uploadEvidenceTask.task}
+          requireComplete={uploadEvidenceTask.requireComplete}
+          onClose={() => setUploadEvidenceTask(null)}
+          onSave={handleSaveEvidence}
+        />
+      )}
+
       {/* Toast notifications */}
       {toastMsg && (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
       )}
     </div>
+  );
+}
+
+function UploadEvidenceModal({
+  task,
+  requireComplete = false,
+  onClose,
+  onSave,
+}: {
+  task: SubSubtask;
+  requireComplete?: boolean;
+  onClose: () => void;
+  onSave: (taskId: string, evidence: EvidenceItem, completeTo100: boolean) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>(task.evidence?.previewUrl);
+  const [completeChecked, setCompleteChecked] = useState(requireComplete || task.progress === 100);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (selected) {
+      setFile(selected);
+      if (selected.type.startsWith('image/')) {
+        setPreviewUrl(URL.createObjectURL(selected));
+      } else {
+        setPreviewUrl(undefined);
+      }
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file && !task.evidence) return;
+
+    let evidenceObj: EvidenceItem;
+    if (file) {
+      const isImg = file.type.startsWith('image/');
+      const sizeFormatted = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+      evidenceObj = {
+        name: file.name,
+        size: sizeFormatted,
+        type: file.type,
+        previewUrl: isImg ? URL.createObjectURL(file) : undefined,
+      };
+    } else {
+      evidenceObj = task.evidence!;
+    }
+
+    onSave(task.id, evidenceObj, completeChecked);
+  };
+
+  return (
+    <Modal
+      isOpen={true}
+      title="Upload Bukti Penyelesaian (Evidence)"
+      subtitle={`${task.code} — ${task.name}`}
+      onClose={onClose}
+      size="md"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Required Notice Alert */}
+        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12px] leading-relaxed">
+          <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <strong className="font-bold">Syarat Wajib:</strong> Lampiran bukti penyelesaian (foto pelaksanaan, berkas serah terima, atau dokumen PDF/gambar) wajib diunggah untuk dapat menandai task ini selesai (100%).
+          </div>
+        </div>
+
+        {/* Existing / Selected Evidence Display */}
+        {(file || task.evidence) ? (
+          <div className="p-3.5 rounded-xl border border-neutral-200 bg-neutral-50 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt="Evidence preview"
+                  className="w-12 h-12 rounded-lg object-cover border border-neutral-200 flex-shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 font-bold">
+                  <FileText size={22} />
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="text-[13px] font-bold text-neutral-800 truncate">
+                  {file ? file.name : task.evidence?.name}
+                </div>
+                <div className="text-[11px] text-neutral-500">
+                  {file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : (task.evidence?.size || 'Attached')} · Siap disimpan
+                </div>
+              </div>
+            </div>
+            <label className="text-[12px] font-bold text-brand hover:underline cursor-pointer">
+              Ganti File
+              <input
+                type="file"
+                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </label>
+          </div>
+        ) : (
+          <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-neutral-300 hover:border-brand rounded-xl cursor-pointer bg-neutral-50/50 hover:bg-brand/5 transition-all text-center">
+            <UploadCloud size={32} className="text-brand mb-2" />
+            <span className="text-[13.5px] font-bold text-neutral-800">
+              Pilih atau seret berkas bukti (evidence) ke sini
+            </span>
+            <span className="text-[11.5px] text-neutral-400 mt-1">
+              Mendukung foto (JPG, PNG) atau dokumen (PDF, Word, Excel) maksimal 10MB
+            </span>
+            <input
+              type="file"
+              required={!task.evidence}
+              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+          </label>
+        )}
+
+        {/* Completion checkbox option */}
+        <div className="pt-2 border-t border-neutral-100 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="markCompleteCheckToday"
+            checked={completeChecked}
+            onChange={(e) => setCompleteChecked(e.target.checked)}
+            className="w-4 h-4 rounded text-brand focus:ring-brand border-neutral-300 accent-brand cursor-pointer"
+          />
+          <label htmlFor="markCompleteCheckToday" className="text-[12.5px] font-semibold text-neutral-800 cursor-pointer">
+            Langsung tandai task ini selesai 100% (berubah menjadi Hijau)
+          </label>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+          <Button variant="outline" size="sm" type="button" onClick={onClose}>
+            Batal
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            type="submit"
+            disabled={!file && !task.evidence}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+          >
+            {completeChecked ? 'Upload Bukti & Selesaikan (100%)' : 'Simpan Bukti'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

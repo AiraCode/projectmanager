@@ -73,13 +73,53 @@ export default function TasksPage() {
     taskName: string;
     prevProgress?: number;
   } | null>(null);
-  const [evidencePreview, setEvidencePreview] = useState<{
-    name: string;
-    url?: string;
-    size?: string;
+  const [evidencePreview, setEvidencePreview] = useState<EvidenceItem | null>(null);
+  const [uploadEvidenceTask, setUploadEvidenceTask] = useState<{
+    task: SubSubtask;
+    requireComplete?: boolean;
   } | null>(null);
   const [todaySectionOpen, setTodaySectionOpen] = useState(true);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const handleSaveEvidence = (taskId: string, evidence: EvidenceItem, completeTo100: boolean = false) => {
+    setProjectData(prev => {
+      const newData = { ...prev };
+      newData.mainJobs = newData.mainJobs.map(mj => ({
+        ...mj,
+        subMainJobs: mj.subMainJobs.map(smj => ({
+          ...smj,
+          subtasks: smj.subtasks.map(st => {
+            if (st.id === taskId) {
+              const targetProg = completeTo100 ? 100 : st.progress;
+              const isDone = targetProg >= 100;
+              return {
+                ...st,
+                evidence,
+                progress: targetProg,
+                checked: isDone,
+              };
+            }
+            return st;
+          })
+        }))
+      }));
+      return recalculateSchedule(recalculateProgress(newData));
+    });
+
+    if (completeTo100 && projectData.id) {
+      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
+        preserveScroll: true,
+        preserveState: true,
+      });
+    }
+
+    setToastMsg(
+      completeTo100
+        ? 'Bukti penyelesaian berhasil diunggah & task selesai (100%) ✓'
+        : 'Bukti berhasil dilampirkan ke task ✓'
+    );
+    setUploadEvidenceTask(null);
+  };
 
   // Dynamic Today's Tasks
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -408,6 +448,29 @@ export default function TasksPage() {
 
     const clamped = Math.max(0, Math.min(100, Math.round(newProgress)));
     const isCompleted = clamped === 100;
+
+    // Find current task state to verify evidence
+    let currentTask: SubSubtask | undefined;
+    for (const mj of projectData.mainJobs) {
+      for (const smj of mj.subMainJobs) {
+        const found = smj.subtasks.find(st => st.id === taskId);
+        if (found) {
+          currentTask = found;
+          break;
+        }
+      }
+      if (currentTask) break;
+    }
+
+    // REQUIREMENT: Evidence attachment is MANDATORY (required) to complete task (100%)
+    if (isCompleted && currentTask && !currentTask.evidence) {
+      setToastMsg(`Bukti (evidence) WAJIB dilampirkan sebelum menyelesaikan task "${taskName}" (100%).`);
+      setUploadEvidenceTask({
+        task: currentTask,
+        requireComplete: true,
+      });
+      return;
+    }
 
     setProjectData(prev => {
       const newData = { ...prev };
@@ -772,6 +835,7 @@ export default function TasksPage() {
                       onCheck={handleCheck}
                       onProgressChange={handleProgressChange}
                       onOpenEvidence={(ev) => setEvidencePreview(ev)}
+                      onOpenUploadEvidence={(task) => setUploadEvidenceTask({ task })}
                     />
                   ))}
                   {mj.subMainJobs.length === 0 && (
@@ -800,6 +864,7 @@ export default function TasksPage() {
                   <th className="px-4 py-3">Finish Date</th>
                   <th className="px-4 py-3 text-right">Dur</th>
                   <th className="px-4 py-3">Pred</th>
+                  <th className="px-4 py-3 text-center">Attachment / Bukti</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 text-[13px]">
@@ -817,6 +882,7 @@ export default function TasksPage() {
                       <td className="px-4 py-3 text-neutral-600 font-medium">{formatDateDisplay(mj.finishDate)}</td>
                       <td className="px-4 py-3 text-right text-neutral-400">—</td>
                       <td className="px-4 py-3 text-neutral-400">—</td>
+                      <td className="px-4 py-3 text-center text-neutral-400">—</td>
                     </tr>
                     
                     {/* Sub Main Job Rows */}
@@ -837,30 +903,83 @@ export default function TasksPage() {
                           <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(smj.finishDate)}</td>
                           <td className="px-4 py-2.5 text-right text-neutral-400">—</td>
                           <td className="px-4 py-2.5 text-neutral-400">—</td>
+                          <td className="px-4 py-2.5 text-center text-neutral-400">—</td>
                         </tr>
                         
                         {/* Sub-Subtask Rows */}
-                        {smj.subtasks.map(st => (
-                          <tr key={st.id} className="hover:bg-neutral-50/50 transition-colors">
-                            <td className="px-4 py-2 pl-12 font-mono text-[12px] text-neutral-500 font-semibold">{st.code}</td>
-                            <td className="px-4 py-2 text-neutral-800 font-medium flex items-center gap-2">
-                              {st.checked && <CheckSquare size={14} className="text-success" />}
-                              <span className={st.checked ? 'text-neutral-400 font-medium' : 'text-neutral-900 font-medium'}>{st.name}</span>
-                            </td>
-                            <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">{st.weight ?? 100}%</td>
-                            <td className="px-4 py-2 text-neutral-600 text-[11.5px]">{formatDivisionName(st.division || smj.pic)}</td>
-                            <td className="px-4 py-2"><StatusBadge status={st.checked ? 'Completed' : st.status} size="xs" /></td>
-                            <td className="px-4 py-2 text-right font-bold text-neutral-800 text-[13px]">
-                              {st.checked ? '100' : st.progress}%
-                            </td>
-                            <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.startDate)}</td>
-                            <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.finishDate)}</td>
-                            <td className="px-4 py-2 text-right text-neutral-600">{st.duration}d</td>
-                            <td className="px-4 py-2 font-mono text-[11.5px] text-neutral-500">
-                              {st.predecessor ? `${st.predecessor} (${st.depType || 'FS'}${st.lag ? `+${st.lag}` : ''})` : '—'}
-                            </td>
-                          </tr>
-                        ))}
+                        {smj.subtasks.map(st => {
+                          const isDone = st.checked || st.progress >= 100;
+                          const authorized = isAuthorizedToCheck(st.division || smj.pic);
+                          return (
+                            <tr
+                              key={st.id}
+                              className={`transition-colors ${
+                                isDone
+                                  ? 'bg-emerald-50/70 hover:bg-emerald-100/50'
+                                  : 'hover:bg-neutral-50/50'
+                              }`}
+                            >
+                              <td className="px-4 py-2 pl-12 font-mono text-[12px] text-neutral-500 font-semibold">{st.code}</td>
+                              <td className="px-4 py-2 text-neutral-800 font-medium">
+                                <span className={isDone ? 'text-neutral-400 font-medium' : 'text-neutral-900 font-medium'}>{st.name}</span>
+                              </td>
+                              <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">{st.weight ?? 100}%</td>
+                              <td className="px-4 py-2 text-neutral-600 text-[11.5px]">{formatDivisionName(st.division || smj.pic)}</td>
+                              <td className="px-4 py-2"><StatusBadge status={isDone ? 'Completed' : st.status} size="xs" /></td>
+                              <td className="px-4 py-2 text-right font-bold text-neutral-800 text-[13px]">
+                                <span className={isDone ? 'text-emerald-700 font-black' : ''}>
+                                  {isDone ? '100' : st.progress}%
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.startDate)}</td>
+                              <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.finishDate)}</td>
+                              <td className="px-4 py-2 text-right text-neutral-600">{st.duration}d</td>
+                              <td className="px-4 py-2 font-mono text-[11.5px] text-neutral-500">
+                                {st.predecessor ? `${st.predecessor} (${st.depType || 'FS'}${st.lag ? `+${st.lag}` : ''})` : '—'}
+                              </td>
+                              {/* Attachment / Bukti Column */}
+                              <td className="px-4 py-2 text-center whitespace-nowrap">
+                                {st.evidence ? (
+                                  <div className="inline-flex items-center gap-1 justify-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => st.evidence && setEvidencePreview(st.evidence)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100/90 border border-emerald-300 text-emerald-800 text-[11px] font-bold hover:bg-emerald-200 transition-colors shadow-2xs"
+                                      title={`Lihat bukti: ${st.evidence.name}`}
+                                    >
+                                      <Paperclip size={11} className="text-emerald-700" />
+                                      <span className="max-w-[90px] truncate">{st.evidence.name}</span>
+                                    </button>
+                                    {authorized && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setUploadEvidenceTask({ task: st })}
+                                        className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
+                                        title="Ganti berkas bukti"
+                                      >
+                                        <Edit2 size={11} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  authorized ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setUploadEvidenceTask({ task: st })}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
+                                      title="Upload bukti penyelesaian (wajib untuk 100%)"
+                                    >
+                                      <UploadCloud size={11} className="text-amber-600" />
+                                      <span>Upload Bukti</span>
+                                    </button>
+                                  ) : (
+                                    <span className="text-neutral-300 text-[12px]">—</span>
+                                  )
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </Fragment>
                     ))}
                   </Fragment>
@@ -991,6 +1110,16 @@ export default function TasksPage() {
         />
       )}
 
+      {/* Upload Evidence Modal */}
+      {uploadEvidenceTask && (
+        <UploadEvidenceModal
+          task={uploadEvidenceTask.task}
+          requireComplete={uploadEvidenceTask.requireComplete}
+          onClose={() => setUploadEvidenceTask(null)}
+          onSave={handleSaveEvidence}
+        />
+      )}
+
       {/* Action Toast Feedback */}
       {toastMsg && (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
@@ -1004,23 +1133,25 @@ function TodayTaskCard({
   parentSmj,
   timingStatus,
   canCheck,
-  onCheck,
   onProgressChange,
-  onOpenEvidence
+  onOpenEvidence,
+  onOpenUploadEvidence
 }: {
   st: SubSubtask;
   parentSmj: SubMainJob;
   timingStatus: 'active' | 'starting' | 'due' | 'overdue';
   canCheck: boolean;
-  onCheck: () => void;
   onProgressChange: (val: number) => void;
   onOpenEvidence: (evidence: any) => void;
+  onOpenUploadEvidence?: (task: SubSubtask) => void;
 }) {
   const isChecked = st.checked || st.progress >= 100;
 
   return (
-    <div className={`p-3.5 rounded-xl border bg-white shadow-xs transition-all ${
-      isChecked ? 'border-success/30 bg-emerald-50/20' : 'border-neutral-200 hover:border-neutral-300'
+    <div className={`p-3.5 rounded-xl border transition-all ${
+      isChecked
+        ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/20 shadow-xs'
+        : 'bg-white border-neutral-200 hover:border-neutral-300 shadow-xs'
     }`}>
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -1051,29 +1182,15 @@ function TodayTaskCard({
       </div>
 
       <h4 className={`text-[13.5px] font-bold mb-2.5 leading-snug break-words ${
-        isChecked ? 'text-neutral-400' : 'text-neutral-900'
+        isChecked ? 'text-neutral-500' : 'text-neutral-900'
       }`}>
         {st.name}
       </h4>
 
-      {/* Progress Slider & Checkbox */}
+      {/* Progress Slider */}
       <div className="space-y-2 pt-2 border-t border-neutral-100">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 flex-1">
-            <button
-              type="button"
-              onClick={onCheck}
-              className={`flex-shrink-0 transition-transform active:scale-95 ${
-                canCheck ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
-              }`}
-              title={isChecked ? "Click to uncheck (will prompt confirmation)" : "Click to mark 100% completed"}
-            >
-              {isChecked ? (
-                <CheckSquare size={18} className="text-success" />
-              ) : (
-                <Square size={18} className="text-neutral-300 hover:text-neutral-500" />
-              )}
-            </button>
             <input
               type="range"
               min="0"
@@ -1087,7 +1204,7 @@ function TodayTaskCard({
               }`}
             />
           </div>
-          <span className="text-[12.5px] font-black text-neutral-800 w-11 text-right tabular-nums">
+          <span className={`text-[12.5px] font-black w-11 text-right tabular-nums ${isChecked ? 'text-emerald-700' : 'text-neutral-800'}`}>
             {st.progress}%
           </span>
         </div>
@@ -1095,15 +1212,26 @@ function TodayTaskCard({
         {/* Evidence badge & details */}
         <div className="flex items-center justify-between text-[11px] pt-1 text-neutral-500">
           <span>{formatDateDisplay(st.startDate)} – {formatDateDisplay(st.finishDate)}</span>
-          {st.evidence && (
+          {st.evidence ? (
             <button
               type="button"
               onClick={() => onOpenEvidence(st.evidence)}
-              className="inline-flex items-center gap-1 text-brand font-bold hover:underline"
+              className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline"
             >
               <Paperclip size={12} />
-              Evidence ({st.evidence.name})
+              Bukti: {st.evidence.name}
             </button>
+          ) : (
+            canCheck && onOpenUploadEvidence && (
+              <button
+                type="button"
+                onClick={() => onOpenUploadEvidence(st)}
+                className="inline-flex items-center gap-1 text-amber-700 font-bold hover:underline"
+              >
+                <UploadCloud size={12} />
+                Upload Bukti (Wajib)
+              </button>
+            )
           )}
         </div>
       </div>
@@ -1112,7 +1240,7 @@ function TodayTaskCard({
 }
 
 function SubMainJobSection({
-  smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onCheck, onProgressChange, onOpenEvidence
+  smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onCheck, onProgressChange, onOpenEvidence, onOpenUploadEvidence
 }: {
   smj: SubMainJob;
   expanded: boolean;
@@ -1127,6 +1255,7 @@ function SubMainJobSection({
   onCheck: (id: string, auth: boolean, name: string) => void;
   onProgressChange: (id: string, progress: number, auth: boolean, name: string) => void;
   onOpenEvidence: (evidence: any) => void;
+  onOpenUploadEvidence: (task: SubSubtask) => void;
 }) {
   return (
     <div className="transition-colors">
@@ -1192,11 +1321,11 @@ function SubMainJobSection({
                   isChecked={st.checked || st.progress >= 100}
                   canCheck={authorized}
                   canEdit={isPIC}
-                  onCheck={() => onCheck(st.id, authorized, st.name)}
                   onProgressChange={(val) => onProgressChange(st.id, val, authorized, st.name)}
                   onEdit={() => onOpenEditModal(st)}
                   onDelete={() => onDeleteTask(st.id, st.name)}
                   onOpenEvidence={onOpenEvidence}
+                  onOpenUploadEvidence={() => onOpenUploadEvidence(st)}
                 />
               );
             })
@@ -1208,54 +1337,38 @@ function SubMainJobSection({
 }
 
 function SubtaskRow({
-  st, divisi, isChecked, canCheck, canEdit, onCheck, onProgressChange, onEdit, onDelete, onOpenEvidence
+  st, divisi, isChecked, canCheck, canEdit, onProgressChange, onEdit, onDelete, onOpenEvidence, onOpenUploadEvidence
 }: {
   st: SubSubtask;
   divisi: string;
   isChecked: boolean;
   canCheck: boolean;
   canEdit: boolean;
-  onCheck: () => void;
   onProgressChange: (val: number) => void;
   onEdit: () => void;
   onDelete: () => void;
   onOpenEvidence: (evidence: any) => void;
+  onOpenUploadEvidence: () => void;
 }) {
   return (
     <div
       className={`group flex flex-col sm:flex-row sm:items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all ${
         isChecked
-          ? 'bg-success-light/40 border-success/30'
+          ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/20 shadow-xs'
           : 'bg-white border-neutral-200/80 hover:border-neutral-300 shadow-xs'
       }`}
     >
       <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-        {/* Checkbox */}
-        <button
-          onClick={onCheck}
-          aria-label={`Toggle checklist for ${st.name}`}
-          className={`mt-0.5 sm:mt-0 flex-shrink-0 transition-transform active:scale-90 ${
-            canCheck ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
-          }`}
-          title={isChecked ? "Click to uncheck (will prompt confirmation)" : "Click to complete 100%"}
-        >
-          {isChecked ? (
-            <CheckSquare size={19} className="text-success" />
-          ) : (
-            <Square size={19} className="text-neutral-300 hover:text-neutral-500" />
-          )}
-        </button>
-
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[12px] font-bold text-neutral-500 font-mono">{st.code}</span>
-            <span className={`text-[13.5px] sm:text-[14.5px] font-semibold break-words ${isChecked ? 'text-neutral-400' : 'text-neutral-900'}`}>
+            <span className={`text-[13.5px] sm:text-[14.5px] font-semibold break-words ${isChecked ? 'text-emerald-950 font-bold' : 'text-neutral-900'}`}>
               {st.name}
             </span>
             <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
               Weight {st.weight ?? 100}%
             </span>
-            {!canCheck && <span title="You are not authorized to check or adjust progress for this task"><Lock size={12} className="text-neutral-300" /></span>}
+            {!canCheck && <span title="You are not authorized to adjust progress for this task"><Lock size={12} className="text-neutral-300" /></span>}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
@@ -1279,16 +1392,42 @@ function SubtaskRow({
                 {st.lead ? ` -${st.lead}d lead` : ''})
               </span>
             )}
-            {st.evidence && (
-              <button
-                type="button"
-                onClick={() => onOpenEvidence(st.evidence)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold hover:bg-emerald-100 transition-colors"
-                title="View attached evidence"
-              >
-                <Paperclip size={11} />
-                Evidence Attached
-              </button>
+
+            {/* Evidence attachment indicator & upload button */}
+            {st.evidence ? (
+              <div className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => onOpenEvidence(st.evidence)}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-bold hover:bg-emerald-200 transition-colors shadow-2xs"
+                  title="Lihat berkas bukti"
+                >
+                  <Paperclip size={11} className="text-emerald-700" />
+                  Bukti: {st.evidence.name}
+                </button>
+                {canCheck && (
+                  <button
+                    type="button"
+                    onClick={onOpenUploadEvidence}
+                    className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
+                    title="Ganti berkas bukti"
+                  >
+                    <Edit2 size={11} />
+                  </button>
+                )}
+              </div>
+            ) : (
+              canCheck && (
+                <button
+                  type="button"
+                  onClick={onOpenUploadEvidence}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
+                  title="Upload bukti penyelesaian (wajib untuk 100%)"
+                >
+                  <UploadCloud size={11} className="text-amber-600" />
+                  <span>Upload Bukti (Wajib)</span>
+                </button>
+              )
             )}
           </div>
         </div>
@@ -1311,7 +1450,7 @@ function SubtaskRow({
             }`}
             title={`Adjust task progress (Current: ${st.progress}%)`}
           />
-          <span className="text-[12.5px] font-black text-neutral-800 w-11 text-right tabular-nums">
+          <span className={`text-[12.5px] font-black w-11 text-right tabular-nums ${isChecked ? 'text-emerald-700' : 'text-neutral-800'}`}>
             {st.progress}%
           </span>
         </div>
@@ -1411,13 +1550,165 @@ function UncheckConfirmModal({
   );
 }
 
+function UploadEvidenceModal({
+  task,
+  requireComplete = false,
+  onClose,
+  onSave,
+}: {
+  task: SubSubtask;
+  requireComplete?: boolean;
+  onClose: () => void;
+  onSave: (taskId: string, evidence: EvidenceItem, completeTo100: boolean) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>(task.evidence?.previewUrl);
+  const [completeChecked, setCompleteChecked] = useState(requireComplete || task.progress === 100);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (selected) {
+      setFile(selected);
+      if (selected.type.startsWith('image/')) {
+        setPreviewUrl(URL.createObjectURL(selected));
+      } else {
+        setPreviewUrl(undefined);
+      }
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file && !task.evidence) return;
+
+    let evidenceObj: EvidenceItem;
+    if (file) {
+      const isImg = file.type.startsWith('image/');
+      const sizeFormatted = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+      evidenceObj = {
+        name: file.name,
+        size: sizeFormatted,
+        type: file.type,
+        previewUrl: isImg ? URL.createObjectURL(file) : undefined,
+      };
+    } else {
+      evidenceObj = task.evidence!;
+    }
+
+    onSave(task.id, evidenceObj, completeChecked);
+  };
+
+  return (
+    <Modal
+      title="Upload Bukti Penyelesaian (Evidence)"
+      subtitle={`${task.code} — ${task.name}`}
+      onClose={onClose}
+      size="md"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Required Notice Alert */}
+        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12px] leading-relaxed">
+          <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <strong className="font-bold">Syarat Wajib:</strong> Lampiran bukti penyelesaian (foto pelaksanaan, berkas serah terima, atau dokumen PDF/gambar) wajib diunggah untuk dapat menandai task ini selesai (100%).
+          </div>
+        </div>
+
+        {/* Existing / Selected Evidence Display */}
+        {(file || task.evidence) ? (
+          <div className="p-3.5 rounded-xl border border-neutral-200 bg-neutral-50 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt="Evidence preview"
+                  className="w-12 h-12 rounded-lg object-cover border border-neutral-200 flex-shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 font-bold">
+                  <FileText size={22} />
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="text-[13px] font-bold text-neutral-800 truncate">
+                  {file ? file.name : task.evidence?.name}
+                </div>
+                <div className="text-[11px] text-neutral-500">
+                  {file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : (task.evidence?.size || 'Attached')} · Siap disimpan
+                </div>
+              </div>
+            </div>
+            <label className="text-[12px] font-bold text-brand hover:underline cursor-pointer">
+              Ganti File
+              <input
+                type="file"
+                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </label>
+          </div>
+        ) : (
+          <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-neutral-300 hover:border-brand rounded-xl cursor-pointer bg-neutral-50/50 hover:bg-brand/5 transition-all text-center">
+            <UploadCloud size={32} className="text-brand mb-2" />
+            <span className="text-[13.5px] font-bold text-neutral-800">
+              Pilih atau seret berkas bukti (evidence) ke sini
+            </span>
+            <span className="text-[11.5px] text-neutral-400 mt-1">
+              Mendukung foto (JPG, PNG) atau dokumen (PDF, Word, Excel) maksimal 10MB
+            </span>
+            <input
+              type="file"
+              required={!task.evidence}
+              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+          </label>
+        )}
+
+        {/* Completion checkbox option */}
+        <div className="pt-2 border-t border-neutral-100 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="markCompleteCheck"
+            checked={completeChecked}
+            onChange={(e) => setCompleteChecked(e.target.checked)}
+            className="w-4 h-4 rounded text-brand focus:ring-brand border-neutral-300 accent-brand cursor-pointer"
+          />
+          <label htmlFor="markCompleteCheck" className="text-[12.5px] font-semibold text-neutral-800 cursor-pointer">
+            Langsung tandai task ini selesai 100% (berubah menjadi Hijau)
+          </label>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+          <Button variant="outline" size="sm" type="button" onClick={onClose}>
+            Batal
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            type="submit"
+            disabled={!file && !task.evidence}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+          >
+            {completeChecked ? 'Upload Bukti & Selesaikan (100%)' : 'Simpan Bukti'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function EvidencePreviewModal({
   evidence,
   onClose
 }: {
-  evidence: { name: string; url?: string; size?: string };
+  evidence: EvidenceItem;
   onClose: () => void;
 }) {
+  const displayUrl = evidence.previewUrl;
   return (
     <Modal
       title="Task Evidence Preview"
@@ -1426,9 +1717,9 @@ function EvidencePreviewModal({
       size="md"
     >
       <div className="space-y-4">
-        {evidence.url ? (
+        {displayUrl ? (
           <div className="rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900 flex items-center justify-center max-h-[60vh]">
-            <img src={evidence.url} alt={evidence.name} className="max-w-full max-h-[60vh] object-contain" />
+            <img src={displayUrl} alt={evidence.name} className="max-w-full max-h-[60vh] object-contain" />
           </div>
         ) : (
           <div className="p-8 rounded-xl border border-neutral-200 bg-neutral-50 text-center">
