@@ -1,7 +1,7 @@
 import { useState, useId } from 'react';
 import { usePage, Link, router } from '@inertiajs/react';
-import { Building2, User, Calendar, TrendingUp, ChevronRight, FolderOpen, Plus, ShieldAlert, Sparkles } from 'lucide-react';
-import { PageHeader, Card, ProgressBar, StatusBadge, Button, Modal, formatDateDisplay } from '@/components/ui';
+import { Calendar, FolderOpen, Plus, ShieldAlert, Sparkles } from 'lucide-react';
+import { PageHeader, Button, Modal, formatDateDisplay } from '@/components/ui';
 
 interface Project {
   id: number;
@@ -64,6 +64,17 @@ export default function ProjectListPage() {
     });
   };
 
+function getProjectTitleClasses(title: string) {
+  const len = (title || '').trim().length;
+  if (len <= 20) {
+    return 'text-[20px] sm:text-[22px] font-black leading-tight tracking-tight';
+  } else if (len <= 40) {
+    return 'text-[17px] sm:text-[18.5px] font-extrabold leading-snug tracking-tight';
+  } else {
+    return 'text-[14.5px] sm:text-[15.5px] font-bold leading-snug line-clamp-2';
+  }
+}
+
   return (
     <div className="p-4 sm:p-6 lg:p-7 max-w-7xl mx-auto space-y-4 sm:space-y-5">
       <PageHeader
@@ -71,17 +82,6 @@ export default function ProjectListPage() {
         subtitle="Select a project to view its details and progress."
         actions={
           <div className="flex items-center gap-2">
-            {/* PIC without project gets the Create button */}
-            {canCreate && isPIC && (
-              <Button
-                variant="primary"
-                size="sm"
-                icon={Plus}
-                onClick={() => setShowCreateModal(true)}
-              >
-                Create New Project
-              </Button>
-            )}
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-brand-light text-brand border border-brand-border shadow-2xs">
               <FolderOpen size={14} />
               {projects?.length ?? 0} Projects
@@ -120,50 +120,43 @@ export default function ProjectListPage() {
               icon={Plus}
               onClick={() => setShowCreateModal(true)}
             >
-              Create Project Now
+              Create New Project
             </Button>
           )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {projects.map((project: Project) => {
-            const isLongTitle = (project.name || '').length > 36;
             return (
               <Link
                 key={project.id}
                 href={isAdminProgres ? `/scurve?project_id=${project.id}` : `/projects/${project.id}`}
-                className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-xl"
+                className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-2xl"
               >
-                <div className="p-4 sm:p-5 h-full flex flex-col justify-between bg-white rounded-xl border-2 border-[#1E293B]/25 hover:border-[#1E3A8A] shadow-xs hover:shadow-md transition-all duration-200 group-hover:-translate-y-0.5">
-                  {/* Title & Status */}
+                <div className="p-4 sm:p-5 h-full flex flex-col justify-between bg-white rounded-2xl border-[2.5px] border-[#0F172A] hover:border-[#1E3A8A] shadow-sm hover:shadow-md transition-all duration-200 group-hover:-translate-y-0.5">
+                  {/* Card Header: Project Name & Dates only */}
                   <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
+                    {/* Project Name (Enlarged, Dynamic Sizing, Contained) */}
+                    <div className="min-h-[50px] sm:min-h-[56px] flex items-center mb-1">
                       <h3
-                        className={`font-black text-neutral-900 leading-snug line-clamp-2 group-hover:text-brand transition-colors ${
-                          isLongTitle ? 'text-[14px] sm:text-[15px]' : 'text-[16px] sm:text-[17px]'
-                        }`}
+                        className={`${getProjectTitleClasses(project.name)} text-neutral-900 group-hover:text-brand transition-colors break-words`}
                         title={project.name}
                       >
                         {project.name}
                       </h3>
-                      <div className="flex-shrink-0">
-                        <StatusBadge status={project.status as any} size="xs" />
-                      </div>
                     </div>
 
                     {/* Start Date & End Date */}
-                    {(project.start_date || project.end_date) && (
-                      <div className="flex items-center gap-1.5 text-[12px] text-neutral-500 font-medium mb-3">
-                        <Calendar size={13} className="text-brand flex-shrink-0" />
-                        <span>
-                          {formatDateDisplay(project.start_date)} to {formatDateDisplay(project.end_date)}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5 text-[12px] text-neutral-500 font-medium mb-3">
+                      <Calendar size={13.5} className="text-brand flex-shrink-0" />
+                      <span>
+                        {project.start_date ? formatDateDisplay(project.start_date) : 'N/A'} – {project.end_date ? formatDateDisplay(project.end_date) : 'N/A'}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Dual-Indicator Speedometer Gauge */}
-                  <div className="pt-2">
+                  <div className="pt-1">
                     <SpeedometerGauge
                       plan={project.planned_progress ?? 0}
                       actual={project.progress ?? 0}
@@ -309,39 +302,42 @@ export default function ProjectListPage() {
   );
 }
 
-function getActualTheme(actual: number) {
-  const val = Math.max(0, Math.min(100, Math.round(actual)));
+function getActualTheme(actualVal: number, planVal: number) {
+  const isAhead = actualVal > planVal;
+  const isComplete = actualVal >= 100;
 
-  if (val >= 100) {
+  // Rule 6: If Actual > Plan, the Actual line turns GREEN!
+  if (isAhead) {
     return {
-      color: '#059669',
-      isComplete: true,
+      color: '#16A34A', // Green when ahead of plan
+      isAhead: true,
+      isComplete,
     };
   }
 
-  if (val >= 90) {
+  // Normal visual threshold rules (Actual <= Plan):
+  // 90–100% → Green
+  // 70–90%  → Yellow
+  // 0–70%   → Red
+  if (actualVal >= 90) {
     return {
-      color: '#10B981',
+      color: '#16A34A',
+      isAhead: false,
+      isComplete,
+    };
+  }
+
+  if (actualVal >= 70) {
+    return {
+      color: '#EAB308',
+      isAhead: false,
       isComplete: false,
     };
   }
-
-  if (val >= 70) {
-    return {
-      color: '#D97706',
-      isComplete: false,
-    };
-  }
-
-  // 0% - 69%: Gradient from deep red (#DC2626) transitioning towards warm orange (#F97316)
-  const ratio = Math.min(1, Math.max(0, val / 70));
-  const r = Math.round(220 + ratio * (249 - 220));
-  const g = Math.round(38 + ratio * (115 - 38));
-  const b = Math.round(38 + ratio * (22 - 38));
-  const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 
   return {
-    color: hex,
+    color: '#DC2626',
+    isAhead: false,
     isComplete: false,
   };
 }
@@ -353,7 +349,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
 
   const planVal = Math.max(0, Math.min(100, Math.round(plan)));
   const actualVal = Math.max(0, Math.min(100, Math.round(actual)));
-  const actualTheme = getActualTheme(actualVal);
+  const actualTheme = getActualTheme(actualVal, planVal);
 
   const cx = 130;
   const cy = 118;
@@ -397,7 +393,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
       <div className="relative w-full max-w-[285px] aspect-[260/142]">
         <svg viewBox="0 0 260 142" className="w-full h-full overflow-visible">
           <defs>
-            {/* Linear Gradient for Zone 0% - 70%: Solid Deep Red transitioning smoothly towards Orange */}
+            {/* Linear Gradient for Zone 0% - 70%: Solid Red */}
             <linearGradient
               id={redGradId}
               x1={p0.x}
@@ -407,16 +403,15 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
               gradientUnits="userSpaceOnUse"
             >
               <stop offset="0%" stopColor="#DC2626" />
-              <stop offset="35%" stopColor="#EA4325" />
-              <stop offset="70%" stopColor="#F15A24" />
+              <stop offset="60%" stopColor="#EA4325" />
               <stop offset="100%" stopColor="#F97316" />
             </linearGradient>
 
             {/* Radial Gradient for 100% Completion Shining Aura */}
             <radialGradient id={shineGradId} cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="#34D399" stopOpacity="0.85" />
-              <stop offset="45%" stopColor="#10B981" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#10B981" stopOpacity="0" />
+              <stop offset="45%" stopColor="#16A34A" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#16A34A" stopOpacity="0" />
             </radialGradient>
           </defs>
 
@@ -431,9 +426,9 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
 
           {/* Dedicated rounded caps at outer ends only (0% and 100%) so internal segments have clean straight cuts */}
           <circle cx={p0.x} cy={p0.y} r={strokeWidth / 2} fill="#DC2626" />
-          <circle cx={p100.x} cy={p100.y} r={strokeWidth / 2} fill="#10B981" />
+          <circle cx={p100.x} cy={p100.y} r={strokeWidth / 2} fill="#16A34A" />
 
-          {/* Zone 1: Red Gradient to Orange (0% - 70%) */}
+          {/* Zone 1: Red (0% - 70%) */}
           <path
             d={describeArc(0, 70)}
             fill="none"
@@ -442,11 +437,11 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             strokeLinecap="butt"
           />
 
-          {/* Zone 2: Amber / Orange (70% - 90%) */}
+          {/* Zone 2: Yellow (70% - 90%) */}
           <path
             d={describeArc(70, 90)}
             fill="none"
-            stroke="#F59E0B"
+            stroke="#EAB308"
             strokeWidth={strokeWidth}
             strokeLinecap="butt"
           />
@@ -455,7 +450,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
           <path
             d={describeArc(90, 100)}
             fill="none"
-            stroke="#10B981"
+            stroke="#16A34A"
             strokeWidth={strokeWidth}
             strokeLinecap="butt"
           />
@@ -485,7 +480,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             textAnchor="middle"
             fontSize="11.5"
             fontWeight="700"
-            className="fill-red-500 font-bold"
+            className="fill-red-600 font-bold"
           >
             0%
           </text>
@@ -537,7 +532,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             fontWeight="700"
             className={`transition-all duration-300 ${
               actualTheme.isComplete
-                ? 'fill-emerald-600 font-black filter drop-shadow-[0_0_5px_rgba(16,185,129,0.65)]'
+                ? 'fill-emerald-600 font-black filter drop-shadow-[0_0_5px_rgba(22,163,74,0.65)]'
                 : 'fill-emerald-600 font-bold'
             }`}
           >
@@ -633,7 +628,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             className="w-2.5 h-2.5 rounded-full inline-block shadow-2xs transition-colors duration-300 flex-shrink-0"
             style={{
               backgroundColor: actualTheme.color,
-              boxShadow: actualTheme.isComplete ? '0 0 8px rgba(16, 185, 129, 0.7)' : undefined,
+              boxShadow: actualTheme.isComplete ? '0 0 8px rgba(22, 163, 74, 0.7)' : undefined,
             }}
           />
           <span className="flex items-center gap-1">
@@ -642,7 +637,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
               className="font-black transition-colors duration-300 inline-flex items-center gap-1"
               style={{
                 color: actualTheme.color,
-                textShadow: actualTheme.isComplete ? '0 0 8px rgba(16, 185, 129, 0.35)' : undefined,
+                textShadow: actualTheme.isComplete ? '0 0 8px rgba(22, 163, 74, 0.35)' : undefined,
               }}
             >
               {actualVal}%
@@ -656,3 +651,4 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
     </div>
   );
 }
+
