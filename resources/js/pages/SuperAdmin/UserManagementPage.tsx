@@ -171,8 +171,8 @@ export default function SuperAdminUserManagementPage({
             placeholder="Search users…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 text-[13px] border rounded-xl focus:outline-none focus:ring-2 bg-white"
-            style={{ borderColor: 'rgba(139,92,246,0.2)', focusRingColor: '#7c3aed' }}
+            className="w-full pl-8 pr-3 py-2 text-[13px] border rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-600 bg-white"
+            style={{ borderColor: 'rgba(139,92,246,0.2)' }}
           />
         </div>
 

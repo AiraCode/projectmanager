@@ -106,7 +106,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   } else if (user.permission_matrix?.sidebar) {
     visibleNav = ALL_NAV_ITEMS.filter(item => {
       if (item.to === '/division-progress' && (isAdminProgres || isAdminUtama || isPIC)) return true;
-      return user.permission_matrix.sidebar.includes(item.label);
+      return user.permission_matrix?.sidebar?.includes(item.label) ?? false;
     });
   } else {
     visibleNav = ALL_NAV_ITEMS.filter(item => {

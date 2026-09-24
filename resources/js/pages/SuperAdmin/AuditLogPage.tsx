@@ -63,8 +63,8 @@ export default function AuditLogPage({
             <select
               value={selectedAction}
               onChange={e => applyFilter(e.target.value)}
-              className="text-[13px] border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 bg-white text-neutral-700"
-              style={{ borderColor: 'rgba(139,92,246,0.3)', focusRingColor: '#7c3aed' }}
+              className="text-[13px] border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-600 bg-white text-neutral-700"
+              style={{ borderColor: 'rgba(139,92,246,0.3)' }}
             >
               <option value="">All Actions</option>
               {actionTypes.map(a => (

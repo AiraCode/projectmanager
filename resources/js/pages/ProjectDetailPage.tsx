@@ -30,7 +30,7 @@ export default function ProjectDetailPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ 'mj-1': true, 'mj-2': true, 'mj-3': true });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
 
   // Form states for creating project
   const [companyId, setCompanyId] = useState<number | string>('');
@@ -217,7 +217,7 @@ export default function ProjectDetailPage() {
         </div>
 
         <div className="space-y-2.5">
-          {p.mainJobs.map(mj => (
+          {p.mainJobs.map((mj: any) => (
             <MainJobCard key={mj.id} mj={mj} expanded={!!expanded[mj.id]} onToggle={() => toggle(mj.id)} />
           ))}
         </div>

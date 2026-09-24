@@ -56,7 +56,7 @@ export default function DashboardPage() {
           item.totalProgress += prog;
           if (isDone) {
             item.completed++;
-          } else if (prog > 0 || st.status === 'In Progress' || st.status === 'On Track' || st.status === 'At Risk' || st.status === 'Delayed') {
+          } else if (prog > 0 || (st.status as string) === 'In Progress' || st.status === 'On Track' || st.status === 'At Risk' || st.status === 'Delayed') {
             item.inProgress++;
           }
         });

@@ -6,7 +6,7 @@ import {
   Download, AlertCircle, AlertTriangle, CheckCircle2, Clock, UploadCloud,
   FileText, Sparkles, X, Eye, CalendarDays, Sliders, Paperclip
 } from 'lucide-react';
-import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyType } from '@/data/mockData';
+import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyType, EvidenceItem } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
 import { recalculateProgress } from '@/utils/progressEngine';
 import { exportToCSV } from '@/utils/exportEngine';
@@ -316,7 +316,7 @@ export default function TasksPage() {
                   code: generatedCode,
                   name: taskData.name!,
                   weight: taskData.weight !== undefined ? taskData.weight : 100,
-                  division: divisions.find(d => d.id === taskData.divisionId)?.divisi || smj.pic,
+                  division: divisions.find((d: any) => d.id === taskData.divisionId)?.divisi || smj.pic,
                   duration: taskData.duration || 1,
                   startDate: taskData.startDate || new Date().toISOString().slice(0, 10),
                   finishDate: taskData.startDate || new Date().toISOString().slice(0, 10),
@@ -1314,7 +1314,7 @@ function SubtaskRow({
             <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
               Weight {st.weight ?? 100}%
             </span>
-            {!canCheck && <Lock size={12} className="text-neutral-300" title="You are not authorized to check or adjust progress for this task" />}
+            {!canCheck && <span title="You are not authorized to check or adjust progress for this task"><Lock size={12} className="text-neutral-300" /></span>}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
@@ -1866,19 +1866,14 @@ function AddSubtaskModal({
   const [duration, setDuration] = useState(initialData?.duration?.toString() || '5');
   const [divisionId, setDivisionId] = useState<string>(
     initialData?.division
-      ? (divisions.find(d => d.divisi.toLowerCase() === initialData.division.toLowerCase())?.id?.toString() || divisions[0]?.id?.toString() || '')
+      ? (divisions.find((d: any) => d.divisi?.toLowerCase() === initialData.division?.toLowerCase())?.id?.toString() || divisions[0]?.id?.toString() || '')
       : (divisions[0]?.id?.toString() || '')
   );
   const [predecessor, setPredecessor] = useState(initialData?.predecessor || '');
   const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
   const [lag, setLag] = useState(initialData?.lag ? initialData.lag.toString() : '0');
   const [lead, setLead] = useState(initialData?.lead ? initialData.lead.toString() : '0');
-  const [evidence, setEvidence] = useState<{
-    name: string;
-    size: string;
-    type: string;
-    previewUrl?: string;
-  } | null>(initialData?.evidence || null);
+  const [evidence, setEvidence] = useState<EvidenceItem | null>(initialData?.evidence || null);
 
   // Available SubMainJobs across the project
   const availableSubMainJobs = (mainJobs && mainJobs.length > 0)

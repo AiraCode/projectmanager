@@ -17,6 +17,11 @@ export interface User {
   company?: string | null;
   companies_id?: number | null;
   canCreateProject?: boolean;
+  permission_matrix?: {
+    sidebar?: string[];
+    [key: string]: any;
+  } | null;
+  ownedProject?: any;
 }
 
 export type Role = 'Admin Utama' | 'Admin Progres' | 'PIC' | 'Worker';
