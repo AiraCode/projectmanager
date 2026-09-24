@@ -386,6 +386,10 @@ export default function TasksPage() {
   const isAuthorizedToCheck = (taskDivision: string) => {
     if (isAdmin || isPIC) return false;
     if (isWorker) {
+      const pId = projectData.id?.replace('p-', '') || '';
+      const pAccess = authUser?.permission_matrix?.project_access?.[pId] || {};
+      if (pAccess.edit_task !== true) return false;
+
       const workerDiv = (user?.division ?? pageProps?.division ?? '').trim().toLowerCase();
       const targetDiv = (taskDivision ?? '').trim().toLowerCase();
       return workerDiv !== '' && (workerDiv === targetDiv || targetDiv === 'general' || targetDiv === 'internal');
@@ -432,14 +436,18 @@ export default function TasksPage() {
       return recalculateSchedule(recalculateProgress(newData));
     });
 
-    if (clamped === 100) {
-      setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
-      if (projectData.id) {
-        router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
+    if (projectData.id) {
+      if ((window as any).progressSaveTimeout) clearTimeout((window as any).progressSaveTimeout);
+      (window as any).progressSaveTimeout = setTimeout(() => {
+        router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: clamped }, {
           preserveScroll: true,
           preserveState: true,
+          onSuccess: () => {
+            if (clamped === 100) setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
+            else setToastMsg(`Task "${taskName}" progress saved (${clamped}%)`);
+          }
         });
-      }
+      }, 500);
     }
   };
 
@@ -514,7 +522,7 @@ export default function TasksPage() {
     });
 
     if (projectData.id) {
-      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
+      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: revertProgress }, {
         preserveScroll: true,
         preserveState: true,
       });

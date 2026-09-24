@@ -68,8 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     companies_id: authUser.companies_id ?? null,
     // Legacy fields — needed by old UI components
     pic:      authUser.division ?? authUser.company ?? 'PM',
-    // Strictly enforce: Admin Utama and Admin Progres CANNOT create project! Only PIC can!
     canCreateProject: isPIC && (authUser.canCreateProject ?? true),
+    permission_matrix: authUser.permission_matrix ?? null,
   } : null;
 
   const login        = async () => ({ success: true });

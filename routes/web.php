@@ -48,18 +48,18 @@ Route::middleware('auth')->group(function () {
     Route::get('/projectlistpage', function () {
         if (Auth::user()?->role?->name === 'SuperAdmin') return redirect('/admin');
         return app(ProjectController::class)->projectListPage(request());
-    })->name('projectlistpage');
-    Route::get('/projects', [ProjectController::class, 'projectListPage'])->name('projects.index');
+    })->middleware('sidebar:Project List')->name('projectlistpage');
+    Route::get('/projects', [ProjectController::class, 'projectListPage'])->middleware('sidebar:Project List')->name('projects.index');
 
     // ── Create project (PIC only) ──
     Route::post('/projectlistpage', [ProjectController::class, 'store'])->name('projectlistpage.store');
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
 
     // ── Single project dashboard ──
-    Route::get('/projects/{id}', [ProjectController::class, 'dashboard'])->name('projects.show');
+    Route::get('/projects/{id}', [ProjectController::class, 'dashboard'])->middleware('sidebar:Dashboard')->name('projects.show');
 
     // ── Tasks & WBS management ──
-    Route::get('/tasks', [ProjectController::class, 'tasks'])->name('tasks.index');
+    Route::get('/tasks', [ProjectController::class, 'tasks'])->middleware('sidebar:Tasks')->name('tasks.index');
     Route::get('/today-tasks', [ProjectController::class, 'todayTasks'])->name('today-tasks.index');
     Route::get('/projects/{id}/today-tasks', [ProjectController::class, 'todayTasks'])->name('projects.today-tasks');
 
@@ -80,30 +80,30 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{id}/tasks/{taskId}/toggle', [ProjectController::class, 'toggleTask'])->name('projects.tasks.toggle');
 
     // ── S-Curve ──
-    Route::get('/scurve', [ProjectController::class, 'scurve'])->name('scurve');
+    Route::get('/scurve', [ProjectController::class, 'scurve'])->middleware('sidebar:S-Curve Report')->name('scurve');
 
     // ── User Management (PIC-level access) ──
-    Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
+    Route::get('/users', [UserManagementController::class, 'index'])->middleware('sidebar:User Management')->name('users.index');
     Route::post('/users', [UserManagementController::class, 'store'])->name('users.store');
     Route::put('/users/{id}', [UserManagementController::class, 'update'])->name('users.update');
     Route::delete('/users/{id}', [UserManagementController::class, 'destroy'])->name('users.destroy');
 
     // ── Other Pages — Guarded: Admin Progres MUST NOT access these ──
     Route::middleware(BlockAdminProgres::class)->group(function () {
-        Route::get('/dashboard', [ProjectController::class, 'dashboard'])->name('dashboard');
-        Route::get('/projectdetailpage', [ProjectController::class, 'projectDetailPage'])->name('projectdetailpage');
-        Route::get('/project',           [ProjectController::class, 'projectDetailPage'])->name('project');
-        Route::get('/timeline',  [ProjectController::class, 'timeline'])->name('timeline');
-        Route::get('/weekly',    [ProjectController::class, 'weekly'])->name('weekly');
-        Route::get('/budget',            [ProjectController::class, 'budget'])->name('budget');
-        Route::get('/division-progress', [ProjectController::class, 'divisionProgress'])->name('division-progress');
+        Route::get('/dashboard', [ProjectController::class, 'dashboard'])->middleware('sidebar:Dashboard')->name('dashboard');
+        Route::get('/projectdetailpage', [ProjectController::class, 'projectDetailPage'])->middleware('sidebar:Project Detail')->name('projectdetailpage');
+        Route::get('/project',           [ProjectController::class, 'projectDetailPage'])->middleware('sidebar:Project Detail')->name('project');
+        Route::get('/timeline',  [ProjectController::class, 'timeline'])->middleware('sidebar:Timeline')->name('timeline');
+        Route::get('/weekly',    [ProjectController::class, 'weekly'])->middleware('sidebar:Weekly Progress')->name('weekly');
+        Route::get('/budget',            [ProjectController::class, 'budget'])->middleware('sidebar:Budget Management')->name('budget');
+        Route::get('/division-progress', [ProjectController::class, 'divisionProgress'])->middleware('sidebar:Division Progress')->name('division-progress');
 
-        Route::get('/projectdetailpage/{id}',          [ProjectController::class, 'projectDetailPage'])->name('projectdetailpage.id');
-        Route::get('/projects/{id}/detail',            [ProjectController::class, 'projectDetailPage'])->name('projects.detail');
-        Route::get('/projects/{id}/timeline',          [ProjectController::class, 'timeline'])->name('projects.timeline');
-        Route::get('/projects/{id}/weekly',            [ProjectController::class, 'weekly'])->name('projects.weekly');
-        Route::get('/projects/{id}/budget',            [ProjectController::class, 'budget'])->name('projects.budget');
-        Route::get('/projects/{id}/division-progress', [ProjectController::class, 'divisionProgress'])->name('projects.division-progress');
+        Route::get('/projectdetailpage/{id}',          [ProjectController::class, 'projectDetailPage'])->middleware('sidebar:Project Detail')->name('projectdetailpage.id');
+        Route::get('/projects/{id}/detail',            [ProjectController::class, 'projectDetailPage'])->middleware('sidebar:Project Detail')->name('projects.detail');
+        Route::get('/projects/{id}/timeline',          [ProjectController::class, 'timeline'])->middleware('sidebar:Timeline')->name('projects.timeline');
+        Route::get('/projects/{id}/weekly',            [ProjectController::class, 'weekly'])->middleware('sidebar:Weekly Progress')->name('projects.weekly');
+        Route::get('/projects/{id}/budget',            [ProjectController::class, 'budget'])->middleware('sidebar:Budget Management')->name('projects.budget');
+        Route::get('/projects/{id}/division-progress', [ProjectController::class, 'divisionProgress'])->middleware('sidebar:Division Progress')->name('projects.division-progress');
 
         Route::post('/projects/{id}/weekly', [ProjectController::class, 'saveWeeklyProgress'])->name('projects.weekly.store');
 

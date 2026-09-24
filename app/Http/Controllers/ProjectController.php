@@ -32,6 +32,13 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         if ($role === 'worker') {
+            $projectAccess = $user->permission_matrix['project_access'] ?? [];
+            $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
+            
+            $hasProject = Project::where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->exists();
+            if (!$hasProject) {
+                abort(403, 'Anda belum diberikan akses ke proyek manapun. Silakan hubungi Administrator.');
+            }
             return redirect()->route('tasks.index');
         }
 
@@ -785,13 +792,31 @@ class ProjectController extends Controller
             if ($project->companies_id != $user->companies_id) {
                 abort(403, 'Access Denied: Workers can only update tasks within their assigned company.');
             }
+            
+            $projectAccess = $user->permission_matrix['project_access'] ?? [];
+            if (empty($projectAccess[$projectId]['edit_task'])) {
+                abort(403, 'Access Denied: You do not have permission to edit tasks in this project.');
+            }
+
             if ($user->divisions_id && $task->divisions_id != $user->divisions_id) {
-                abort(403, 'Access Denied: You are only authorized to complete tasks for your own division.');
+                $taskDivName = strtolower(trim($task->division->divisi ?? ''));
+                $userDivName = strtolower(trim($user->division->divisi ?? ''));
+                if ($taskDivName !== $userDivName && $taskDivName !== 'general' && $taskDivName !== 'internal') {
+                    abort(403, 'Access Denied: You can only update tasks assigned to your division.');
+                }
             }
         }
 
-        $task->is_completed = !$task->is_completed;
-        $task->status = $task->is_completed ? 'Completed' : 'Open';
+        $progress = $request->input('progress');
+        if ($progress !== null) {
+            $task->progress = max(0, min(100, (int)$progress));
+            $task->is_completed = ($task->progress == 100);
+            $task->status = $task->is_completed ? 'Completed' : 'Open';
+        } else {
+            $task->is_completed = !$task->is_completed;
+            $task->progress = $task->is_completed ? 100 : 0;
+            $task->status = $task->is_completed ? 'Completed' : 'Open';
+        }
         $task->save();
 
         app(ProgressService::class)->recalculateProjectProgress($projectId);
@@ -911,7 +936,7 @@ class ProjectController extends Controller
                         'daysLeft'    => $st->end && Carbon::now()->lessThan($st->end) ? Carbon::now()->diffInDays($st->end) : 0,
                         'startDate'   => $st->start ? $st->start->format('Y-m-d') : '',
                         'finishDate'  => $st->end ? $st->end->format('Y-m-d') : '',
-                        'progress'    => $st->is_completed ? 100 : 0,
+                        'progress'    => $st->progress > 0 ? (int)$st->progress : ($st->is_completed ? 100 : 0),
                         'status'      => $st->status ?? 'Open',
                         'predecessor' => $st->predecessor ?? '',
                         'depType'     => 'FS',

@@ -27,6 +27,7 @@ class Wbs extends Model
         'status',
         'predecessor',
         'weight',
+        'progress',
     ];
 
     protected $casts = [

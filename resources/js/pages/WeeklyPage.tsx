@@ -56,17 +56,28 @@ export default function WeeklyPage() {
     return list;
   }, [projectData]);
 
+  const [selectedDivision, setSelectedDivision] = useState<string>('All');
+
+  const allDivisions = useMemo(() => {
+    const divs = new Set<string>();
+    allTasks.forEach(t => {
+      if (t.division) divs.add(t.division);
+    });
+    return Array.from(divs).sort();
+  }, [allTasks]);
+
   // Map tasks active/scheduled in each week
   const tasksByWeek = useMemo(() => {
     const map: Record<number, typeof allTasks> = {};
     weeks.forEach(w => {
       map[w.week] = allTasks.filter(t => {
+        if (selectedDivision !== 'All' && t.division !== selectedDivision) return false;
         if (!t.startDate || !t.finishDate) return false;
         return t.startDate <= w.endDate && t.finishDate >= w.startDate;
       });
     });
     return map;
-  }, [weeks, allTasks]);
+  }, [weeks, allTasks, selectedDivision]);
 
   // Active current week based on today's date
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -176,6 +187,20 @@ export default function WeeklyPage() {
           </div>
 
           <div className="flex items-center gap-2.5 self-end sm:self-auto">
+            <div className="flex items-center gap-2 mr-2">
+              <span className="text-[12px] font-medium text-neutral-500">Divisi:</span>
+              <select
+                value={selectedDivision}
+                onChange={e => setSelectedDivision(e.target.value)}
+                className="text-[12px] border border-neutral-200 rounded-md px-2 py-1 outline-none focus:border-brand bg-white text-neutral-700"
+              >
+                <option value="All">Semua Divisi</option>
+                {allDivisions.map(div => (
+                  <option key={div} value={div}>{div}</option>
+                ))}
+              </select>
+            </div>
+
             <span className="text-[12px] font-medium text-neutral-500">
               Page {page + 1} of {totalPages}
             </span>
@@ -405,7 +430,10 @@ export default function WeeklyPage() {
                                           {t.name}
                                         </span>
                                       </div>
-                                      <StatusBadge status={t.status} />
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[9.5px] font-bold text-neutral-400 uppercase tracking-wider">{t.division}</span>
+                                        <StatusBadge status={t.status} />
+                                      </div>
                                     </div>
                                     <div className="flex items-center justify-between text-[11px] text-neutral-500 pt-1.5 border-t border-neutral-100">
                                       <span>Bobot: {t.weight}%</span>

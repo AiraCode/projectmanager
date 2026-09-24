@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
-import Layout from '@/components/Layout';
 import { PageHeader, Card, Button, Modal, Toast } from '@/components/ui';
-import { Plus, Edit2, Trash2, Shield, FolderOpen } from 'lucide-react';
+import { Plus, Edit2, Trash2, Shield, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface Role { id: number; name: string; }
 interface Company { id: number; name: string; }
@@ -27,14 +26,18 @@ interface User {
   permission_matrix: PermissionMatrix | null;
 }
 
-const SIDEBAR_OPTIONS = ['Dashboard', 'Project List', 'Project Detail', 'Tasks', 'Timeline', 'Weekly Progress', 'S-Curve Report', 'Budget Management', 'Division Progress', 'User Management'];
-const FEATURE_OPTIONS = {
-  projects: ['view', 'create', 'edit', 'delete'],
-  tasks: ['view', 'create', 'edit', 'delete', 'toggle_status'],
-  weekly: ['view', 'submit', 'edit', 'delete'],
-  budget: ['view', 'create', 'edit', 'delete'],
-  reports: ['view']
-};
+const MODULE_PERMISSIONS = [
+  { module: 'Dashboard', sidebarKey: 'Dashboard', features: [] },
+  { module: 'Project List', sidebarKey: 'Project List', featureGroup: 'projects', features: ['create', 'edit', 'delete'] },
+  { module: 'Project Detail', sidebarKey: 'Project Detail', features: [] },
+  { module: 'Tasks', sidebarKey: 'Tasks', featureGroup: 'tasks', features: ['create', 'edit', 'delete', 'toggle_status'] },
+  { module: 'Timeline', sidebarKey: 'Timeline', features: [] },
+  { module: 'Weekly Progress', sidebarKey: 'Weekly Progress', featureGroup: 'weekly', features: ['submit', 'edit', 'delete'] },
+  { module: 'S-Curve Report', sidebarKey: 'S-Curve Report', featureGroup: 'reports', features: [] },
+  { module: 'Budget Management', sidebarKey: 'Budget Management', featureGroup: 'budget', features: ['create', 'edit', 'delete'] },
+  { module: 'Division Progress', sidebarKey: 'Division Progress', features: [] },
+  { module: 'User Management', sidebarKey: 'User Management', features: [] },
+];
 
 export default function UserManagementPage({
   users, companies, divisions, roles, currentUser, projects = []
@@ -44,6 +47,8 @@ export default function UserManagementPage({
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'danger' } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [isGlobalMatrixOpen, setIsGlobalMatrixOpen] = useState(false);
+  const [isProjectAccessOpen, setIsProjectAccessOpen] = useState(false);
 
   const isSuperAdmin = currentUser.role?.name === 'SuperAdmin';
   const isPIC = currentUser.role?.name === 'pic';
@@ -110,10 +115,31 @@ export default function UserManagementPage({
     }
   };
 
-  const handleSidebarToggle = (opt: string) => {
-    const current = data.permission_matrix.sidebar || [];
-    const updated = current.includes(opt) ? current.filter(s => s !== opt) : [...current, opt];
-    setData('permission_matrix', { ...data.permission_matrix, sidebar: updated });
+  const handleUnifiedViewToggle = (mod: typeof MODULE_PERMISSIONS[0]) => {
+    const currentSidebar = data.permission_matrix.sidebar || [];
+    const isCurrentlyView = currentSidebar.includes(mod.sidebarKey);
+    
+    const updatedSidebar = isCurrentlyView 
+      ? currentSidebar.filter(s => s !== mod.sidebarKey)
+      : [...currentSidebar, mod.sidebarKey];
+
+    let updatedFeatures = { ...(data.permission_matrix.features || {}) };
+    if (mod.featureGroup) {
+      const currentActions = updatedFeatures[mod.featureGroup] || [];
+      if (isCurrentlyView) {
+        // Remove 'view'
+        updatedFeatures[mod.featureGroup] = currentActions.filter(a => a !== 'view');
+      } else {
+        // Add 'view'
+        updatedFeatures[mod.featureGroup] = [...currentActions.filter(a => a !== 'view'), 'view'];
+      }
+    }
+
+    setData('permission_matrix', { 
+      ...data.permission_matrix, 
+      sidebar: updatedSidebar,
+      features: updatedFeatures
+    });
   };
 
   const handleFeatureToggle = (feature: string, action: string) => {
@@ -142,7 +168,7 @@ export default function UserManagementPage({
   const isWorkerTarget = selectedRoleName === 'worker';
 
   return (
-    <Layout>
+    <>
       <Head title="User Management" />
       <div className="p-5 lg:p-8 max-w-7xl mx-auto">
         <PageHeader
@@ -259,108 +285,151 @@ export default function UserManagementPage({
             </div>
           )}
 
-          {/* Project-Level Granularity (For PIC editing a Worker, or SuperAdmin editing a Worker) */}
+          {/* Project-Level Granularity */}
           {isWorkerTarget && (isPIC || isSuperAdmin) && (
             <div className="border border-neutral-200 rounded-xl overflow-hidden mt-4">
-              <div className="bg-neutral-50 px-4 py-2 border-b border-neutral-200">
-                <h3 className="font-bold text-[13px] flex items-center gap-2"><FolderOpen size={16} className="text-brand" /> Project Access Matrix</h3>
+              <div 
+                className="bg-neutral-50 px-4 py-2 border-b border-neutral-200 flex justify-between items-center cursor-pointer hover:bg-neutral-100 transition-colors"
+                onClick={() => setIsProjectAccessOpen(!isProjectAccessOpen)}
+              >
+                <h3 className="font-bold text-[13px] flex items-center gap-2"><FolderOpen size={16} className="text-brand" /> Project Access Matrix (Initial Setup)</h3>
+                {isProjectAccessOpen ? <ChevronDown size={16} className="text-neutral-400" /> : <ChevronRight size={16} className="text-neutral-400" />}
               </div>
-              <div className="p-0">
-                {projects.length === 0 ? (
-                  <div className="p-5 text-center text-[13px] text-neutral-500">No projects available in this company yet.</div>
-                ) : (
-                  <table className="w-full text-left text-[13px]">
-                    <thead className="bg-white text-neutral-500 font-semibold text-[11px] uppercase tracking-wider border-b border-neutral-200">
-                      <tr>
-                        <th className="px-4 py-2">Project Name</th>
-                        <th className="px-4 py-2 text-center">Can View Project</th>
-                        <th className="px-4 py-2 text-center">Can View Progress</th>
-                        <th className="px-4 py-2 text-center">Can Edit Task</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-neutral-100">
-                      {projects.map(proj => {
-                        const access = data.permission_matrix.project_access?.[proj.id] || { view_project: false, view_progress: false, edit_task: false };
-                        return (
-                          <tr key={proj.id} className="hover:bg-neutral-50/50">
-                            <td className="px-4 py-3 font-medium text-neutral-900">{proj.title}</td>
-                            <td className="px-4 py-3 text-center">
-                              <input type="checkbox" checked={access.view_project} onChange={() => handleProjectAccessToggle(proj.id, 'view_project')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <input type="checkbox" checked={access.view_progress} onChange={() => handleProjectAccessToggle(proj.id, 'view_progress')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <input type="checkbox" checked={access.edit_task} onChange={() => handleProjectAccessToggle(proj.id, 'edit_task')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
-                            </td>
+              
+              {isProjectAccessOpen && (
+                <div className="p-0">
+                  {projects.length === 0 ? (
+                    <div className="p-5 text-center text-[13px] text-neutral-500">No projects available in this company yet.</div>
+                  ) : (
+                    <div className="max-h-[300px] overflow-y-auto">
+                      <table className="w-full text-left text-[13px]">
+                        <thead className="bg-white text-neutral-500 font-semibold text-[11px] uppercase tracking-wider border-b border-neutral-200 sticky top-0 z-10 shadow-sm">
+                          <tr>
+                            <th className="px-4 py-2">Project Name</th>
+                            <th className="px-4 py-2 text-center">Can View Project</th>
+                            <th className="px-4 py-2 text-center">Can View Progress</th>
+                            <th className="px-4 py-2 text-center">Can Edit Task</th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-100">
+                          {projects.map(proj => {
+                            const access = data.permission_matrix.project_access?.[proj.id] || { view_project: false, view_progress: false, edit_task: false };
+                            return (
+                              <tr key={proj.id} className="hover:bg-neutral-50/50">
+                                <td className="px-4 py-3 font-medium text-neutral-900">{proj.title}</td>
+                                <td className="px-4 py-3 text-center">
+                                  <input type="checkbox" checked={access.view_project} onChange={() => handleProjectAccessToggle(proj.id, 'view_project')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <input type="checkbox" checked={access.view_progress} onChange={() => handleProjectAccessToggle(proj.id, 'view_progress')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <input type="checkbox" checked={access.edit_task} onChange={() => handleProjectAccessToggle(proj.id, 'edit_task')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           {showGlobalMatrix && (
             <div className="border border-neutral-200 rounded-xl overflow-hidden mt-4">
-              <div className="bg-neutral-50 px-4 py-2 border-b border-neutral-200 flex justify-between items-center">
-                <h3 className="font-bold text-[13px] flex items-center gap-2"><Shield size={16} className="text-brand" /> Global Permission Matrix</h3>
-                <span className="text-[11px] text-neutral-500 bg-white border border-neutral-200 px-2 py-0.5 rounded">SuperAdmin Only</span>
+              <div 
+                className="bg-neutral-50 px-4 py-2 border-b border-neutral-200 flex justify-between items-center cursor-pointer hover:bg-neutral-100 transition-colors"
+                onClick={() => setIsGlobalMatrixOpen(!isGlobalMatrixOpen)}
+              >
+                <div className="flex items-center gap-2">
+                  <Shield size={16} className="text-brand" />
+                  <h3 className="font-bold text-[13px]">Global Permission Matrix</h3>
+                  <span className="text-[10px] font-bold text-neutral-500 bg-white border border-neutral-200 px-1.5 py-0.5 rounded ml-2">SuperAdmin Only</span>
+                </div>
+                {isGlobalMatrixOpen ? <ChevronDown size={16} className="text-neutral-400" /> : <ChevronRight size={16} className="text-neutral-400" />}
               </div>
-              <div className="p-4 space-y-5">
-                
-                {/* Data Access Scope */}
-                <div>
-                  <h4 className="text-[12px] font-bold text-neutral-800 mb-2 uppercase tracking-wide">Data Access Scope</h4>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 text-[13px] text-neutral-700">
-                      <input type="radio" name="scope" value="all" checked={data.permission_matrix.data_scope === 'all'} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: 'all' })} /> All Companies
-                    </label>
-                    <label className="flex items-center gap-2 text-[13px] text-neutral-700">
-                      <input type="radio" name="scope" value="own_company" checked={data.permission_matrix.data_scope === 'own_company'} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: 'own_company' })} /> Own Company Only
-                    </label>
-                  </div>
-                </div>
-
-                {/* Sidebar Access */}
-                <div>
-                  <h4 className="text-[12px] font-bold text-neutral-800 mb-2 uppercase tracking-wide">Sidebar Visibility</h4>
-                  <div className="flex flex-wrap gap-2.5">
-                    {SIDEBAR_OPTIONS.map(opt => (
-                      <label key={opt} className="flex items-center gap-1.5 text-[12.5px] text-neutral-700 bg-neutral-50 px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-100 cursor-pointer">
-                        <input type="checkbox" checked={(data.permission_matrix.sidebar || []).includes(opt)} onChange={() => handleSidebarToggle(opt)} className="rounded text-brand focus:ring-brand" />
-                        {opt}
+              
+              {isGlobalMatrixOpen && (
+                <div className="p-4 space-y-5">
+                  {/* Data Access Scope */}
+                  <div>
+                    <h4 className="text-[12px] font-bold text-neutral-800 mb-2 uppercase tracking-wide">Data Access Scope</h4>
+                    <div className="flex gap-4 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200 w-fit">
+                      <label className="flex items-center gap-2 text-[13px] text-neutral-700 cursor-pointer">
+                        <input type="radio" name="scope" value="all" checked={data.permission_matrix.data_scope === 'all'} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: 'all' })} className="text-brand focus:ring-brand cursor-pointer" /> All Companies
                       </label>
-                    ))}
+                      <label className="flex items-center gap-2 text-[13px] text-neutral-700 cursor-pointer">
+                        <input type="radio" name="scope" value="own_company" checked={data.permission_matrix.data_scope === 'own_company'} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: 'own_company' })} className="text-brand focus:ring-brand cursor-pointer" /> Own Company Only
+                      </label>
+                    </div>
                   </div>
-                </div>
 
-                {/* Feature Permissions */}
-                <div>
-                  <h4 className="text-[12px] font-bold text-neutral-800 mb-2 uppercase tracking-wide">Feature Access Level</h4>
-                  <div className="space-y-3">
-                    {Object.entries(FEATURE_OPTIONS).map(([feat, actions]) => (
-                      <div key={feat} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 rounded-lg bg-neutral-50/50 border border-neutral-100">
-                        <div className="w-28 text-[13px] font-semibold text-neutral-700 capitalize">{feat}</div>
-                        <div className="flex flex-wrap gap-3">
-                          {actions.map(act => {
-                            const isChecked = (data.permission_matrix.features?.[feat] || []).includes(act);
+                  {/* Unified Module Permissions */}
+                  <div>
+                    <h4 className="text-[12px] font-bold text-neutral-800 mb-2 uppercase tracking-wide">Module Access & Features</h4>
+                    <div className="overflow-x-auto border border-neutral-200 rounded-lg">
+                      <table className="w-full text-left text-[12.5px]">
+                        <thead className="bg-neutral-50 border-b border-neutral-200 font-semibold text-neutral-600 text-[11px] uppercase tracking-wider">
+                          <tr>
+                            <th className="px-4 py-2.5">Module Name</th>
+                            <th className="px-4 py-2.5 text-center border-l border-neutral-100">View (Sidebar)</th>
+                            <th className="px-4 py-2.5 text-center border-l border-neutral-100 w-1/2">Advanced Permissions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-100">
+                          {MODULE_PERMISSIONS.map(mod => {
+                            const isView = (data.permission_matrix.sidebar || []).includes(mod.sidebarKey);
                             return (
-                              <label key={act} className="flex items-center gap-1.5 text-[12px] text-neutral-600 cursor-pointer">
-                                <input type="checkbox" checked={isChecked} onChange={() => handleFeatureToggle(feat, act)} className="rounded text-brand focus:ring-brand" />
-                                {act}
-                              </label>
+                              <tr key={mod.sidebarKey} className="hover:bg-neutral-50/50">
+                                <td className="px-4 py-2.5 font-semibold text-neutral-800">{mod.module}</td>
+                                <td className="px-4 py-2.5 text-center border-l border-neutral-100">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isView} 
+                                    onChange={() => handleUnifiedViewToggle(mod)} 
+                                    className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" 
+                                  />
+                                </td>
+                                <td className="px-4 py-2.5 border-l border-neutral-100">
+                                  <div className="flex flex-wrap gap-4 items-center justify-center">
+                                    {mod.features.length === 0 ? (
+                                      <span className="text-neutral-400 italic text-[11px]">- None available -</span>
+                                    ) : (
+                                      mod.features.map(feat => {
+                                        const isChecked = mod.featureGroup 
+                                          ? (data.permission_matrix.features?.[mod.featureGroup] || []).includes(feat) 
+                                          : false;
+                                        return (
+                                          <label 
+                                            key={feat} 
+                                            className={`flex items-center gap-1.5 text-[11.5px] cursor-pointer ${!isView ? 'opacity-40 pointer-events-none' : 'text-neutral-700 font-medium'}`}
+                                          >
+                                            <input 
+                                              type="checkbox" 
+                                              checked={isChecked} 
+                                              onChange={() => handleFeatureToggle(mod.featureGroup!, feat)} 
+                                              disabled={!isView} 
+                                              className="rounded text-brand focus:ring-brand" 
+                                            />
+                                            <span className="capitalize">{feat.replace('_', ' ')}</span>
+                                          </label>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
                             );
                           })}
-                        </div>
-                      </div>
-                    ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-
-              </div>
+              )}
             </div>
           )}
 
@@ -372,6 +441,6 @@ export default function UserManagementPage({
       </Modal>
 
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
-    </Layout>
+    </>
   );
 }
