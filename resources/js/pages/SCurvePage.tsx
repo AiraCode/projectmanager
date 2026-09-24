@@ -4,7 +4,7 @@ import { Project, PROJECT } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { exportToCSV } from '@/utils/exportEngine';
 import { PageHeader, Card, Button, formatDateDisplay } from '@/components/ui';
-import { TrendingUp, BarChart2, Calendar, Eye, EyeOff, Download, AlertTriangle, RotateCcw, Filter } from 'lucide-react';
+import { TrendingUp, BarChart2, Calendar, Eye, EyeOff, Download, AlertTriangle, RotateCcw, Filter, Camera, FileText, X } from 'lucide-react';
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, Area, ReferenceLine
@@ -13,15 +13,31 @@ import {
 type ViewMode = 'cumulative' | 'weekly';
 type Granularity = 'day' | 'week' | 'year';
 
+export interface ExtractedEvidence {
+  id: string;
+  taskId: string;
+  taskName: string;
+  division: string;
+  name: string;
+  size?: string;
+  type?: string;
+  previewUrl?: string;
+  url?: string;
+  date: string;
+  isPhoto: boolean;
+}
+
 interface ChartPoint {
   name: string;
   subLabel?: string;
   'Plan. Cumulative': number | null;
   'Act. Cumulative': number | null;
+  Prediction: number | null;
   'Planned (Weekly)': number | null;
   'Actual (Weekly)': number | null;
   deviation?: number | null;
   rawWeek?: any;
+  evidenceItems?: ExtractedEvidence[];
 }
 
 export default function SCurvePage() {
@@ -144,6 +160,61 @@ export default function SCurvePage() {
     return false;
   }, [granularity, fromWeek, toWeek, fromDay, toDay, fromYear, toYear, weeks, projectData.startDate, projectData.endDate]);
 
+  // Evidence Preview Modal State
+  const [evidenceModalData, setEvidenceModalData] = useState<{
+    period: string;
+    subLabel?: string;
+    items: ExtractedEvidence[];
+  } | null>(null);
+
+  // Dynamic Evidence Aggregation from active project task tree (100% dynamic, zero hardcoding)
+  const allEvidences: ExtractedEvidence[] = useMemo(() => {
+    const list: ExtractedEvidence[] = [];
+    if (!projectData?.mainJobs) return list;
+
+    projectData.mainJobs.forEach(mj => {
+      (mj.subMainJobs || []).forEach(smj => {
+        (smj.subtasks || []).forEach(st => {
+          const rawItems: any[] = [];
+          if (Array.isArray((st as any).evidences)) {
+            rawItems.push(...(st as any).evidences);
+          }
+          if (st.evidence && !rawItems.some(e => e.name === st.evidence?.name)) {
+            rawItems.push(st.evidence);
+          }
+
+          if (rawItems.length === 0) return;
+
+          const rawDivision = st.division || smj.pic || smj.name || mj.name || 'General';
+          const cleanDivision = rawDivision.replace(/ Works$/i, '').trim();
+          const taskDate = st.finishDate || st.startDate || smj.finishDate || mj.finishDate || '';
+
+          rawItems.forEach((item, idx) => {
+            const isPhoto = /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(item.name || '') ||
+              item.type?.startsWith('image/') ||
+              !!item.previewUrl;
+
+            list.push({
+              id: `${st.id}-ev-${idx}`,
+              taskId: st.id,
+              taskName: st.name,
+              division: cleanDivision,
+              name: item.name,
+              size: item.size || 'Attached file',
+              type: item.type || (isPhoto ? 'image/jpeg' : 'application/pdf'),
+              previewUrl: item.previewUrl || item.url,
+              url: item.url || item.previewUrl,
+              date: taskDate,
+              isPhoto,
+            });
+          });
+        });
+      });
+    });
+
+    return list;
+  }, [projectData]);
+
   // Overall KPI statistics
   const elapsedWeeks = currentWeekIdx >= 0 ? weeks.slice(0, currentWeekIdx + 1) : [];
   const latestActual = elapsedWeeks.filter(w => w.actualCumulative > 0).at(-1);
@@ -159,6 +230,10 @@ export default function SCurvePage() {
   const chartData: ChartPoint[] = useMemo(() => {
     if (weeks.length === 0) return [];
 
+    const performanceRatio = (currentWeek && currentWeek.plannedCumulative > 0)
+      ? (realisasiValue / currentWeek.plannedCumulative)
+      : 1;
+
     if (granularity === 'week') {
       const fW = !isInvalidRange ? (Number(fromWeek) || 1) : 1;
       const tW = !isInvalidRange ? (Number(toWeek) || weeks.length) : weeks.length;
@@ -167,15 +242,44 @@ export default function SCurvePage() {
       return targetWeeks.map((w) => {
         const globalIdx = weeks.findIndex(item => item.week === w.week);
         const hasActual = globalIdx <= currentWeekIdx && w.actualCumulative > 0;
+
+        // Visual Prediction projection: respects existing data if present, otherwise smoothly forecasts to 100%
+        let predVal: number | null = (w as any).predictionCumulative ?? (w as any).prediction ?? null;
+        if (predVal === null) {
+          if (globalIdx < currentWeekIdx) {
+            predVal = hasActual
+              ? w.actualCumulative
+              : Number(Math.min(100, Math.max(0, w.plannedCumulative * performanceRatio)).toFixed(2));
+          } else if (globalIdx === currentWeekIdx) {
+            predVal = realisasiValue;
+          } else {
+            const planCurrent = currentWeek?.plannedCumulative ?? 0;
+            const planRemaining = Math.max(0.01, 100 - planCurrent);
+            const planGain = Math.max(0, w.plannedCumulative - planCurrent);
+            const ratio = Math.min(1, Math.max(0, planGain / planRemaining));
+            const workRemaining = Math.max(0, 100 - realisasiValue);
+            predVal = Number((realisasiValue + (ratio * workRemaining)).toFixed(2));
+            if (globalIdx === weeks.length - 1) predVal = 100;
+          }
+        }
+
+        // Dynamic evidence associated with this specific week
+        const weekEvidences = allEvidences.filter(ev => {
+          if (!ev.date) return false;
+          return ev.date >= w.startDate && ev.date <= w.endDate;
+        });
+
         return {
           name: `W${w.week}`,
           subLabel: `${formatDateDisplay(w.startDate)} - ${formatDateDisplay(w.endDate)}`,
           'Plan. Cumulative': w.plannedCumulative,
           'Act. Cumulative': hasActual ? w.actualCumulative : null,
+          Prediction: predVal,
           'Planned (Weekly)': w.planned,
           'Actual (Weekly)': globalIdx <= currentWeekIdx && w.actual > 0 ? w.actual : null,
           deviation: hasActual ? Number((w.actualCumulative - w.plannedCumulative).toFixed(2)) : null,
           rawWeek: w,
+          evidenceItems: weekEvidences,
         };
       });
     }
@@ -252,15 +356,34 @@ export default function SCurvePage() {
 
         const dev = actCum !== null ? Number((actCum - planCum).toFixed(2)) : null;
 
+        // Day Prediction
+        let predCum: number | null = null;
+        if (dStr < todayStr) {
+          predCum = actCum !== null ? actCum : Number(Math.min(100, planCum * performanceRatio).toFixed(2));
+        } else if (dStr === todayStr) {
+          predCum = realisasiValue;
+        } else {
+          const todayDateObj = parseDate(todayStr);
+          const totalDaysRemaining = Math.max(1, Math.round((endDateObj.getTime() - todayDateObj.getTime()) / (1000 * 60 * 60 * 24)));
+          const daysSinceToday = Math.max(0, Math.round((curr.getTime() - todayDateObj.getTime()) / (1000 * 60 * 60 * 24)));
+          const dayRatio = Math.min(1, Math.max(0, daysSinceToday / totalDaysRemaining));
+          predCum = Number((realisasiValue + dayRatio * (100 - realisasiValue)).toFixed(2));
+          if (curr.getTime() >= endDateObj.getTime()) predCum = 100;
+        }
+
+        const dayEvidences = allEvidences.filter(ev => ev.date === dStr);
+
         points.push({
           name: formatDateDisplay(dStr),
           subLabel: wIdx !== -1 ? `Week ${weeks[wIdx].week}` : '',
           'Plan. Cumulative': Math.min(100, Math.max(0, planCum)),
           'Act. Cumulative': actCum !== null ? Math.min(100, Math.max(0, actCum)) : null,
+          Prediction: predCum,
           'Planned (Weekly)': dailyPlan,
           'Actual (Weekly)': dailyAct,
           deviation: dev,
           rawWeek: wIdx !== -1 ? weeks[wIdx] : undefined,
+          evidenceItems: dayEvidences,
         });
 
         curr.setDate(curr.getDate() + 1);
@@ -285,6 +408,7 @@ export default function SCurvePage() {
 
       const points: ChartPoint[] = [];
       const sortedYears = Array.from(yearMap.keys()).sort();
+      const currentYr = new Date(todayStr).getFullYear();
 
       sortedYears.forEach(yr => {
         const yrWeeks = yearMap.get(yr)!;
@@ -298,15 +422,31 @@ export default function SCurvePage() {
           return idx <= currentWeekIdx && w.actual > 0;
         }).reduce((acc, w) => acc + w.actual, 0);
 
+        let predCum: number | null = null;
+        if (yr < currentYr) {
+          predCum = hasActual ? lastWeekInYr.actualCumulative : Number(Math.min(100, lastWeekInYr.plannedCumulative * performanceRatio).toFixed(2));
+        } else if (yr === currentYr) {
+          predCum = realisasiValue;
+        } else {
+          const maxYr = sortedYears[sortedYears.length - 1];
+          const yrRatio = Math.min(1, Math.max(0, (yr - currentYr) / Math.max(1, maxYr - currentYr)));
+          predCum = Number((realisasiValue + yrRatio * (100 - realisasiValue)).toFixed(2));
+          if (yr === maxYr) predCum = 100;
+        }
+
+        const yrEvidences = allEvidences.filter(ev => ev.date.startsWith(String(yr)));
+
         points.push({
           name: String(yr),
           subLabel: `${yrWeeks.length} Weeks`,
           'Plan. Cumulative': lastWeekInYr.plannedCumulative,
           'Act. Cumulative': hasActual ? lastWeekInYr.actualCumulative : null,
+          Prediction: predCum,
           'Planned (Weekly)': Number(sumPlanned.toFixed(2)),
           'Actual (Weekly)': hasActual ? Number(sumActual.toFixed(2)) : null,
           deviation: hasActual ? Number((lastWeekInYr.actualCumulative - lastWeekInYr.plannedCumulative).toFixed(2)) : null,
           rawWeek: lastWeekInYr,
+          evidenceItems: yrEvidences,
         });
       });
 
@@ -314,7 +454,7 @@ export default function SCurvePage() {
     }
 
     return [];
-  }, [weeks, granularity, fromWeek, toWeek, fromDay, toDay, fromYear, toYear, isInvalidRange, currentWeekIdx, realisasiValue, projectData.startDate, projectData.endDate, todayStr]);
+  }, [weeks, granularity, fromWeek, toWeek, fromDay, toDay, fromYear, toYear, isInvalidRange, currentWeekIdx, currentWeek, realisasiValue, projectData.startDate, projectData.endDate, todayStr, allEvidences]);
 
   const currentTimelineX = useMemo(() => {
     if (granularity === 'week') {
@@ -357,20 +497,23 @@ export default function SCurvePage() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Period', 'Planned (%)', 'Actual (%)', 'Plan. Cumulative (%)', 'Act. Cumulative (%)', 'Deviation (%)'];
+    const headers = ['Period', 'Description / Range', 'Planned (%)', 'Actual (%)', 'Plan. Cumulative (%)', 'Act. Cumulative (%)', 'Prediction (%)', 'Deviation (%)', 'Evidence Files'];
     const rows = chartData.map(d => [
       d.name,
+      d.subLabel ?? '-',
       d['Planned (Weekly)'] ?? '-',
       d['Actual (Weekly)'] ?? '-',
       d['Plan. Cumulative'] ?? '-',
       d['Act. Cumulative'] ?? '-',
-      d.deviation !== null && d.deviation !== undefined ? `${d.deviation}%` : '-'
+      d.Prediction != null ? `${d.Prediction}%` : '-',
+      d.deviation !== null && d.deviation !== undefined ? `${d.deviation}%` : '-',
+      d.evidenceItems && d.evidenceItems.length > 0 ? d.evidenceItems.map(e => `${e.division}: ${e.name}`).join('; ') : '-'
     ]);
     exportToCSV(`SCurve_${granularity}_${new Date().toISOString().slice(0,10)}`, headers, rows);
   };
 
   return (
-    <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
+    <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5 overflow-x-hidden">
       <PageHeader
         title={`S-Curve Analysis ${project?.name || projectData?.name ? `· ${project?.name || projectData?.name}` : ''}`}
         subtitle={userRole === 'admin_progres' ? 'Progress Admin View — Cumulative S-Curve progress monitoring' : 'Planned vs. Actual cumulative progress tracking over project lifecycle'}
@@ -576,7 +719,8 @@ export default function SCurvePage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-4 text-[12px] text-neutral-500 font-medium">
+          {/* Visual distinction for Planned, Actual, and Prediction */}
+          <div className="flex flex-wrap items-center gap-4 text-[12px] text-neutral-500 font-medium">
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-brand" />
               <span>Planned Progress</span>
@@ -584,6 +728,11 @@ export default function SCurvePage() {
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-success" />
               <span>Actual Progress</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-0.5 border-t-2 border-dashed border-[#8B5CF6]" />
+              <span className="w-2 h-2 rounded-full bg-[#8B5CF6] -ml-3" />
+              <span className="text-[#8B5CF6] font-semibold">Prediction</span>
             </div>
           </div>
         </div>
@@ -616,6 +765,7 @@ export default function SCurvePage() {
                     dataKey="name"
                     tick={{ fontSize: 10, fill: '#94A3B8' }}
                     interval={granularity === 'day' && chartData.length > 20 ? Math.ceil(chartData.length / 10) : 0}
+                    padding={{ left: 16, right: 16 }}
                   />
                   <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickFormatter={v => `${v}%`} />
                   <Tooltip content={<CustomTooltip />} />
@@ -636,8 +786,22 @@ export default function SCurvePage() {
                       }}
                     />
                   )}
-                  <Area type="monotone" dataKey="Plan. Cumulative" stroke="#1E46D9" strokeWidth={2.5} fill="url(#planGrad)" dot={false} activeDot={{ r: 4 }} />
-                  <Area type="monotone" dataKey="Act. Cumulative" stroke="#16A34A" strokeWidth={2.5} fill="url(#actGrad)" dot={false} connectNulls={false} activeDot={{ r: 4 }} />
+                  {/* Planned Cumulative Area */}
+                  <Area type="monotone" name="Planned Progress" dataKey="Plan. Cumulative" stroke="#1E46D9" strokeWidth={2.5} fill="url(#planGrad)" dot={false} activeDot={{ r: 4 }} />
+                  {/* Actual Cumulative Area */}
+                  <Area type="monotone" name="Actual Progress" dataKey="Act. Cumulative" stroke="#16A34A" strokeWidth={2.5} fill="url(#actGrad)" dot={false} connectNulls={false} activeDot={{ r: 4 }} />
+                  {/* Distinct Prediction Line */}
+                  <Line
+                    type="monotone"
+                    name="Prediction"
+                    dataKey="Prediction"
+                    stroke="#8B5CF6"
+                    strokeWidth={2.5}
+                    strokeDasharray="6 4"
+                    dot={{ r: 3, fill: '#8B5CF6', stroke: '#FFFFFF', strokeWidth: 1.5 }}
+                    activeDot={{ r: 6, fill: '#8B5CF6' }}
+                    connectNulls={false}
+                  />
                 </ComposedChart>
               ) : (
                 <ComposedChart data={chartData} margin={{ top: 32, right: 24, bottom: 10, left: -10 }}>
@@ -646,6 +810,7 @@ export default function SCurvePage() {
                     dataKey="name"
                     tick={{ fontSize: 10, fill: '#94A3B8' }}
                     interval={granularity === 'day' && chartData.length > 20 ? Math.ceil(chartData.length / 10) : 0}
+                    padding={{ left: 16, right: 16 }}
                   />
                   <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickFormatter={v => `${v}%`} />
                   <Tooltip content={<CustomTooltip />} />
@@ -675,7 +840,7 @@ export default function SCurvePage() {
         )}
       </Card>
 
-      {/* Supporting Data Table Section */}
+      {/* Supporting Data Table Section with Evidence Matrix */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Button
@@ -692,8 +857,8 @@ export default function SCurvePage() {
 
         {showTable && (
           <Card className="overflow-hidden">
-            <div className="overflow-x-auto scrollbar-thin max-h-96">
-              <table className="w-full min-w-[760px]">
+            <div className="w-full overflow-x-auto scrollbar-thin max-h-96">
+              <table className="w-full min-w-[960px]">
                 <thead className="sticky top-0 bg-neutral-50 z-10">
                   <tr className="border-b border-neutral-200 text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
                     <th className="px-4 py-3 text-left">Period</th>
@@ -702,19 +867,25 @@ export default function SCurvePage() {
                     <th className="px-4 py-3 text-right">Actual (%)</th>
                     <th className="px-4 py-3 text-right">Plan. Cumulative</th>
                     <th className="px-4 py-3 text-right">Act. Cumulative</th>
+                    <th className="px-4 py-3 text-right">Prediction</th>
                     <th className="px-4 py-3 text-right">Deviation</th>
+                    <th className="px-4 py-3 text-left">Evidence</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 text-[12.5px]">
                   {chartData.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-neutral-400">
+                      <td colSpan={9} className="px-4 py-8 text-center text-neutral-400">
                         No data available for this filter range.
                       </td>
                     </tr>
                   ) : (
                     chartData.map((d, i) => {
                       const isCurrent = d.name === currentLabel || (granularity === 'day' && d.name === formatDateDisplay(todayStr));
+                      const photos = (d.evidenceItems || []).filter(x => x.isPhoto);
+                      const docs = (d.evidenceItems || []).filter(x => !x.isPhoto);
+                      const totalEv = (d.evidenceItems || []).length;
+
                       return (
                         <tr
                           key={d.name + i}
@@ -749,6 +920,9 @@ export default function SCurvePage() {
                           <td className="px-4 py-2.5 text-right font-bold text-success">
                             {d['Act. Cumulative'] != null ? `${d['Act. Cumulative']}%` : '—'}
                           </td>
+                          <td className="px-4 py-2.5 text-right font-bold text-[#8B5CF6]">
+                            {d.Prediction != null ? `${d.Prediction}%` : '—'}
+                          </td>
                           <td className="px-4 py-2.5 text-right">
                             {d.deviation !== null && d.deviation !== undefined ? (
                               <span className={`font-bold ${d.deviation >= 0 ? 'text-success' : 'text-danger'}`}>
@@ -756,6 +930,65 @@ export default function SCurvePage() {
                               </span>
                             ) : (
                               <span className="text-neutral-300 font-normal">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            {totalEv === 0 ? (
+                              <span className="text-neutral-300 font-normal">—</span>
+                            ) : totalEv === 1 ? (
+                              (() => {
+                                const ev = d.evidenceItems![0];
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEvidenceModalData({ period: d.name, subLabel: d.subLabel, items: d.evidenceItems! })}
+                                    className="group inline-flex items-center gap-2 p-1.5 pr-2.5 rounded-lg border border-neutral-200/90 bg-white hover:border-brand/40 hover:bg-brand-light/30 transition-all text-left max-w-[260px] shadow-2xs cursor-pointer"
+                                    title={`Click to preview: ${ev.name} (${ev.division})`}
+                                  >
+                                    {ev.isPhoto ? (
+                                      ev.previewUrl ? (
+                                        <img src={ev.previewUrl} alt={ev.name} className="w-7 h-7 rounded-md object-cover border border-neutral-200 flex-shrink-0" />
+                                      ) : (
+                                        <div className="w-7 h-7 rounded-md bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center flex-shrink-0">
+                                          <Camera size={13} />
+                                        </div>
+                                      )
+                                    ) : (
+                                      <div className="w-7 h-7 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0">
+                                        <FileText size={13} />
+                                      </div>
+                                    )}
+                                    <div className="min-w-0">
+                                      <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 group-hover:text-brand flex items-center gap-1">
+                                        <span>{ev.division}</span>
+                                      </div>
+                                      <div className="text-[12px] font-semibold text-neutral-800 truncate" title={ev.name}>
+                                        {ev.name}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })()
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setEvidenceModalData({ period: d.name, subLabel: d.subLabel, items: d.evidenceItems! })}
+                                className="inline-flex flex-wrap items-center gap-1.5 p-1 rounded-lg hover:bg-neutral-100 transition-all text-left cursor-pointer"
+                                title="Click to view all period evidences"
+                              >
+                                {photos.length > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200 shadow-2xs">
+                                    <Camera size={12} className="text-sky-600" />
+                                    <span>{photos.length} {photos.length === 1 ? 'photo' : 'photos'}</span>
+                                  </span>
+                                )}
+                                {docs.length > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
+                                    <FileText size={12} className="text-amber-700" />
+                                    <span>{docs.length} {docs.length === 1 ? 'document' : 'documents'}</span>
+                                  </span>
+                                )}
+                              </button>
                             )}
                           </td>
                         </tr>
@@ -767,6 +1000,149 @@ export default function SCurvePage() {
             </div>
           </Card>
         )}
+      </div>
+
+      {/* Evidence Preview Modal */}
+      {evidenceModalData && (
+        <SCurveEvidenceModal
+          data={evidenceModalData}
+          onClose={() => setEvidenceModalData(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modal component for viewing period evidence
+function SCurveEvidenceModal({
+  data,
+  onClose,
+}: {
+  data: { period: string; subLabel?: string; items: ExtractedEvidence[] };
+  onClose: () => void;
+}) {
+  const [selectedItem, setSelectedItem] = useState<ExtractedEvidence>(data.items[0]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-neutral-200 animate-in fade-in zoom-in-95 duration-150">
+        {/* Header */}
+        <div className="p-4 sm:p-5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-brand bg-brand/10 px-2 py-0.5 rounded-full">
+                {data.period}
+              </span>
+              <h3 className="text-base sm:text-lg font-bold text-neutral-900">
+                Period Supporting Evidence
+              </h3>
+            </div>
+            {data.subLabel && (
+              <p className="text-xs text-neutral-500 mt-0.5">{data.subLabel}</p>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4">
+          {/* Main preview of selected item */}
+          {selectedItem && (
+            <div className="bg-neutral-50 rounded-xl border border-neutral-200 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-brand uppercase tracking-wider">
+                    {selectedItem.division}
+                  </span>
+                  <h4 className="text-[14px] font-bold text-neutral-800">
+                    {selectedItem.name}
+                  </h4>
+                  <p className="text-[12px] text-neutral-500">
+                    Task: {selectedItem.taskName} · {selectedItem.size}
+                  </p>
+                </div>
+              </div>
+
+              {selectedItem.isPhoto && selectedItem.previewUrl ? (
+                <div className="rounded-lg overflow-hidden border border-neutral-200 bg-neutral-900/5 flex items-center justify-center max-h-72">
+                  <img
+                    src={selectedItem.previewUrl}
+                    alt={selectedItem.name}
+                    className="max-h-72 w-full object-contain"
+                  />
+                </div>
+              ) : selectedItem.isPhoto ? (
+                <div className="py-12 flex flex-col items-center justify-center text-center bg-white rounded-lg border border-dashed border-neutral-300 text-neutral-400">
+                  <Camera size={36} className="mb-2 text-neutral-300" />
+                  <span className="text-xs font-semibold text-neutral-600">Photo Evidence Attached</span>
+                  <span className="text-[11px] text-neutral-400">{selectedItem.name}</span>
+                </div>
+              ) : (
+                <div className="py-10 flex flex-col items-center justify-center text-center bg-white rounded-lg border border-dashed border-neutral-300 text-neutral-500 space-y-2">
+                  <FileText size={40} className="text-brand" />
+                  <span className="text-sm font-bold text-neutral-800">{selectedItem.name}</span>
+                  <span className="text-xs text-neutral-400">Document / Inspection Report ({selectedItem.size})</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* List of items if multiple */}
+          {data.items.length > 1 && (
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-neutral-600 uppercase tracking-wider">
+                All Attached Files ({data.items.length})
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {data.items.map((it) => (
+                  <button
+                    key={it.id}
+                    onClick={() => setSelectedItem(it)}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-all ${
+                      selectedItem?.id === it.id
+                        ? 'border-brand bg-brand-light/30 ring-1 ring-brand'
+                        : 'border-neutral-200 bg-white hover:bg-neutral-50'
+                    }`}
+                  >
+                    {it.isPhoto ? (
+                      it.previewUrl ? (
+                        <img src={it.previewUrl} alt={it.name} className="w-9 h-9 rounded-md object-cover border border-neutral-200 flex-shrink-0" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-md bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center flex-shrink-0">
+                          <Camera size={16} />
+                        </div>
+                      )
+                    ) : (
+                      <div className="w-9 h-9 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0">
+                        <FileText size={16} />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold uppercase text-neutral-400">
+                        {it.division}
+                      </div>
+                      <div className="text-[12px] font-semibold text-neutral-800 truncate">
+                        {it.name}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-neutral-100 flex items-center justify-end bg-neutral-50/50">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </div>
       </div>
     </div>
   );

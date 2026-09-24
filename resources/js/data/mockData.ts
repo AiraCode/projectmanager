@@ -2,6 +2,15 @@ export type Status = 'Open' | 'On Track' | 'At Risk' | 'Delayed' | 'Cancelled' |
 export type Role = 'Admin' | 'PIC';
 export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF';
 
+export interface EvidenceItem {
+  id?: string;
+  name: string;
+  size?: string;
+  type?: string;
+  previewUrl?: string;
+  url?: string;
+}
+
 export interface SubSubtask {
   id: string;
   code: string;
@@ -17,12 +26,8 @@ export interface SubSubtask {
   depType?: DependencyType;
   lag?: number;
   lead?: number;
-  evidence?: {
-    name: string;
-    size: string;
-    type: string;
-    previewUrl?: string;
-  };
+  evidence?: EvidenceItem;
+  evidences?: EvidenceItem[];
   prevProgress?: number;
   weight: number;
   checked: boolean;
@@ -136,7 +141,52 @@ export const PROJECT: Project = {
         { id: 'smj-1-4', code: '1.4', name: 'KYBP', pic: 'BUSDEV', startDate: '2024-04-01', finishDate: '2024-04-30', progress: 100, status: 'Completed', weight: 0.2, subtasks: [] },
         { id: 'smj-1-5', code: '1.5', name: 'PROJECT MASTER SCHEDULE', pic: 'PM', startDate: '2024-04-15', finishDate: '2024-05-15', progress: 100, status: 'Completed', weight: 0.2, subtasks: [] },
         { id: 'smj-1-6', code: '1.6', name: 'OPEX & BUDGET', pic: 'Finance', startDate: '2024-04-15', finishDate: '2024-05-31', progress: 100, status: 'Completed', weight: 0.3, subtasks: [] },
-        { id: 'smj-1-7', code: '1.7', name: 'FEASIBILITY STUDY', pic: 'BUSDEV', startDate: '2024-03-01', finishDate: '2024-05-31', progress: 100, status: 'Completed', weight: 0.4, subtasks: [] },
+        { id: 'smj-1-7', code: '1.7', name: 'FEASIBILITY STUDY', pic: 'BUSDEV', startDate: '2024-03-01', finishDate: '2024-05-31', progress: 100, status: 'Completed', weight: 0.4,
+          subtasks: [
+            {
+              id: 'st-1-7-1',
+              code: '1.7.1',
+              name: 'Environmental & Safety Feasibility Audit',
+              startDate: '2024-03-18',
+              finishDate: '2024-03-22',
+              duration: 5,
+              daysLeft: 0,
+              progress: 100,
+              status: 'Completed',
+              division: 'SHE',
+              weight: 0.2,
+              checked: true,
+              evidence: {
+                name: 'safety-inspection-1.jpg',
+                size: '2.1 MB',
+                type: 'image/jpeg',
+                previewUrl: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=600&q=80',
+              },
+              evidences: [
+                {
+                  id: 'ev-10-1',
+                  name: 'safety-inspection-1.jpg',
+                  size: '2.1 MB',
+                  type: 'image/jpeg',
+                  previewUrl: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=600&q=80',
+                },
+                {
+                  id: 'ev-10-2',
+                  name: 'safety-inspection-2.jpg',
+                  size: '1.9 MB',
+                  type: 'image/jpeg',
+                  previewUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
+                },
+                {
+                  id: 'ev-10-3',
+                  name: 'environmental-clearance.pdf',
+                  size: '1.2 MB',
+                  type: 'application/pdf',
+                }
+              ]
+            }
+          ]
+        },
         { id: 'smj-1-8', code: '1.8', name: 'MMNR EXECUTIVE APPROVAL', pic: 'PM', startDate: '2024-05-15', finishDate: '2024-06-15', progress: 100, status: 'Completed', weight: 0.2, subtasks: [] },
         { id: 'smj-1-9', code: '1.9', name: 'MACOM APPROVAL', pic: 'PM', startDate: '2024-06-01', finishDate: '2024-06-20', progress: 100, status: 'Completed', weight: 0.2, subtasks: [] },
         { id: 'smj-1-10', code: '1.10', name: 'SIGNING WITH PARTNER', pic: 'Legal', startDate: '2024-06-15', finishDate: '2024-06-30', progress: 100, status: 'Completed', weight: 0.2, subtasks: [] },
@@ -170,7 +220,40 @@ export const PROJECT: Project = {
       progress: 100,
       status: 'Completed',
       subMainJobs: [
-        { id: 'smj-3-1', code: '3.1', name: 'CIVIL WORKS DESIGN, SPEC & RAB', pic: 'Engineering', startDate: '2024-06-01', finishDate: '2024-08-31', progress: 100, status: 'Completed', weight: 2, subtasks: [] },
+        {
+          id: 'smj-3-1',
+          code: '3.1',
+          name: 'CIVIL WORKS DESIGN, SPEC & RAB',
+          pic: 'Civil',
+          startDate: '2024-06-01',
+          finishDate: '2024-08-31',
+          progress: 100,
+          status: 'Completed',
+          weight: 2,
+          subtasks: [
+            {
+              id: 'st-3-1-1',
+              code: '3.1.1',
+              name: 'Site Soil Investigation & Topography Survey',
+              startDate: '2024-03-04',
+              finishDate: '2024-03-08',
+              duration: 5,
+              daysLeft: 0,
+              progress: 100,
+              status: 'Completed',
+              division: 'Civil',
+              weight: 0.5,
+              checked: true,
+              evidence: {
+                id: 'ev-w8-1',
+                name: 'IMG_001.jpg',
+                size: '2.4 MB',
+                type: 'image/jpeg',
+                previewUrl: 'https://images.unsplash.com/photo-1541888946425-d0fbb18f15f7?auto=format&fit=crop&w=600&q=80',
+              },
+            },
+          ]
+        },
         { id: 'smj-3-2', code: '3.2', name: 'CIVIL PROJECT SCHEDULE', pic: 'PM', startDate: '2024-07-01', finishDate: '2024-08-31', progress: 100, status: 'Completed', weight: 1, subtasks: [] },
         { id: 'smj-3-3', code: '3.3', name: 'FOUNDATION CONSTRUCTION', pic: 'Engineering', startDate: '2024-08-01', finishDate: '2025-03-31', progress: 100, status: 'Completed', weight: 6, subtasks: [] },
         { id: 'smj-3-4', code: '3.4', name: 'STEEL STRUCTURE CONSTRUCTION', pic: 'Engineering', startDate: '2024-12-01', finishDate: '2025-09-30', progress: 100, status: 'Completed', weight: 7, subtasks: [] },
@@ -187,8 +270,28 @@ export const PROJECT: Project = {
       progress: 85,
       status: 'On Track',
       subMainJobs: [
-        { id: 'smj-4-1', code: '4.1', name: 'PRODUCTION MACHINE PROCUREMENT', pic: 'Procurement', startDate: '2024-09-01', finishDate: '2025-03-31', progress: 100, status: 'Completed', weight: 4,
+        { id: 'smj-4-1', code: '4.1', name: 'PRODUCTION MACHINE PROCUREMENT', pic: 'Production', startDate: '2024-09-01', finishDate: '2025-03-31', progress: 100, status: 'Completed', weight: 4,
           subtasks: [
+            {
+              id: 'st-4-1-0',
+              code: '4.1.0',
+              name: 'Production Machinery Technical Inspection',
+              startDate: '2024-03-11',
+              finishDate: '2024-03-15',
+              duration: 5,
+              daysLeft: 0,
+              progress: 100,
+              status: 'Completed',
+              division: 'Production',
+              weight: 0.5,
+              checked: true,
+              evidence: {
+                id: 'ev-w9-1',
+                name: 'inspection-report.pdf',
+                size: '1.8 MB',
+                type: 'application/pdf',
+              },
+            },
             { id: 'st-4-1-1', code: '4.1.1', name: 'Vendor selection & evaluation', startDate: '2024-09-01', finishDate: '2024-10-31', duration: 60, daysLeft: 0, progress: 100, status: 'Completed', weight: 1, checked: true },
             { id: 'st-4-1-2', code: '4.1.2', name: 'Purchase order finalization', startDate: '2024-11-01', finishDate: '2024-12-31', duration: 60, daysLeft: 0, progress: 100, status: 'Completed', predecessor: '4.1.1', depType: 'FS', lag: 0, weight: 1.5, checked: true },
             { id: 'st-4-1-3', code: '4.1.3', name: 'Advance payment processing', startDate: '2024-12-15', finishDate: '2025-01-31', duration: 47, daysLeft: 0, progress: 100, status: 'Completed', predecessor: '4.1.2', depType: 'SS', lag: 14, weight: 1.5, checked: true },
@@ -199,7 +302,27 @@ export const PROJECT: Project = {
         { id: 'smj-4-4', code: '4.4', name: 'ETA & FACTORY ARRIVAL', pic: 'Procurement', startDate: '2026-04-15', finishDate: '2026-06-30', progress: 100, status: 'Completed', weight: 2, subtasks: [] },
         { id: 'smj-4-5', code: '4.5', name: 'INSTALLATION & COMMISSIONING', pic: 'Engineering', startDate: '2026-06-01', finishDate: '2026-09-30', progress: 55, status: 'On Track', weight: 5,
           subtasks: [
-            { id: 'st-4-5-1', code: '4.5.1', name: 'Unboxing & positioning', startDate: '2026-06-01', finishDate: '2026-06-20', duration: 19, daysLeft: 0, progress: 100, status: 'Completed', weight: 1, checked: true },
+            {
+              id: 'st-4-5-1',
+              code: '4.5.1',
+              name: 'Unboxing & positioning',
+              startDate: '2026-06-01',
+              finishDate: '2026-06-20',
+              duration: 19,
+              daysLeft: 0,
+              progress: 100,
+              status: 'Completed',
+              division: 'Engineering',
+              weight: 1,
+              checked: true,
+              evidence: {
+                id: 'ev-w26-1',
+                name: 'machine-arrival-batch1.jpg',
+                size: '3.4 MB',
+                type: 'image/jpeg',
+                previewUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
+              },
+            },
             { id: 'st-4-5-2', code: '4.5.2', name: 'Mechanical assembly', startDate: '2026-06-21', finishDate: '2026-07-31', duration: 40, daysLeft: 0, progress: 100, status: 'Completed', predecessor: '4.5.1', depType: 'FS', lag: 0, weight: 1.5, checked: true },
             { id: 'st-4-5-3', code: '4.5.3', name: 'Electrical connection', startDate: '2026-07-15', finishDate: '2026-08-31', duration: 47, daysLeft: 0, progress: 90, status: 'On Track', predecessor: '4.5.2', depType: 'SS', lag: 24, weight: 1, checked: false },
             { id: 'st-4-5-4', code: '4.5.4', name: 'Initial machine testing', startDate: '2026-09-01', finishDate: '2026-09-30', duration: 29, daysLeft: 13, progress: 40, status: 'On Track', predecessor: '4.5.3', depType: 'FS', lag: 0, weight: 1.5, checked: false },
