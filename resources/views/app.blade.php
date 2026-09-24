@@ -4,6 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>PROVIS Project Manager</title>
+        <link rel="icon" type="image/png" href="/images/Logo_Provis-removebg.png">
         @viteReactRefresh
         @vite(['resources/js/index.css', 'resources/js/main.tsx'])
         @inertiaHead

@@ -201,16 +201,24 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
             {sidebarCollapsed ? (
               <div
                 onClick={toggleCollapse}
-                className="flex items-center justify-center w-9 h-9 rounded-xl bg-brand cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all"
+                className="flex items-center justify-center w-10 h-10 rounded-xl bg-white p-1 cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all overflow-hidden"
                 title="Click to expand sidebar"
               >
-                <span className="text-white font-black text-base tracking-tight">P</span>
+                <img
+                  src="/images/Logo Provis.png"
+                  alt="PROVIS"
+                  className="w-full h-full object-contain"
+                />
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-brand flex-shrink-0 shadow-sm">
-                    <span className="text-white font-bold text-sm tracking-tight">P</span>
+                  <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-white p-1 flex-shrink-0 shadow-sm overflow-hidden">
+                    <img
+                      src="/images/Logo Provis.png"
+                      alt="PROVIS"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
                   <div className="min-w-0">
                     <div className="font-bold text-base tracking-tight text-white leading-none">
@@ -358,7 +366,9 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
 
           {/* Mobile title */}
           <div className="flex items-center gap-2 lg:hidden">
-            <div className="flex items-center justify-center w-6 h-6 rounded bg-brand text-white font-bold text-xs">P</div>
+            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-white border border-neutral-200 p-0.5 shadow-2xs overflow-hidden">
+              <img src="/images/Logo Provis.png" alt="PROVIS" className="w-full h-full object-contain" />
+            </div>
             <span className="font-bold text-neutral-900 text-sm tracking-tight">PROVIS</span>
           </div>
 

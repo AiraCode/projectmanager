@@ -47,8 +47,8 @@ export default function LoginPage() {
         {/* Top Logo Header */}
         <div className="relative z-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand to-blue-500 flex items-center justify-center shadow-lg shadow-brand/25 transition-all duration-300 hover:scale-105 cursor-pointer">
-              <span className="text-white font-black text-lg tracking-tight">P</span>
+            <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-lg shadow-black/25 transition-all duration-300 hover:scale-105 cursor-pointer overflow-hidden">
+              <img src="/images/Logo Provis.png" alt="PROVIS" className="w-full h-full object-contain" />
             </div>
             <div className="font-black text-2xl tracking-tight text-white flex items-center gap-2">
               PROVIS
@@ -88,8 +88,8 @@ export default function LoginPage() {
         <div className="w-full max-w-md relative z-10">
           {/* Mobile logo header */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center shadow-md shadow-brand/20">
-              <span className="text-white font-black text-lg">P</span>
+            <div className="w-10 h-10 rounded-xl bg-white border border-neutral-200 p-1 flex items-center justify-center shadow-md overflow-hidden">
+              <img src="/images/Logo Provis.png" alt="PROVIS" className="w-full h-full object-contain" />
             </div>
             <div className="font-black text-2xl text-neutral-900 tracking-tight">
               PROVIS

@@ -35,8 +35,24 @@ class CheckSidebarAccess
             return $next($request);
         }
         
+        // Admin Progres must always be redirected to S-Curve when accessing other pages
+        if ($user->role?->name === 'admin_progres') {
+            if (!in_array($menuName, ['S-Curve Report', 'Project List', 'Division Progress'])) {
+                $targetId = $request->query('project_id') ?? $request->route('id');
+                return redirect($targetId ? "/scurve?project_id={$targetId}" : '/scurve');
+            }
+        }
+
         // Special exceptions based on roles (matches Layout.tsx)
         if ($menuName === 'Division Progress' && in_array($user->role?->name, ['admin_progres', 'admin_utama', 'pic'])) {
+            return $next($request);
+        }
+
+        if ($menuName === 'Project Detail' && in_array($user->role?->name, ['pic', 'admin_utama', 'worker'])) {
+            return $next($request);
+        }
+
+        if ($menuName === "Today's Tasks") {
             return $next($request);
         }
 
