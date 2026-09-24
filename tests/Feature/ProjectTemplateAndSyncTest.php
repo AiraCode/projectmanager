@@ -24,7 +24,7 @@ class ProjectTemplateAndSyncTest extends TestCase
 
     public function test_admin_utama_can_view_project_dashboard_with_17_main_jobs(): void
     {
-        $admin = User::where('email', 'admin@jeker.id')->first();
+        $admin = User::where('email', 'admin@provis.id')->first();
         $project = Project::first();
 
         $response = $this->actingAs($admin)->get("/projects/{$project->id}");
@@ -39,7 +39,7 @@ class ProjectTemplateAndSyncTest extends TestCase
 
     public function test_pic_can_view_tasks_page_with_17_main_jobs(): void
     {
-        $pic = User::where('email', 'pic1@jeker.id')->first();
+        $pic = User::where('email', 'pic1@provis.id')->first();
         $project = Project::where('project_manager', $pic->id)->first();
 
         $response = $this->actingAs($pic)->get("/tasks");
@@ -53,7 +53,7 @@ class ProjectTemplateAndSyncTest extends TestCase
 
     public function test_pic_can_view_project_breakdown_page_with_17_main_jobs(): void
     {
-        $pic = User::where('email', 'pic1@jeker.id')->first();
+        $pic = User::where('email', 'pic1@provis.id')->first();
 
         $response = $this->actingAs($pic)->get("/project");
         $response->assertStatus(200);
@@ -66,7 +66,7 @@ class ProjectTemplateAndSyncTest extends TestCase
 
     public function test_pic_can_view_timeline_page(): void
     {
-        $pic = User::where('email', 'pic1@jeker.id')->first();
+        $pic = User::where('email', 'pic1@provis.id')->first();
 
         $response = $this->actingAs($pic)->get("/timeline");
         $response->assertStatus(200);
@@ -79,7 +79,7 @@ class ProjectTemplateAndSyncTest extends TestCase
 
     public function test_pic_can_view_weekly_page(): void
     {
-        $pic = User::where('email', 'pic1@jeker.id')->first();
+        $pic = User::where('email', 'pic1@provis.id')->first();
 
         $response = $this->actingAs($pic)->get("/weekly");
         $response->assertStatus(200);

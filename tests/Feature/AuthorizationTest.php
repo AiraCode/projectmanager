@@ -14,7 +14,7 @@ class AuthorizationTest extends TestCase
     /** 1. Admin Utama cannot create projects (403) */
     public function test_admin_utama_cannot_create_project(): void
     {
-        $admin = User::where('email', 'admin@jeker.id')->first();
+        $admin = User::where('email', 'admin@provis.id')->first();
         $response = $this->actingAs($admin)
             ->withSession(['_token' => 'tok123'])
             ->post('/projects', [
@@ -29,7 +29,7 @@ class AuthorizationTest extends TestCase
     /** 2. Admin Progres is restricted to S-Curve (redirected from dashboard/tasks/etc) */
     public function test_admin_progres_redirected_from_other_pages(): void
     {
-        $progres = User::where('email', 'progres@jeker.id')->first();
+        $progres = User::where('email', 'progres@provis.id')->first();
 
         // Accessing tasks -> redirected to scurve
         $resTasks = $this->actingAs($progres)->get('/tasks');
@@ -47,7 +47,7 @@ class AuthorizationTest extends TestCase
     /** 3. PIC cannot open other companies' projects (403) */
     public function test_pic_cannot_access_other_companies_projects(): void
     {
-        $pic1 = User::where('email', 'pic1@jeker.id')->first(); // belongs to company 1
+        $pic1 = User::where('email', 'pic1@provis.id')->first(); // belongs to company 1
         $project2 = Project::find(2); // belongs to company 2
 
         $response = $this->actingAs($pic1)->get("/projects/{$project2->id}");
@@ -57,7 +57,7 @@ class AuthorizationTest extends TestCase
     /** 4. Worker cannot access other companies' projects (403) */
     public function test_worker_cannot_access_other_companies_projects(): void
     {
-        $worker = User::where('email', 'hrga@jeker.id')->first(); // company 1
+        $worker = User::where('email', 'hrga@provis.id')->first(); // company 1
         $project2 = Project::find(2); // company 2
 
         $response = $this->actingAs($worker)->get("/projects/{$project2->id}");
@@ -67,7 +67,7 @@ class AuthorizationTest extends TestCase
     /** 5. PIC without project (pic4) can create a project */
     public function test_pic4_can_create_project(): void
     {
-        $pic4 = User::where('email', 'pic4@jeker.id')->first();
+        $pic4 = User::where('email', 'pic4@provis.id')->first();
         $this->assertNotNull($pic4);
 
         // Delete any previous project created by pic4 if any from prior test
@@ -92,7 +92,7 @@ class AuthorizationTest extends TestCase
     /** 6. PIC can add Sub Task (Sub Main Job) */
     public function test_pic_can_add_sub_task(): void
     {
-        $pic1 = User::where('email', 'pic1@jeker.id')->first();
+        $pic1 = User::where('email', 'pic1@provis.id')->first();
         $mainWbs = MainWbs::where('projects_id', 1)->first();
 
         $response = $this->actingAs($pic1)
@@ -107,14 +107,14 @@ class AuthorizationTest extends TestCase
         $response->assertSessionHasNoErrors();
         $this->assertDatabaseHas('sub_wbs', [
             'sub_wbs_id' => $mainWbs->id,
-            'weight' => 15,
+            'name' => 'NEW TEST SUB TASK',
         ]);
     }
 
     /** 7. PIC can add Task (Sub-Subtask) */
     public function test_pic_can_add_task(): void
     {
-        $pic1 = User::where('email', 'pic1@jeker.id')->first();
+        $pic1 = User::where('email', 'pic1@provis.id')->first();
         $subWbs = SubWbs::whereHas('mainWbs', fn($q) => $q->where('projects_id', 1))->first();
 
         $response = $this->actingAs($pic1)
@@ -136,7 +136,7 @@ class AuthorizationTest extends TestCase
     /** 8. Admin cannot toggle tasks (403) */
     public function test_admin_cannot_toggle_task(): void
     {
-        $admin = User::where('email', 'admin@jeker.id')->first();
+        $admin = User::where('email', 'admin@provis.id')->first();
         $task = Wbs::whereHas('parentSubWbs.mainWbs', fn($q) => $q->where('projects_id', 1))->first();
 
         $response = $this->actingAs($admin)
@@ -151,7 +151,7 @@ class AuthorizationTest extends TestCase
     /** 9. Worker cannot toggle task of another division (403) */
     public function test_worker_cannot_toggle_task_of_other_division(): void
     {
-        $workerProduksi = User::where('email', 'produksi@jeker.id')->first();
+        $workerProduksi = User::where('email', 'produksi@provis.id')->first();
         // Find task belonging to HRGA (not Produksi)
         $taskHrga = Wbs::whereHas('parentSubWbs.mainWbs', fn($q) => $q->where('projects_id', 1))
             ->whereHas('division', fn($q) => $q->where('divisi', 'HRGA'))
