@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // 1. Seed Roles
+        $roleSuperAdmin = Role::create(['name' => 'SuperAdmin']);
         $roleAdminUtama = Role::create(['name' => 'admin_utama']);
         $roleAdminProgres = Role::create(['name' => 'admin_progres']);
         $rolePic = Role::create(['name' => 'pic']);
@@ -41,122 +42,200 @@ class DatabaseSeeder extends Seeder
         $companyIG = Company::create(['name' => 'PT. INDOPRIMA GEMILANG']);
         $companyIN = Company::create(['name' => 'PT. INDOPRIMA NUSANTARA']);
 
+        // Default permission matrices
+        $matrixSuperAdmin = [
+            'sidebar' => ['Dashboard', 'Project List', 'Tasks', 'Weekly Progress', 'Budget Management', 'Timeline', 'Division Progress', 'S-Curve Report', 'User Management'],
+            'features' => [
+                'projects' => ['view', 'create', 'edit', 'delete'],
+                'tasks' => ['view', 'create', 'edit', 'delete', 'toggle_status'],
+                'weekly' => ['view', 'submit', 'edit', 'delete'],
+                'budget' => ['view', 'create', 'edit', 'delete'],
+                'reports' => ['view']
+            ],
+            'data_scope' => 'all'
+        ];
+
+        $matrixAdminProgres = [
+            'sidebar' => ['Project List', 'S-Curve Report'],
+            'features' => [
+                'projects' => ['view'],
+                'reports' => ['view']
+            ],
+            'data_scope' => 'all'
+        ];
+
+        $matrixPic = [
+            'sidebar' => ['Dashboard', 'Project List', 'Tasks', 'Weekly Progress', 'Budget Management', 'Timeline', 'Division Progress', 'S-Curve Report', 'User Management'],
+            'features' => [
+                'projects' => ['view', 'create', 'edit', 'delete'],
+                'tasks' => ['view', 'create', 'edit', 'delete', 'toggle_status'],
+                'weekly' => ['view', 'submit', 'edit', 'delete'],
+                'budget' => ['view', 'create', 'edit', 'delete'],
+                'reports' => ['view']
+            ],
+            'data_scope' => 'own_company'
+        ];
+
+        $matrixWorker = [
+            'sidebar' => ['Tasks', 'Division Progress', 'Weekly Progress'],
+            'features' => [
+                'tasks' => ['view', 'toggle_status'],
+                'weekly' => ['view'],
+                'reports' => ['view']
+            ],
+            'data_scope' => 'own_company'
+        ];
+
         // 4. Seed Users
+
+        // SuperAdmins
+        User::create([
+            'username' => 'Super Administrator',
+            'email' => 'superadmin@provis.id',
+            'password' => Hash::make('admin123'),
+            'roles_id' => $roleSuperAdmin->id,
+            'companies_id' => null,
+            'divisions_id' => null,
+        'permission_matrix' => $matrixSuperAdmin,
+        ]);
+
+        User::create([
+            'username' => 'Super Admin Backup',
+            'email' => 'backup_superadmin@provis.id',
+            'password' => Hash::make('admin123'),
+            'roles_id' => $roleSuperAdmin->id,
+            'companies_id' => null,
+            'divisions_id' => null,
+        'permission_matrix' => $matrixSuperAdmin,
+        ]);
 
         // Admin Utama & Admin Progres
         User::create([
             'username' => 'Admin Utama',
-            'email' => 'admin@jeker.id',
+            'email' => 'admin@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $roleAdminUtama->id,
             'companies_id' => null,
             'divisions_id' => null,
+        'permission_matrix' => $matrixSuperAdmin,
         ]);
 
         User::create([
             'username' => 'Admin Progres',
-            'email' => 'progres@jeker.id',
+            'email' => 'progres@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $roleAdminProgres->id,
             'companies_id' => null,
             'divisions_id' => null,
+        'permission_matrix' => $matrixAdminProgres,
         ]);
 
         // 3 PICs
         $pic1 = User::create([
             'username' => 'PIC KWT',
-            'email' => 'pic1@jeker.id',
+            'email' => 'pic1@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => $companyKWT->id,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
 
         $pic2 = User::create([
             'username' => 'PIC IG',
-            'email' => 'pic2@jeker.id',
+            'email' => 'pic2@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => $companyIG->id,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
 
         $pic3 = User::create([
             'username' => 'PIC IN',
-            'email' => 'pic3@jeker.id',
+            'email' => 'pic3@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => $companyIN->id,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
 
         $pic4 = User::create([
             'username' => 'PIC 4 (Test Create Project)',
-            'email' => 'pic4@jeker.id',
+            'email' => 'pic4@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => null,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
 
         $pic5 = User::create([
             'username' => 'PIC 5 (Test Create Project)',
-            'email' => 'pic5@jeker.id',
+            'email' => 'pic5@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => null,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
         $pic6 = User::create([
             'username' => 'PIC 6 (Test Create Project)',
-            'email' => 'pic6@jeker.id',
+            'email' => 'pic6@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => null,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
         $pic7 = User::create([
             'username' => 'PIC 7 (Test Create Project)',
-            'email' => 'pic7@jeker.id',
+            'email' => 'pic7@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => null,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
         $pic8 = User::create([
             'username' => 'PIC 8 (Test Create Project)',
-            'email' => 'pic8@jeker.id',
+            'email' => 'pic8@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => null,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
         $pic9 = User::create([
             'username' => 'PIC 9 (Test Create Project)',
-            'email' => 'pic9@jeker.id',
+            'email' => 'pic9@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => null,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
         $pic10 = User::create([
             'username' => 'PIC 10 (Test Create Project)',
-            'email' => 'pic10@jeker.id',
+            'email' => 'pic10@provis.id',
             'password' => Hash::make('admin123'),
             'roles_id' => $rolePic->id,
             'companies_id' => null,
             'divisions_id' => null,
+        'permission_matrix' => $matrixPic,
         ]);
 
         // Workers for testing auth scopes
         foreach ($divisions as $name => $division) {
             User::create([
                 'username' => 'Worker ' . $name,
-                'email' => strtolower($name) . '@jeker.id',
+                'email' => strtolower($name) . '@provis.id',
                 'password' => Hash::make('admin123'),
                 'roles_id' => $roleWorker->id,
                 'companies_id' => $companyKWT->id,
                 'divisions_id' => $division->id,
+            'permission_matrix' => $matrixWorker,
             ]);
         }
 

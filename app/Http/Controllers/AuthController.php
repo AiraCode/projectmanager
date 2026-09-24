@@ -37,6 +37,40 @@ class AuthController extends Controller
         ])->onlyInput('email');
     }
 
+    public function showAdminLogin()
+    {
+        return Inertia::render('SuperAdmin/AdminLoginPage');
+    }
+
+    public function adminLogin(Request $request)
+    {
+        $credentials = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required'],
+        ]);
+
+        if (Auth::attempt($credentials)) {
+            $request->session()->regenerate();
+            
+            $role = Auth::user()->role->name ?? '';
+            if ($role === 'SuperAdmin') {
+                return redirect()->intended('/admin');
+            }
+
+            // If not SuperAdmin, log them out and error
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+            return back()->withErrors([
+                'email' => 'Access Denied: SuperAdmin privileges required.',
+            ])->onlyInput('email');
+        }
+
+        return back()->withErrors([
+            'email' => 'The provided credentials do not match our records.',
+        ])->onlyInput('email');
+    }
+
     public function logout(Request $request)
     {
         Auth::logout();

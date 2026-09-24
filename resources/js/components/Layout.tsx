@@ -83,47 +83,27 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   const isWorker       = user.isWorker || user.role === 'worker';
   const isPIC          = user.isPIC || user.role === 'pic';
 
-  // Navigation filtering according to strict authorization rules:
-  // - Admin Progres: ONLY S-Curve (and All Projects selector)
-  // - Worker: ONLY Tasks
-  // - PIC: Dashboard, Project Detail, Tasks, Timeline, Weekly, S-Curve, Budget, Division Progress
-  // - Admin Utama: All Projects, Dashboard, Project Detail, Tasks, Timeline, Weekly, S-Curve, Budget, Division Progress (Read-only)
+  const isSuperAdmin = user.role === 'SuperAdmin';
+
+  const ALL_NAV_ITEMS = [
+    { to: '/projectlistpage',   icon: FolderOpen,      label: 'Project List' },
+    { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/projectdetailpage', icon: FolderOpen,      label: 'Project Detail' },
+    { to: '/tasks',             icon: CheckSquare,     label: 'Tasks' },
+    { to: '/timeline',          icon: GitBranch,       label: 'Timeline' },
+    { to: '/weekly',            icon: BarChart2,       label: 'Weekly Progress' },
+    { to: '/scurve',            icon: TrendingUp,      label: 'S-Curve Report' },
+    { to: '/budget',            icon: DollarSign,      label: 'Budget Management' },
+    { to: '/division-progress', icon: Users,           label: 'Division Progress' },
+    { to: '/users',             icon: Shield,          label: 'User Management' },
+  ];
+
   let visibleNav: { to: string; icon: any; label: string }[] = [];
 
-  if (isAdminProgres) {
-    visibleNav = [
-      { to: '/projectlistpage', icon: FolderOpen, label: 'All Projects' },
-      { to: '/scurve',          icon: TrendingUp, label: 'S-Curve' },
-    ];
-  } else if (isWorker) {
-    visibleNav = [
-      { to: '/tasks',             icon: CheckSquare, label: 'Tasks' },
-      { to: '/division-progress', icon: Users,       label: 'Division Progress' },
-    ];
-  } else if (isAdminUtama) {
-    visibleNav = [
-      { to: '/projectlistpage',   icon: FolderOpen,      label: 'All Projects' },
-      { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/projectdetailpage', icon: FolderOpen,      label: 'Project Detail' },
-      { to: '/tasks',             icon: CheckSquare,     label: 'Tasks' },
-      { to: '/timeline',          icon: GitBranch,       label: 'Timeline' },
-      { to: '/weekly',            icon: BarChart2,       label: 'Weekly' },
-      { to: '/scurve',            icon: TrendingUp,      label: 'S-Curve' },
-      { to: '/budget',            icon: DollarSign,      label: 'Budget' },
-      { to: '/division-progress', icon: Users,           label: 'Division Progress' },
-    ];
-  } else {
-    // PIC
-    visibleNav = [
-      { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/projectdetailpage', icon: FolderOpen,      label: 'Project Detail' },
-      { to: '/tasks',             icon: CheckSquare,     label: 'Tasks' },
-      { to: '/timeline',          icon: GitBranch,       label: 'Timeline' },
-      { to: '/weekly',            icon: BarChart2,       label: 'Weekly' },
-      { to: '/scurve',            icon: TrendingUp,      label: 'S-Curve' },
-      { to: '/budget',            icon: DollarSign,      label: 'Budget' },
-      { to: '/division-progress', icon: Users,           label: 'Division Progress' },
-    ];
+  if (isSuperAdmin || user.permission_matrix?.sidebar?.includes('*')) {
+    visibleNav = ALL_NAV_ITEMS;
+  } else if (user.permission_matrix?.sidebar) {
+    visibleNav = ALL_NAV_ITEMS.filter(item => user.permission_matrix.sidebar.includes(item.label));
   }
 
   const roleBadgeStyle = isAdminUtama

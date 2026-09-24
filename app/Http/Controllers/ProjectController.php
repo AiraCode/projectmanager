@@ -163,7 +163,12 @@ class ProjectController extends Controller
 
         $availableProjects = [];
         if ($role === 'worker') {
-            $availableProjects = Project::where('companies_id', $user->companies_id)->select('id', 'title')->get();
+            $projectAccess = $user->permission_matrix['project_access'] ?? [];
+            $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
+            $availableProjects = Project::where('companies_id', $user->companies_id)
+                ->whereIn('id', $allowedIds)
+                ->select('id', 'title')
+                ->get();
         }
 
         return Inertia::render('TasksPage', [
@@ -804,9 +809,17 @@ class ProjectController extends Controller
                 if ($project->companies_id != $user->companies_id) {
                     abort(403, 'Access Denied: Workers can only access projects belonging to their assigned company.');
                 }
+                
+                $projectAccess = $user->permission_matrix['project_access'] ?? [];
+                if (empty($projectAccess[$id]['view_project'])) {
+                    abort(403, 'Access Denied: You do not have permission to view this project.');
+                }
+                
                 return $project;
             } else {
-                return $query->where('companies_id', $user->companies_id)->first();
+                $projectAccess = $user->permission_matrix['project_access'] ?? [];
+                $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
+                return $query->where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->first();
             }
         } else {
             // Admin Utama & Admin Progres can view any project

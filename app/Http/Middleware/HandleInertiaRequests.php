@@ -53,6 +53,8 @@ class HandleInertiaRequests extends Middleware
                     'company'          => $user->company?->name ?? null,
                     'companies_id'     => $user->companies_id,
                     'canCreateProject' => $user->canCreateProject(),
+                    'permission_matrix'=> $user->permission_matrix,
+                    'isSuperAdmin'     => ($user->role?->name ?? '') === 'SuperAdmin',
                 ] : null,
             ],
         ];

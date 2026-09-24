@@ -20,6 +20,10 @@ class User extends Authenticatable
         'companies_id',
         'divisions_id',
         'roles_id',
+        'permission_matrix',
+        'is_standalone',
+        'created_by',
+        'last_modified_by',
     ];
 
     /**
@@ -42,6 +46,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'permission_matrix' => 'array',
+            'is_standalone' => 'boolean',
         ];
     }
 
@@ -63,6 +69,21 @@ class User extends Authenticatable
     public function project()
     {
         return $this->hasOne(Project::class, 'project_manager');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function modifier()
+    {
+        return $this->belongsTo(User::class, 'last_modified_by');
+    }
+
+    public function auditLogs()
+    {
+        return $this->hasMany(AuditLog::class);
     }
 
     public function isAdminUtama(): bool
@@ -97,5 +118,31 @@ class User extends Authenticatable
         }
 
         return ! Project::where('project_manager', $this->id)->exists();
+    }
+
+    public function hasFeatureAccess(string $feature, string $action = 'view'): bool
+    {
+        if ($this->role?->name === 'SuperAdmin') return true;
+        
+        $matrix = $this->permission_matrix;
+        if (!$matrix || !isset($matrix['features'][$feature])) return false;
+
+        return in_array($action, $matrix['features'][$feature] ?? []);
+    }
+
+    public function hasSidebarAccess(string $menu): bool
+    {
+        if ($this->role?->name === 'SuperAdmin') return true;
+
+        $matrix = $this->permission_matrix;
+        if (!$matrix || !isset($matrix['sidebar'])) return false;
+
+        return in_array($menu, $matrix['sidebar']);
+    }
+
+    public function getDataScope(): string
+    {
+        if ($this->role?->name === 'SuperAdmin') return 'all';
+        return $this->permission_matrix['data_scope'] ?? 'own_company';
     }
 }
