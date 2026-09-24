@@ -104,7 +104,16 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   if (isSuperAdmin || user.permission_matrix?.sidebar?.includes('*')) {
     visibleNav = ALL_NAV_ITEMS;
   } else if (user.permission_matrix?.sidebar) {
-    visibleNav = ALL_NAV_ITEMS.filter(item => user.permission_matrix.sidebar.includes(item.label));
+    visibleNav = ALL_NAV_ITEMS.filter(item => {
+      if (item.to === '/division-progress' && (isAdminProgres || isAdminUtama || isPIC)) return true;
+      return user.permission_matrix.sidebar.includes(item.label);
+    });
+  } else {
+    visibleNav = ALL_NAV_ITEMS.filter(item => {
+      if (item.to === '/budget') return isAdminUtama || isSuperAdmin;
+      if (item.to === '/users') return isAdminUtama || isSuperAdmin;
+      return true;
+    });
   }
 
   const roleBadgeStyle = isAdminUtama

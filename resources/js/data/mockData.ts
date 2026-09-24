@@ -257,7 +257,13 @@ export const PROJECT: Project = {
         { id: 'smj-3-2', code: '3.2', name: 'CIVIL PROJECT SCHEDULE', pic: 'PM', startDate: '2024-07-01', finishDate: '2024-08-31', progress: 100, status: 'Completed', weight: 1, subtasks: [] },
         { id: 'smj-3-3', code: '3.3', name: 'FOUNDATION CONSTRUCTION', pic: 'Engineering', startDate: '2024-08-01', finishDate: '2025-03-31', progress: 100, status: 'Completed', weight: 6, subtasks: [] },
         { id: 'smj-3-4', code: '3.4', name: 'STEEL STRUCTURE CONSTRUCTION', pic: 'Engineering', startDate: '2024-12-01', finishDate: '2025-09-30', progress: 100, status: 'Completed', weight: 7, subtasks: [] },
-        { id: 'smj-3-5', code: '3.5', name: 'FINISHING WORKS', pic: 'Engineering', startDate: '2025-08-01', finishDate: '2025-12-31', progress: 100, status: 'Completed', weight: 2, subtasks: [] },
+        { id: 'smj-3-5', code: '3.5', name: 'FINISHING WORKS', pic: 'Civil', startDate: '2025-08-01', finishDate: '2026-10-31', progress: 45, status: 'On Track', weight: 2,
+          subtasks: [
+            { id: 'st-3-5-1', code: '3.5.1', name: 'Site perimeter asphalt & drainage paving', startDate: '2026-09-15', finishDate: '2026-09-28', duration: 13, daysLeft: 4, progress: 65, status: 'On Track', division: 'Civil Works', weight: 0.6, checked: false },
+            { id: 'st-3-5-2', code: '3.5.2', name: 'Main building facade weatherproofing', startDate: '2026-09-20', finishDate: '2026-09-27', duration: 7, daysLeft: 3, progress: 40, status: 'On Track', division: 'Civil Works', weight: 0.6, checked: false },
+            { id: 'st-3-5-3', code: '3.5.3', name: 'Heavy machinery floor epoxy finishing', startDate: '2026-09-22', finishDate: '2026-09-29', duration: 7, daysLeft: 5, progress: 30, status: 'On Track', division: 'Civil Works', weight: 0.8, checked: false },
+          ]
+        },
       ],
     },
     {
@@ -300,7 +306,7 @@ export const PROJECT: Project = {
         { id: 'smj-4-2', code: '4.2', name: 'PRODUCTION MACHINE MANUFACTURING', pic: 'Engineering', startDate: '2025-01-01', finishDate: '2025-12-31', progress: 100, status: 'Completed', weight: 5, subtasks: [] },
         { id: 'smj-4-3', code: '4.3', name: 'PRODUCTION MACHINE SHIPPING', pic: 'Procurement', startDate: '2026-01-01', finishDate: '2026-04-30', progress: 100, status: 'Completed', weight: 4, subtasks: [] },
         { id: 'smj-4-4', code: '4.4', name: 'ETA & FACTORY ARRIVAL', pic: 'Procurement', startDate: '2026-04-15', finishDate: '2026-06-30', progress: 100, status: 'Completed', weight: 2, subtasks: [] },
-        { id: 'smj-4-5', code: '4.5', name: 'INSTALLATION & COMMISSIONING', pic: 'Engineering', startDate: '2026-06-01', finishDate: '2026-09-30', progress: 55, status: 'On Track', weight: 5,
+        { id: 'smj-4-5', code: '4.5', name: 'INSTALLATION & COMMISSIONING', pic: 'Production', startDate: '2026-06-01', finishDate: '2026-09-30', progress: 55, status: 'On Track', weight: 5,
           subtasks: [
             {
               id: 'st-4-5-1',
@@ -312,7 +318,7 @@ export const PROJECT: Project = {
               daysLeft: 0,
               progress: 100,
               status: 'Completed',
-              division: 'Engineering',
+              division: 'Production',
               weight: 1,
               checked: true,
               evidence: {
@@ -324,8 +330,8 @@ export const PROJECT: Project = {
               },
             },
             { id: 'st-4-5-2', code: '4.5.2', name: 'Mechanical assembly', startDate: '2026-06-21', finishDate: '2026-07-31', duration: 40, daysLeft: 0, progress: 100, status: 'Completed', predecessor: '4.5.1', depType: 'FS', lag: 0, weight: 1.5, checked: true },
-            { id: 'st-4-5-3', code: '4.5.3', name: 'Electrical connection', startDate: '2026-07-15', finishDate: '2026-08-31', duration: 47, daysLeft: 0, progress: 90, status: 'On Track', predecessor: '4.5.2', depType: 'SS', lag: 24, weight: 1, checked: false },
-            { id: 'st-4-5-4', code: '4.5.4', name: 'Initial machine testing', startDate: '2026-09-01', finishDate: '2026-09-30', duration: 29, daysLeft: 13, progress: 40, status: 'On Track', predecessor: '4.5.3', depType: 'FS', lag: 0, weight: 1.5, checked: false },
+            { id: 'st-4-5-3', code: '4.5.3', name: 'Electrical connection', startDate: '2026-07-15', finishDate: '2026-08-31', duration: 47, daysLeft: 0, progress: 90, status: 'On Track', predecessor: '4.5.2', depType: 'SS', lag: 24, division: 'Production', weight: 1, checked: false },
+            { id: 'st-4-5-4', code: '4.5.4', name: 'Initial machine testing', startDate: '2026-09-01', finishDate: '2026-09-30', duration: 29, daysLeft: 6, progress: 40, status: 'On Track', predecessor: '4.5.3', depType: 'FS', lag: 0, division: 'Production', weight: 1.5, checked: false },
           ]
         },
       ],
@@ -340,7 +346,11 @@ export const PROJECT: Project = {
       progress: 72,
       status: 'On Track',
       subMainJobs: [
-        { id: 'smj-5-1', code: '5.1', name: 'PROCUREMENT', pic: 'Procurement', startDate: '2024-10-01', finishDate: '2025-06-30', progress: 100, status: 'Completed', weight: 3, subtasks: [] },
+        { id: 'smj-5-1', code: '5.1', name: 'PROCUREMENT', pic: 'Procurement', startDate: '2024-10-01', finishDate: '2026-10-31', progress: 80, status: 'On Track', weight: 3,
+          subtasks: [
+            { id: 'st-5-1-1', code: '5.1.1', name: 'Heavy utility valve & piping delivery inspection', startDate: '2026-09-20', finishDate: '2026-09-26', duration: 6, daysLeft: 2, progress: 50, status: 'On Track', division: 'Procurement', weight: 1, checked: false },
+          ]
+        },
         { id: 'smj-5-2', code: '5.2', name: 'MANUFACTURING', pic: 'Engineering', startDate: '2025-04-01', finishDate: '2026-03-31', progress: 100, status: 'Completed', weight: 4, subtasks: [] },
         { id: 'smj-5-3', code: '5.3', name: 'SHIPPING', pic: 'Procurement', startDate: '2026-03-01', finishDate: '2026-06-30', progress: 100, status: 'Completed', weight: 2, subtasks: [] },
         { id: 'smj-5-4', code: '5.4', name: 'ETA', pic: 'Procurement', startDate: '2026-06-01', finishDate: '2026-07-31', progress: 100, status: 'Completed', weight: 1, subtasks: [] },

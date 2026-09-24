@@ -1,8 +1,8 @@
-import { Calendar, Clock, TrendingUp, DollarSign, CheckCircle2, AlertTriangle, XCircle, Layers, ArrowUpRight } from 'lucide-react';
+import { Calendar, Clock, TrendingUp, DollarSign, CheckCircle2, AlertTriangle, XCircle, Layers, ArrowUpRight, Users } from 'lucide-react';
 import { Link, usePage } from '@inertiajs/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Project, PROJECT } from '@/data/mockData';
-import { StatusBadge, ProgressBar, formatRupiah, PageHeader, Card, KpiCard, formatDateDisplay } from '@/components/ui';
+import { StatusBadge, ProgressBar, formatRupiah, PageHeader, Card, KpiCard, formatDateDisplay, formatDivisionName } from '@/components/ui';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { recalculateProgress } from '@/utils/progressEngine';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
@@ -37,6 +37,37 @@ export default function DashboardPage() {
     acc[mj.status] = (acc[mj.status] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+
+  // Dynamic Division Progress summaries (zero hardcoding)
+  const divisionSummaries = useMemo(() => {
+    const map = new Map<string, { name: string; total: number; completed: number; inProgress: number; totalProgress: number }>();
+    (p.mainJobs || []).forEach(mj => {
+      (mj.subMainJobs || []).forEach(smj => {
+        (smj.subtasks || []).forEach(st => {
+          const divRaw = (st.division || smj.pic || 'General').trim();
+          const divName = formatDivisionName(divRaw);
+          if (!map.has(divName)) {
+            map.set(divName, { name: divName, total: 0, completed: 0, inProgress: 0, totalProgress: 0 });
+          }
+          const item = map.get(divName)!;
+          item.total++;
+          const isDone = Boolean(st.checked || (st.progress !== undefined && st.progress >= 100) || st.status === 'Completed');
+          const prog = typeof st.progress === 'number' ? st.progress : (isDone ? 100 : 0);
+          item.totalProgress += prog;
+          if (isDone) {
+            item.completed++;
+          } else if (prog > 0 || st.status === 'In Progress' || st.status === 'On Track' || st.status === 'At Risk' || st.status === 'Delayed') {
+            item.inProgress++;
+          }
+        });
+      });
+    });
+    return Array.from(map.values()).map(d => ({
+      ...d,
+      remaining: Math.max(0, d.total - d.completed - d.inProgress),
+      avgProgress: d.total > 0 ? Math.round(d.totalProgress / d.total) : 0,
+    })).sort((a, b) => b.total - a.total);
+  }, [p.mainJobs]);
 
   // Find current week based on today's date and slice around it for the mini chart
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -278,6 +309,58 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      {/* Division Progress Overview */}
+      {divisionSummaries.length > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-neutral-100">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-brand" />
+              <span className="text-[13px] font-bold text-neutral-800 tracking-tight">Division Progress Overview</span>
+              <span className="text-[11px] text-neutral-400 font-medium">({divisionSummaries.length} Divisions)</span>
+            </div>
+            <Link href={`/division-progress${pid}`} className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-0.5">
+              Full Division Progress <ArrowUpRight size={12} />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {divisionSummaries.map(d => (
+              <div key={d.name} className="p-3.5 rounded-xl border border-neutral-100 hover:border-neutral-200 hover:bg-neutral-50/40 transition-colors">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-6 h-6 rounded-md bg-brand/10 text-brand text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                      {d.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="text-[13px] font-bold text-neutral-900 truncate">{d.name}</span>
+                  </div>
+                  <span className={`text-[13px] font-black ${
+                    d.avgProgress >= 80 ? 'text-emerald-600' : d.avgProgress >= 50 ? 'text-brand' : 'text-amber-600'
+                  }`}>
+                    {d.avgProgress}%
+                  </span>
+                </div>
+
+                <div className="w-full bg-neutral-100 rounded-full h-2 overflow-hidden mb-2.5">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      d.avgProgress >= 80 ? 'bg-emerald-500' : d.avgProgress >= 50 ? 'bg-brand' : 'bg-amber-500'
+                    }`}
+                    style={{ width: `${d.avgProgress}%` }}
+                  />
+                </div>
+
+                <div className="flex justify-between text-[11px] text-neutral-500 font-medium pt-1.5 border-t border-neutral-100">
+                  <span>Completed: <strong className="text-emerald-600 font-bold">{d.completed}</strong></span>
+                  <span>In Progress: <strong className="text-blue-600 font-bold">{d.inProgress}</strong></span>
+                  <span>Remaining: <strong className="text-neutral-700 font-bold">{d.remaining}</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
+
