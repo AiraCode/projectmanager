@@ -49,18 +49,17 @@ export function recalculateProgress(project: Project): Project {
       if (smj.subtasks && smj.subtasks.length > 0) {
         const totalTaskWeight = smj.subtasks.reduce((acc, st) => acc + (Number(st.weight) || 0), 0);
         if (totalTaskWeight > 0) {
-          const weightedCompleted = smj.subtasks
-            .filter(st => st.checked)
-            .reduce((acc, st) => acc + (Number(st.weight) || 0), 0);
-          smj.progress = Math.round((weightedCompleted / totalTaskWeight) * 100);
+          const weightedProgress = smj.subtasks
+            .reduce((acc, st) => acc + ((Number(st.progress) || 0) / 100) * (Number(st.weight) || 0), 0);
+          smj.progress = Math.round((weightedProgress / totalTaskWeight) * 100);
         } else {
-          const completedCount = smj.subtasks.filter(st => st.checked).length;
-          smj.progress = Math.round((completedCount / smj.subtasks.length) * 100);
+          const totalProgress = smj.subtasks.reduce((acc, st) => acc + (Number(st.progress) || 0), 0);
+          smj.progress = Math.round(totalProgress / smj.subtasks.length);
         }
 
-        // Also update individual subtask status/progress
+        // Also update individual subtask status
         smj.subtasks.forEach(st => {
-          st.progress = st.checked ? 100 : 0;
+          st.checked = st.progress >= 100;
           st.status = getStatusFromProgress(st.progress, st.status);
         });
       } else {

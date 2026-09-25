@@ -26,14 +26,21 @@ class Wbs extends Model
         'is_completed',
         'status',
         'predecessor',
+        'dep_type',
+        'lag',
+        'lead',
         'weight',
         'progress',
+        'evidence_path',
+        'evidence_name',
+        'requires_evidence',
     ];
 
     protected $casts = [
         'start' => 'datetime',
         'end' => 'datetime',
         'weight' => 'decimal:2',
+        'requires_evidence' => 'boolean',
     ];
 
     public function parentSubWbs()

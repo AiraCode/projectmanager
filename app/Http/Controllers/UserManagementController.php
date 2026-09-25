@@ -96,7 +96,7 @@ class UserManagementController extends Controller
                 abort(403, 'Unauthorized to edit this user.');
             }
             
-            // PIC can ONLY update project_access inside permission_matrix
+            // PIC can update project_access, sidebar, and features (except User Management)
             $request->validate([
                 'permission_matrix' => 'nullable|array',
             ]);
@@ -105,6 +105,23 @@ class UserManagementController extends Controller
             $newMatrix = $request->permission_matrix ?? [];
             
             $currentMatrix['project_access'] = $newMatrix['project_access'] ?? [];
+            
+            // Handle sidebar (Module Access)
+            $oldSidebar = $currentMatrix['sidebar'] ?? [];
+            $hadUserMgmt = in_array('User Management', $oldSidebar);
+            
+            $newSidebar = $newMatrix['sidebar'] ?? [];
+            $newSidebar = array_values(array_filter($newSidebar, function($item) {
+                return $item !== 'User Management';
+            }));
+            
+            if ($hadUserMgmt) {
+                $newSidebar[] = 'User Management';
+            }
+            
+            $currentMatrix['sidebar'] = $newSidebar;
+            $currentMatrix['features'] = $newMatrix['features'] ?? [];
+            
             $targetUser->update([
                 'permission_matrix' => $currentMatrix,
                 'last_modified_by' => $user->id

@@ -117,6 +117,13 @@ class User extends Authenticatable
             return false;
         }
 
+        $projectsFeatures = $this->permission_matrix['features']['projects'] ?? [];
+        $hasMultiple = collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('multiple projects') || collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('multiple_projects');
+
+        if ($hasMultiple) {
+            return true;
+        }
+
         return ! Project::where('project_manager', $this->id)->exists();
     }
 

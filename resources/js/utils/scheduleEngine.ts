@@ -19,9 +19,11 @@ export function recalculateSchedule(project: Project): Project {
     for (const smj of mj.subMainJobs) {
       if (smj.code && smj.startDate && smj.finishDate) {
         taskMap.set(smj.code, { startDate: smj.startDate, finishDate: smj.finishDate });
+        taskMap.set(smj.id, { startDate: smj.startDate, finishDate: smj.finishDate });
       }
       for (const st of smj.subtasks) {
         taskMap.set(st.code, st);
+        taskMap.set(st.id, st);
       }
     }
   }

@@ -24,9 +24,21 @@ class AuthController extends Controller
             $request->session()->regenerate();
             
             // Redirect based on role logic
-            $role = Auth::user()->role->name ?? '';
+            $user = Auth::user();
+            $role = $user->role->name ?? '';
+            
             if ($role === 'worker') {
                 return redirect()->intended('/tasks');
+            }
+
+            if ($role === 'pic') {
+                $features = $user->permission_matrix['features']['projects'] ?? [];
+                $hasMultipleProjects = in_array('Multiple Projects', $features);
+                if ($hasMultipleProjects) {
+                    return redirect()->intended('/projectlistpage');
+                }
+                // PIC without multiple projects goes to dashboard (single project)
+                return redirect()->intended('/dashboard');
             }
 
             return redirect()->intended('/projectlistpage');

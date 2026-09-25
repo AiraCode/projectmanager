@@ -122,7 +122,13 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   if (isSuperAdmin || user.permission_matrix?.sidebar?.includes('*')) {
     visibleNav = ALL_NAV_ITEMS;
   } else if (user.permission_matrix?.sidebar) {
+    const hasMultipleProjects = (user.permission_matrix?.features?.projects || []).includes('Multiple Projects');
+
     visibleNav = ALL_NAV_ITEMS.filter(item => {
+      // Project List is only visible for PIC if they have Multiple Projects enabled
+      if (item.to === '/projectlistpage' && isPIC) {
+        return hasMultipleProjects;
+      }
       if (item.to === '/division-progress' && (isAdminProgres || isAdminUtama || isPIC)) return true;
       if (item.to === '/today-tasks') return true;
       return user.permission_matrix?.sidebar?.includes(item.label) ?? false;

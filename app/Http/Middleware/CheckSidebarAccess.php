@@ -52,14 +52,10 @@ class CheckSidebarAccess
             return $next($request);
         }
 
-        if ($menuName === "Today's Tasks") {
-            return $next($request);
-        }
-
         if (!in_array($menuName, $sidebar)) {
             // Check if it's an AJAX/Inertia request
             if ($request->wantsJson() || $request->header('X-Inertia')) {
-                abort(403, 'Access denied to ' . $menuName);
+                return redirect('/')->with('error', 'Anda tidak memiliki akses ke halaman ini.');
             }
             abort(403, 'Access denied to ' . $menuName);
         }

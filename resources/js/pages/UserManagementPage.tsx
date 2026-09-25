@@ -11,7 +11,7 @@ interface PermissionMatrix {
   sidebar?: string[];
   features?: Record<string, string[]>;
   data_scope?: string;
-  project_access?: Record<string, { view_project: boolean; view_progress: boolean; edit_task: boolean }>;
+  project_access?: Record<string, { view_project: boolean; view_progress: boolean }>;
 }
 interface User {
   id: number;
@@ -30,7 +30,8 @@ const MODULE_PERMISSIONS = [
   { module: 'Dashboard', sidebarKey: 'Dashboard', features: [] },
   { module: 'Project List', sidebarKey: 'Project List', featureGroup: 'projects', features: ['create', 'edit', 'delete'] },
   { module: 'Project Detail', sidebarKey: 'Project Detail', features: [] },
-  { module: 'Tasks', sidebarKey: 'Tasks', featureGroup: 'tasks', features: ['create', 'edit', 'delete', 'toggle_status'] },
+  { module: 'Tasks', sidebarKey: 'Tasks', featureGroup: 'tasks', features: ['create', 'edit', 'delete', 'Edit Task'] },
+  { module: "Today's Tasks", sidebarKey: "Today's Tasks", features: [] },
   { module: 'Timeline', sidebarKey: 'Timeline', features: [] },
   { module: 'Weekly Progress', sidebarKey: 'Weekly Progress', featureGroup: 'weekly', features: ['submit', 'edit', 'delete'] },
   { module: 'S-Curve Report', sidebarKey: 'S-Curve Report', featureGroup: 'reports', features: [] },
@@ -49,6 +50,11 @@ export default function UserManagementPage({
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isGlobalMatrixOpen, setIsGlobalMatrixOpen] = useState(false);
   const [isProjectAccessOpen, setIsProjectAccessOpen] = useState(false);
+  
+  const [viewMode, setViewMode] = useState<'manage' | 'create'>('manage');
+  const [filterRole, setFilterRole] = useState('');
+  const [filterCompany, setFilterCompany] = useState('');
+  const [filterDivision, setFilterDivision] = useState('');
 
   const isSuperAdmin = currentUser.role?.name === 'SuperAdmin';
   const isPIC = currentUser.role?.name === 'pic';
@@ -64,7 +70,7 @@ export default function UserManagementPage({
       sidebar: [] as string[],
       features: {} as Record<string, string[]>,
       data_scope: 'own_company',
-      project_access: {} as Record<string, { view_project: boolean; view_progress: boolean; edit_task: boolean }>
+      project_access: {} as Record<string, { view_project: boolean; view_progress: boolean }>
     } as PermissionMatrix
   });
 
@@ -81,7 +87,15 @@ export default function UserManagementPage({
         permission_matrix: user.permission_matrix || { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
       });
     } else {
-      reset();
+      setData({
+        username: '',
+        email: '',
+        password: '',
+        roles_id: '',
+        companies_id: '',
+        divisions_id: '',
+        permission_matrix: { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
+      });
     }
     setModalOpen(true);
   };
@@ -149,23 +163,258 @@ export default function UserManagementPage({
     setData('permission_matrix', { ...data.permission_matrix, features: { ...currentFeat, [feature]: updatedActions } });
   };
 
-  const handleProjectAccessToggle = (projectId: number, accessType: 'view_project' | 'view_progress' | 'edit_task') => {
+  const handleProjectAccessToggle = (projectId: number, accessType: 'view_project' | 'view_progress') => {
     const currentAccess = data.permission_matrix.project_access || {};
-    const projectAccess = currentAccess[projectId] || { view_project: false, view_progress: false, edit_task: false };
+    const projectAccess = currentAccess[projectId] || { view_project: false, view_progress: false };
+    
+    const newAccess = { ...projectAccess, [accessType]: !projectAccess[accessType] };
+    
+    // If view_project is unchecked, force view_progress to be unchecked too
+    if (accessType === 'view_project' && !newAccess.view_project) {
+      newAccess.view_progress = false;
+    }
     
     setData('permission_matrix', {
       ...data.permission_matrix,
       project_access: {
         ...currentAccess,
-        [projectId]: { ...projectAccess, [accessType]: !projectAccess[accessType] }
+        [projectId]: newAccess
       }
     });
   };
 
   const selectedRoleName = isPIC ? editingUser?.role?.name : roles.find(r => r.id.toString() === data.roles_id)?.name;
-  const showGlobalMatrix = isSuperAdmin && selectedRoleName !== 'SuperAdmin';
+  const showGlobalMatrix = (isSuperAdmin || isPIC) && selectedRoleName !== 'SuperAdmin';
   // PIC can only assign project access if user is worker (or if they just want to give specific access)
   const isWorkerTarget = selectedRoleName === 'worker';
+  
+  const showCompany = selectedRoleName === 'worker' || selectedRoleName === 'pic' || selectedRoleName === 'worker_b';
+  const showDivision = selectedRoleName === 'worker' || selectedRoleName === 'worker_b';
+
+  const filteredUsers = users.filter(u => {
+    if (filterRole && u.role?.name !== filterRole) return false;
+    if (filterCompany && u.companies_id?.toString() !== filterCompany) return false;
+    if (filterDivision && u.divisions_id?.toString() !== filterDivision) return false;
+    return true;
+  });
+
+  const renderForm = () => (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {isSuperAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">Username</label>
+            <input type="text" value={data.username} onChange={e => setData('username', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
+            {errors.username && <p className="text-danger text-[11px] mt-1">{errors.username}</p>}
+          </div>
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">Email</label>
+            <input type="email" value={data.email} onChange={e => setData('email', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
+            {errors.email && <p className="text-danger text-[11px] mt-1">{errors.email}</p>}
+          </div>
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">Password {editingUser && '(Leave blank to keep)'}</label>
+            <input type="password" value={data.password} onChange={e => setData('password', e.target.value)} required={!editingUser} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
+            {errors.password && <p className="text-danger text-[11px] mt-1">{errors.password}</p>}
+          </div>
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">Role</label>
+            <select value={data.roles_id} onChange={e => setData('roles_id', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
+              <option value="">Select Role</option>
+              {roles.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+          
+          {showGlobalMatrix && showCompany && (
+            <div>
+              <label className="block text-[12px] font-bold text-neutral-700 mb-1">Company</label>
+              <select value={data.companies_id} onChange={e => setData('companies_id', e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
+                <option value="">No Company</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
+          {showGlobalMatrix && showDivision && (
+            <div>
+              <label className="block text-[12px] font-bold text-neutral-700 mb-1">Division</label>
+              <select value={data.divisions_id} onChange={e => setData('divisions_id', e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
+                <option value="">No Division</option>
+                {divisions.map(d => <option key={d.id} value={d.id}>{d.divisi}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isPIC && (
+        <div className="bg-brand-light/30 border border-brand/20 p-4 rounded-xl text-[13px] text-brand-dark mb-4">
+          PIC mode: You are only allowed to modify project-specific access for workers in your company.
+        </div>
+      )}
+
+      {/* Project-Level Granularity */}
+      {isWorkerTarget && (isPIC || isSuperAdmin) && (
+        <div className="border border-neutral-200 rounded-xl overflow-hidden mt-4">
+          <div 
+            className="bg-neutral-50 px-4 py-2 border-b border-neutral-200 flex justify-between items-center cursor-pointer hover:bg-neutral-100 transition-colors"
+            onClick={() => setIsProjectAccessOpen(!isProjectAccessOpen)}
+          >
+            <h3 className="font-bold text-[13px] flex items-center gap-2"><FolderOpen size={16} className="text-brand" /> Project Access Matrix (Initial Setup)</h3>
+            {isProjectAccessOpen ? <ChevronDown size={16} className="text-neutral-400" /> : <ChevronRight size={16} className="text-neutral-400" />}
+          </div>
+          
+          {isProjectAccessOpen && (
+            <div className="p-0">
+              {projects.length === 0 ? (
+                <div className="p-5 text-center text-[13px] text-neutral-500">No projects available in this company yet.</div>
+              ) : (
+                <div className="max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-left text-[13px]">
+                    <thead className="bg-white text-neutral-500 font-semibold text-[11px] uppercase tracking-wider border-b border-neutral-200 sticky top-0 z-10 shadow-sm">
+                      <tr>
+                        <th className="px-4 py-2">Project Name</th>
+                        <th className="px-4 py-2 text-center">Can View Project</th>
+                        <th className="px-4 py-2 text-center">Can View Progress</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100">
+                      {projects.map(proj => {
+                        const access = data.permission_matrix.project_access?.[proj.id] || { view_project: false, view_progress: false };
+                        return (
+                          <tr key={proj.id} className="hover:bg-neutral-50/50">
+                            <td className="px-4 py-3 font-medium text-neutral-900">{proj.title}</td>
+                            <td className="px-4 py-3 text-center">
+                              <input type="checkbox" checked={access.view_project} onChange={() => handleProjectAccessToggle(proj.id, 'view_project')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <input 
+                                type="checkbox" 
+                                checked={access.view_progress} 
+                                disabled={!access.view_project}
+                                onChange={() => handleProjectAccessToggle(proj.id, 'view_progress')} 
+                                className={`rounded w-4 h-4 ${!access.view_project ? 'opacity-50 cursor-not-allowed text-neutral-400' : 'text-brand focus:ring-brand cursor-pointer'}`} 
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showGlobalMatrix && (
+        <div className="border border-neutral-200 rounded-xl overflow-hidden mt-4">
+          <div 
+            className="bg-neutral-50 px-4 py-2 border-b border-neutral-200 flex justify-between items-center cursor-pointer hover:bg-neutral-100 transition-colors"
+            onClick={() => setIsGlobalMatrixOpen(!isGlobalMatrixOpen)}
+          >
+            <div className="flex items-center gap-2">
+              <Shield size={16} className="text-brand" />
+              <h3 className="font-bold text-[13px]">Global Permission Matrix</h3>
+              {isSuperAdmin && <span className="text-[10px] font-bold text-neutral-500 bg-white border border-neutral-200 px-1.5 py-0.5 rounded ml-2">SuperAdmin Only</span>}
+            </div>
+            {isGlobalMatrixOpen ? <ChevronDown size={16} className="text-neutral-400" /> : <ChevronRight size={16} className="text-neutral-400" />}
+          </div>
+          
+          {isGlobalMatrixOpen && (
+            <div className="p-4 space-y-5">
+              {/* Data Access Scope */}
+              {isSuperAdmin && (
+                <div>
+                  <h4 className="text-[12px] font-bold text-neutral-800 mb-2 uppercase tracking-wide">Data Access Scope</h4>
+                  <div className="flex gap-4 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200 w-fit">
+                    <label className="flex items-center gap-2 text-[13px] text-neutral-700 cursor-pointer">
+                      <input type="radio" name="scope" value="all" checked={data.permission_matrix.data_scope === 'all'} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: 'all' })} className="text-brand focus:ring-brand cursor-pointer" /> All Companies
+                    </label>
+                    <label className="flex items-center gap-2 text-[13px] text-neutral-700 cursor-pointer">
+                      <input type="radio" name="scope" value="own_company" checked={data.permission_matrix.data_scope === 'own_company'} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: 'own_company' })} className="text-brand focus:ring-brand cursor-pointer" /> Own Company Only
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* Unified Module Permissions */}
+              <div>
+                <h4 className="text-[12px] font-bold text-neutral-800 mb-2 uppercase tracking-wide">Module Access & Features</h4>
+                <div className="overflow-x-auto border border-neutral-200 rounded-lg">
+                  <table className="w-full text-left text-[12.5px]">
+                    <thead className="bg-neutral-50 border-b border-neutral-200 font-semibold text-neutral-600 text-[11px] uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-2.5">Module Name</th>
+                        <th className="px-4 py-2.5 text-center border-l border-neutral-100">View (Sidebar)</th>
+                        <th className="px-4 py-2.5 text-center border-l border-neutral-100 w-1/2">Advanced Permissions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100">
+                      {MODULE_PERMISSIONS.map(mod => {
+                        const disableForPic = isPIC && mod.sidebarKey === 'User Management';
+                        if (disableForPic) return null; // HIDDEN ENTIRELY FOR PIC
+                        
+                        const isView = (data.permission_matrix.sidebar || []).includes(mod.sidebarKey);
+                        return (
+                          <tr key={mod.sidebarKey} className="hover:bg-neutral-50/50">
+                            <td className="px-4 py-2.5 font-semibold text-neutral-800">{mod.module}</td>
+                            <td className="px-4 py-2.5 text-center border-l border-neutral-100">
+                              <input 
+                                type="checkbox" 
+                                checked={isView} 
+                                onChange={() => handleUnifiedViewToggle(mod)} 
+                                className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" 
+                              />
+                            </td>
+                            <td className="px-4 py-2.5 border-l border-neutral-100">
+                              <div className="flex flex-wrap gap-4 items-center justify-center">
+                                {mod.features.length === 0 ? (
+                                  <span className="text-neutral-400 italic text-[11px]">- None available -</span>
+                                ) : (
+                                  mod.features.map(feat => {
+                                    const isChecked = mod.featureGroup 
+                                      ? (data.permission_matrix.features?.[mod.featureGroup] || []).includes(feat) 
+                                      : false;
+                                    return (
+                                      <label 
+                                        key={feat} 
+                                        className={`flex items-center gap-1.5 text-[11.5px] cursor-pointer ${!isView ? 'opacity-40 pointer-events-none' : 'text-neutral-700 font-medium'}`}
+                                      >
+                                        <input 
+                                          type="checkbox" 
+                                          checked={isChecked} 
+                                          onChange={() => handleFeatureToggle(mod.featureGroup!, feat)} 
+                                          disabled={!isView} 
+                                          className="rounded text-brand focus:ring-brand" 
+                                        />
+                                        <span className="capitalize">{feat.replace('_', ' ')}</span>
+                                      </label>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-3 pt-3 border-t border-neutral-100">
+        <Button type="button" variant="ghost" onClick={() => viewMode === 'create' ? setViewMode('manage') : closeModal()}>Cancel</Button>
+        <Button type="submit" loading={processing}>{viewMode === 'create' ? 'Create User' : 'Save Changes'}</Button>
+      </div>
+    </form>
+  );
 
   return (
     <>
@@ -175,24 +424,70 @@ export default function UserManagementPage({
           title="User Management"
           subtitle={isPIC ? "Manage project access for users in your company." : "Manage users, roles, and fine-grained permissions."}
           actions={
-            isSuperAdmin && <Button onClick={() => openModal()} icon={Plus}>Add User</Button>
+            isSuperAdmin && (
+              <div className="bg-neutral-100 p-1 rounded-lg flex gap-1">
+                <button
+                  onClick={() => setViewMode('manage')}
+                  className={`px-4 py-1.5 text-[13px] font-bold rounded-md transition-colors ${viewMode === 'manage' ? 'bg-white text-brand shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                >
+                  Manage Users
+                </button>
+                <button
+                  onClick={() => {
+                    setViewMode('create');
+                    setEditingUser(null);
+                    setData({
+                      username: '', email: '', password: '', roles_id: '', companies_id: '', divisions_id: '',
+                      permission_matrix: { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
+                    });
+                  }}
+                  className={`px-4 py-1.5 text-[13px] font-bold rounded-md transition-colors flex items-center gap-1.5 ${viewMode === 'create' ? 'bg-white text-brand shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                >
+                  <Plus size={14} /> Create User
+                </button>
+              </div>
+            )
           }
         />
 
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-[13px]">
-              <thead className="bg-neutral-50/80 text-neutral-500 font-semibold uppercase text-[11px] tracking-wider border-b border-neutral-200">
-                <tr>
-                  <th className="px-5 py-3">User</th>
-                  <th className="px-5 py-3">Role</th>
-                  <th className="px-5 py-3">Company</th>
-                  <th className="px-5 py-3">Division</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {users.map(u => (
+        {viewMode === 'manage' ? (
+          <Card className="overflow-hidden">
+            <div className="p-4 bg-white border-b border-neutral-200 flex flex-wrap gap-4">
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-[11px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Filter by Role</label>
+                <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className="w-full border border-neutral-200 rounded-md px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
+                  <option value="">All Roles</option>
+                  {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                </select>
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-[11px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Filter by Company</label>
+                <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} className="w-full border border-neutral-200 rounded-md px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
+                  <option value="">All Companies</option>
+                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-[11px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Filter by Division</label>
+                <select value={filterDivision} onChange={e => setFilterDivision(e.target.value)} className="w-full border border-neutral-200 rounded-md px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
+                  <option value="">All Divisions</option>
+                  {divisions.map(d => <option key={d.id} value={d.id}>{d.divisi}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[13px]">
+                <thead className="bg-neutral-50/80 text-neutral-500 font-semibold uppercase text-[11px] tracking-wider border-b border-neutral-200">
+                  <tr>
+                    <th className="px-5 py-3">User</th>
+                    <th className="px-5 py-3">Role</th>
+                    <th className="px-5 py-3">Company</th>
+                    <th className="px-5 py-3">Division</th>
+                    <th className="px-5 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {filteredUsers.map(u => (
                   <tr key={u.id} className="hover:bg-neutral-50/50 transition-colors">
                     <td className="px-5 py-3">
                       <div className="font-bold text-neutral-900">{u.username}</div>
@@ -220,224 +515,26 @@ export default function UserManagementPage({
                     </td>
                   </tr>
                 ))}
-                {users.length === 0 && (
-                  <tr><td colSpan={5} className="px-5 py-8 text-center text-neutral-500">No users found.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                  {filteredUsers.length === 0 && (
+                    <tr><td colSpan={5} className="px-5 py-8 text-center text-neutral-500">No users found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        ) : (
+          <Card className="p-6">
+            <div className="mb-6 pb-4 border-b border-neutral-100">
+              <h2 className="text-lg font-bold text-neutral-900">Create New User</h2>
+              <p className="text-neutral-500 text-[13px]">Fill in the details below to create a new user account.</p>
+            </div>
+            {renderForm()}
+          </Card>
+        )}
       </div>
 
-      <Modal isOpen={modalOpen} onClose={closeModal} title={isPIC ? `Manage Project Access: ${editingUser?.username}` : (editingUser ? "Edit User" : "Create User")} size="lg">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {isSuperAdmin && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[12px] font-bold text-neutral-700 mb-1">Username</label>
-                <input type="text" value={data.username} onChange={e => setData('username', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
-                {errors.username && <p className="text-danger text-[11px] mt-1">{errors.username}</p>}
-              </div>
-              <div>
-                <label className="block text-[12px] font-bold text-neutral-700 mb-1">Email</label>
-                <input type="email" value={data.email} onChange={e => setData('email', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
-                {errors.email && <p className="text-danger text-[11px] mt-1">{errors.email}</p>}
-              </div>
-              <div>
-                <label className="block text-[12px] font-bold text-neutral-700 mb-1">Password {editingUser && '(Leave blank to keep)'}</label>
-                <input type="password" value={data.password} onChange={e => setData('password', e.target.value)} required={!editingUser} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
-                {errors.password && <p className="text-danger text-[11px] mt-1">{errors.password}</p>}
-              </div>
-              <div>
-                <label className="block text-[12px] font-bold text-neutral-700 mb-1">Role</label>
-                <select value={data.roles_id} onChange={e => setData('roles_id', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
-                  <option value="">Select Role</option>
-                  {roles.map(r => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-              </div>
-              
-              {showGlobalMatrix && (
-                <>
-                  <div>
-                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">Company</label>
-                    <select value={data.companies_id} onChange={e => setData('companies_id', e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
-                      <option value="">No Company</option>
-                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">Division</label>
-                    <select value={data.divisions_id} onChange={e => setData('divisions_id', e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
-                      <option value="">No Division</option>
-                      {divisions.map(d => <option key={d.id} value={d.id}>{d.divisi}</option>)}
-                    </select>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {isPIC && (
-            <div className="bg-brand-light/30 border border-brand/20 p-4 rounded-xl text-[13px] text-brand-dark mb-4">
-              PIC mode: You are only allowed to modify project-specific access for workers in your company.
-            </div>
-          )}
-
-          {/* Project-Level Granularity */}
-          {isWorkerTarget && (isPIC || isSuperAdmin) && (
-            <div className="border border-neutral-200 rounded-xl overflow-hidden mt-4">
-              <div 
-                className="bg-neutral-50 px-4 py-2 border-b border-neutral-200 flex justify-between items-center cursor-pointer hover:bg-neutral-100 transition-colors"
-                onClick={() => setIsProjectAccessOpen(!isProjectAccessOpen)}
-              >
-                <h3 className="font-bold text-[13px] flex items-center gap-2"><FolderOpen size={16} className="text-brand" /> Project Access Matrix (Initial Setup)</h3>
-                {isProjectAccessOpen ? <ChevronDown size={16} className="text-neutral-400" /> : <ChevronRight size={16} className="text-neutral-400" />}
-              </div>
-              
-              {isProjectAccessOpen && (
-                <div className="p-0">
-                  {projects.length === 0 ? (
-                    <div className="p-5 text-center text-[13px] text-neutral-500">No projects available in this company yet.</div>
-                  ) : (
-                    <div className="max-h-[300px] overflow-y-auto">
-                      <table className="w-full text-left text-[13px]">
-                        <thead className="bg-white text-neutral-500 font-semibold text-[11px] uppercase tracking-wider border-b border-neutral-200 sticky top-0 z-10 shadow-sm">
-                          <tr>
-                            <th className="px-4 py-2">Project Name</th>
-                            <th className="px-4 py-2 text-center">Can View Project</th>
-                            <th className="px-4 py-2 text-center">Can View Progress</th>
-                            <th className="px-4 py-2 text-center">Can Edit Task</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-neutral-100">
-                          {projects.map(proj => {
-                            const access = data.permission_matrix.project_access?.[proj.id] || { view_project: false, view_progress: false, edit_task: false };
-                            return (
-                              <tr key={proj.id} className="hover:bg-neutral-50/50">
-                                <td className="px-4 py-3 font-medium text-neutral-900">{proj.title}</td>
-                                <td className="px-4 py-3 text-center">
-                                  <input type="checkbox" checked={access.view_project} onChange={() => handleProjectAccessToggle(proj.id, 'view_project')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                  <input type="checkbox" checked={access.view_progress} onChange={() => handleProjectAccessToggle(proj.id, 'view_progress')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                  <input type="checkbox" checked={access.edit_task} onChange={() => handleProjectAccessToggle(proj.id, 'edit_task')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {showGlobalMatrix && (
-            <div className="border border-neutral-200 rounded-xl overflow-hidden mt-4">
-              <div 
-                className="bg-neutral-50 px-4 py-2 border-b border-neutral-200 flex justify-between items-center cursor-pointer hover:bg-neutral-100 transition-colors"
-                onClick={() => setIsGlobalMatrixOpen(!isGlobalMatrixOpen)}
-              >
-                <div className="flex items-center gap-2">
-                  <Shield size={16} className="text-brand" />
-                  <h3 className="font-bold text-[13px]">Global Permission Matrix</h3>
-                  <span className="text-[10px] font-bold text-neutral-500 bg-white border border-neutral-200 px-1.5 py-0.5 rounded ml-2">SuperAdmin Only</span>
-                </div>
-                {isGlobalMatrixOpen ? <ChevronDown size={16} className="text-neutral-400" /> : <ChevronRight size={16} className="text-neutral-400" />}
-              </div>
-              
-              {isGlobalMatrixOpen && (
-                <div className="p-4 space-y-5">
-                  {/* Data Access Scope */}
-                  <div>
-                    <h4 className="text-[12px] font-bold text-neutral-800 mb-2 uppercase tracking-wide">Data Access Scope</h4>
-                    <div className="flex gap-4 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200 w-fit">
-                      <label className="flex items-center gap-2 text-[13px] text-neutral-700 cursor-pointer">
-                        <input type="radio" name="scope" value="all" checked={data.permission_matrix.data_scope === 'all'} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: 'all' })} className="text-brand focus:ring-brand cursor-pointer" /> All Companies
-                      </label>
-                      <label className="flex items-center gap-2 text-[13px] text-neutral-700 cursor-pointer">
-                        <input type="radio" name="scope" value="own_company" checked={data.permission_matrix.data_scope === 'own_company'} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: 'own_company' })} className="text-brand focus:ring-brand cursor-pointer" /> Own Company Only
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Unified Module Permissions */}
-                  <div>
-                    <h4 className="text-[12px] font-bold text-neutral-800 mb-2 uppercase tracking-wide">Module Access & Features</h4>
-                    <div className="overflow-x-auto border border-neutral-200 rounded-lg">
-                      <table className="w-full text-left text-[12.5px]">
-                        <thead className="bg-neutral-50 border-b border-neutral-200 font-semibold text-neutral-600 text-[11px] uppercase tracking-wider">
-                          <tr>
-                            <th className="px-4 py-2.5">Module Name</th>
-                            <th className="px-4 py-2.5 text-center border-l border-neutral-100">View (Sidebar)</th>
-                            <th className="px-4 py-2.5 text-center border-l border-neutral-100 w-1/2">Advanced Permissions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-neutral-100">
-                          {MODULE_PERMISSIONS.map(mod => {
-                            const isView = (data.permission_matrix.sidebar || []).includes(mod.sidebarKey);
-                            return (
-                              <tr key={mod.sidebarKey} className="hover:bg-neutral-50/50">
-                                <td className="px-4 py-2.5 font-semibold text-neutral-800">{mod.module}</td>
-                                <td className="px-4 py-2.5 text-center border-l border-neutral-100">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={isView} 
-                                    onChange={() => handleUnifiedViewToggle(mod)} 
-                                    className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" 
-                                  />
-                                </td>
-                                <td className="px-4 py-2.5 border-l border-neutral-100">
-                                  <div className="flex flex-wrap gap-4 items-center justify-center">
-                                    {mod.features.length === 0 ? (
-                                      <span className="text-neutral-400 italic text-[11px]">- None available -</span>
-                                    ) : (
-                                      mod.features.map(feat => {
-                                        const isChecked = mod.featureGroup 
-                                          ? (data.permission_matrix.features?.[mod.featureGroup] || []).includes(feat) 
-                                          : false;
-                                        return (
-                                          <label 
-                                            key={feat} 
-                                            className={`flex items-center gap-1.5 text-[11.5px] cursor-pointer ${!isView ? 'opacity-40 pointer-events-none' : 'text-neutral-700 font-medium'}`}
-                                          >
-                                            <input 
-                                              type="checkbox" 
-                                              checked={isChecked} 
-                                              onChange={() => handleFeatureToggle(mod.featureGroup!, feat)} 
-                                              disabled={!isView} 
-                                              className="rounded text-brand focus:ring-brand" 
-                                            />
-                                            <span className="capitalize">{feat.replace('_', ' ')}</span>
-                                          </label>
-                                        );
-                                      })
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex justify-end gap-3 pt-3 border-t border-neutral-100">
-            <Button type="button" variant="ghost" onClick={closeModal}>Cancel</Button>
-            <Button type="submit" loading={processing}>Save Changes</Button>
-          </div>
-        </form>
+      <Modal isOpen={modalOpen} onClose={closeModal} title={isPIC ? `Manage Project Access: ${editingUser?.username}` : "Edit User"} size="lg">
+        {renderForm()}
       </Modal>
 
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}

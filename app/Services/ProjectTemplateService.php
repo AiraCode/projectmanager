@@ -300,26 +300,35 @@ class ProjectTemplateService
                     $divName = $picToDiv[$picKey] ?? $picKey;
                     $divId = $divisions->get($divName)?->id ?? $defaultDivId;
 
-                    // Pisahkan inisialisasi ID agar increment berjalan berurutan dan terprediksi
-                    $wbsId = 'st-' . $project->id . '-' . str_replace('.', '_', $smjData['code']) . '-' . $taskCounter;
+                    // Buat sequential ID dan hubungkan dengan predecessor (tugas sebelumnya)
+                    $previousTaskId = $taskCounter > 1 ? 'st-' . $project->id . '-seq-' . ($taskCounter - 1) : null;
+                    $wbsId = 'st-' . $project->id . '-seq-' . $taskCounter;
+                    
+                    // Buat tanggal chronological (Maju berurutan)
+                    $baseStart = $project->start ? clone $project->start : Carbon::now();
+                    $taskStart = $baseStart->addDays(($taskCounter - 1) * 7); // Setiap task mulai 7 hari setelah task sebelumnya
+                    $taskEnd = (clone $taskStart)->addDays(5); // Durasi 5 hari
 
-                    // Ubah menjadi updateOrCreate
                     Wbs::withTrashed()->updateOrCreate(
-                        ['id' => $wbsId], // Kriteria pencarian
+                        ['id' => $wbsId],
                         [
                             'sub_wbs_id'   => $subWbs->id,
                             'divisions_id' => $divId,
                             'name'         => $smjData['name'] . ' (Execution)',
                             'vendor'       => 'INTERNAL',
-                            'start'        => $project->start ?? Carbon::now(),
-                            'end'          => $project->end ?? Carbon::now()->addMonths(6),
+                            'start'        => $taskStart,
+                            'end'          => $taskEnd,
                             'is_completed' => false,
                             'status'       => 'Open',
-                            'deleted_at'   => null, // Mengaktifkan kembali data jika sebelumnya ter-soft delete
+                            'predecessor'  => $previousTaskId,
+                            'dep_type'     => 'FS',
+                            'lag'          => 2, // Simulasi lag 2 hari untuk keperluan testing UI
+                            'lead'         => 0,
+                            'requires_evidence' => false,
+                            'deleted_at'   => null,
                         ]
                     );
 
-                    // Pindahkan increment ke luar logika updateOrCreate
                     $taskCounter++;
                 }
             }

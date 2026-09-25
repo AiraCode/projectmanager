@@ -11,6 +11,56 @@ import { recalculateProgress } from '@/utils/progressEngine';
 import { StatusBadge, PageHeader, Card, Button, Modal, Toast, formatDateDisplay, formatDivisionName } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
+function EditableProgress({ value, disabled, onSave, isChecked }: { value: number, disabled: boolean, onSave: (val: number) => void, isChecked: boolean }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [val, setVal] = useState(value.toString());
+
+  useEffect(() => {
+    setVal(value.toString());
+  }, [value]);
+
+  if (isEditing && !disabled) {
+    return (
+      <input
+        autoFocus
+        type="number"
+        min="0" max="100"
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onBlur={() => {
+          setIsEditing(false);
+          const parsed = parseInt(val);
+          if (!isNaN(parsed) && parsed !== value && parsed >= 0 && parsed <= 100) onSave(parsed);
+          else setVal(value.toString());
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            setIsEditing(false);
+            const parsed = parseInt(val);
+            if (!isNaN(parsed) && parsed !== value && parsed >= 0 && parsed <= 100) onSave(parsed);
+            else setVal(value.toString());
+          } else if (e.key === 'Escape') {
+            setIsEditing(false);
+            setVal(value.toString());
+          }
+        }}
+        className="w-12 h-6 text-right text-[12.5px] font-black border border-brand/50 rounded outline-none p-0 hide-arrows -mr-1"
+        style={{ appearance: 'textfield' }}
+      />
+    );
+  }
+
+  return (
+    <span 
+      className={`text-[13px] font-black w-12 text-right tabular-nums ${!disabled ? 'cursor-text hover:bg-neutral-100 rounded px-1 -mx-1' : ''} ${isChecked ? 'text-emerald-700' : 'text-neutral-800'}`}
+      onClick={() => { if (!disabled) setIsEditing(true); }}
+      title={!disabled ? "Click to set percentage manually" : ""}
+    >
+      {value}%
+    </span>
+  );
+}
+
 export default function TodayTasksPage() {
   const { user } = useAuth();
   const pageProps = usePage().props as any;
@@ -58,7 +108,7 @@ export default function TodayTasksPage() {
     prevProgress?: number;
   } | null>(null);
 
-  const handleSaveEvidence = (taskId: string, evidence: EvidenceItem, completeTo100: boolean = false) => {
+  const handleSaveEvidence = (taskId: string, evidence: EvidenceItem, completeTo100: boolean = false, rawFile?: File) => {
     setProjectData(prev => {
       const newData = { ...prev };
       newData.mainJobs = newData.mainJobs.map(mj => ({
@@ -133,14 +183,18 @@ export default function TodayTasksPage() {
   const isAuthorizedToCheck = (taskDivision: string) => {
     if (isAdmin || isPIC) return false;
     if (isWorker) {
-      const workerDiv = (user?.division ?? pageProps?.division ?? '').trim().toLowerCase();
+      const tasksFeatures = authUser?.permission_matrix?.features?.tasks || authUser?.permission_matrix?.features?.Tasks || [];
+      const hasEditTask = tasksFeatures.some((f: string) => f.toLowerCase() === 'edit task' || f.toLowerCase() === 'edit_task');
+      if (!hasEditTask) return false;
+
+      const workerDiv = (authUser?.division ?? '').trim().toLowerCase();
       const targetDiv = (taskDivision ?? '').trim().toLowerCase();
       return workerDiv !== '' && (workerDiv === targetDiv || targetDiv === 'general' || targetDiv === 'internal');
     }
     return false;
   };
 
-  const handleProgressChange = (taskId: string, newProgress: number, authorized: boolean, taskName: string) => {
+  const handleProgressChange = (taskId: string, newProgress: number, authorized: boolean, taskName: string, commit: boolean = false) => {
     if (!authorized) {
       if (isAdmin) {
         setToastMsg('Action Restricted: Admin role is Read-Only.');
@@ -171,10 +225,12 @@ export default function TodayTasksPage() {
     // MANDATORY EVIDENCE RULE: Must have evidence before reaching 100%
     if (isCompleted && currentTask && !currentTask.evidence) {
       setToastMsg(`Bukti (evidence) WAJIB dilampirkan sebelum menyelesaikan task "${taskName}" (100%).`);
-      setUploadEvidenceTask({
-        task: currentTask,
-        requireComplete: true,
-      });
+      if (commit) {
+        setUploadEvidenceTask({
+          task: currentTask,
+          requireComplete: true,
+        });
+      }
       return;
     }
 
@@ -201,14 +257,14 @@ export default function TodayTasksPage() {
       return recalculateSchedule(recalculateProgress(newData));
     });
 
-    if (clamped === 100) {
-      setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
-      if (projectData.id) {
-        router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
-          preserveScroll: true,
-          preserveState: true,
-        });
+    if (commit && projectData.id) {
+      if (clamped === 100) {
+        setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
       }
+      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: clamped }, {
+        preserveScroll: true,
+        preserveState: true,
+      });
     }
   };
 
@@ -561,38 +617,24 @@ export default function TodayTasksPage() {
                         type="range"
                         min="0"
                         max="100"
-                        step="5"
+                        step="1"
                         value={st.progress}
                         disabled={!authorized}
-                        onChange={(e) => handleProgressChange(st.id, parseInt(e.target.value), authorized, st.name)}
-                        className={`w-full h-2 rounded-lg appearance-none cursor-pointer bg-neutral-200 accent-brand ${
+                        onChange={(e) => handleProgressChange(st.id, parseInt(e.target.value), authorized, st.name, false)}
+                        onMouseUp={(e) => handleProgressChange(st.id, parseInt((e.target as HTMLInputElement).value), authorized, st.name, true)}
+                        onTouchEnd={(e) => handleProgressChange(st.id, parseInt((e.target as HTMLInputElement).value), authorized, st.name, true)}
+                        className={`w-full h-2 rounded-lg cursor-pointer bg-neutral-200 accent-brand ${
                           !authorized ? 'opacity-40 cursor-not-allowed' : 'hover:accent-blue-700'
                         }`}
                       />
                     </div>
 
-                    {/* Quick Presets */}
-                    {authorized && (
-                      <div className="hidden sm:flex items-center gap-0.5 bg-neutral-100 p-0.5 rounded border border-neutral-200 text-[10px] font-bold text-neutral-600">
-                        {[0, 25, 50, 75, 100].map(val => (
-                          <button
-                            key={val}
-                            type="button"
-                            onClick={() => handleProgressChange(st.id, val, authorized, st.name)}
-                            className={`px-1.5 py-0.5 rounded transition-colors ${
-                              st.progress === val ? 'bg-brand text-white font-extrabold' : 'hover:bg-neutral-200 text-neutral-700'
-                            }`}
-                            title={`Set to ${val}%`}
-                          >
-                            {val}%
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <span className={`text-[13px] font-black w-12 text-right tabular-nums ${isChecked ? 'text-emerald-700' : 'text-neutral-800'}`}>
-                      {st.progress}%
-                    </span>
+                    <EditableProgress 
+                      value={st.progress} 
+                      disabled={!authorized} 
+                      onSave={(val) => handleProgressChange(st.id, val, authorized, st.name, true)} 
+                      isChecked={isChecked} 
+                    />
                   </div>
 
                   {/* Schedule dates & Evidence button */}
@@ -746,7 +788,7 @@ function UploadEvidenceModal({
   task: SubSubtask;
   requireComplete?: boolean;
   onClose: () => void;
-  onSave: (taskId: string, evidence: EvidenceItem, completeTo100: boolean) => void;
+  onSave: (taskId: string, evidence: EvidenceItem, completeTo100: boolean, rawFile?: File) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(task.evidence?.previewUrl);
@@ -782,7 +824,7 @@ function UploadEvidenceModal({
       evidenceObj = task.evidence!;
     }
 
-    onSave(task.id, evidenceObj, completeChecked);
+    onSave(task.id, evidenceObj, completeChecked, file || undefined);
   };
 
   return (

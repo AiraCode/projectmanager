@@ -26,11 +26,12 @@ export interface SubSubtask {
   depType?: DependencyType;
   lag?: number;
   lead?: number;
-  evidence?: EvidenceItem;
+  evidences?: EvidenceItem[];
   evidences?: EvidenceItem[];
   prevProgress?: number;
   weight: number;
   checked: boolean;
+  requiresEvidence?: boolean;
 }
 
 export interface SubMainJob {

@@ -1,6 +1,6 @@
 import { useState, useId } from 'react';
 import { usePage, Link, router } from '@inertiajs/react';
-import { Calendar, FolderOpen, Plus, ShieldAlert, Sparkles } from 'lucide-react';
+import { Calendar, FolderOpen, Plus, ShieldAlert, Sparkles, Settings } from 'lucide-react';
 import { PageHeader, Button, Modal, formatDateDisplay } from '@/components/ui';
 
 interface Project {
@@ -13,6 +13,7 @@ interface Project {
   planned_progress?: number;
   start_date: string | null;
   end_date: string | null;
+  is_private: boolean;
 }
 
 interface CompanyItem {
@@ -21,7 +22,7 @@ interface CompanyItem {
 }
 
 export default function ProjectListPage() {
-  const { projects = [], canCreate = false, companies = [], auth } = usePage().props as any;
+  const { projects = [], canCreate = false, companies = [], auth, hasPrivateFeature = false } = usePage().props as any;
   const role = auth?.user?.role ?? '';
   const isAdminProgres = role === 'admin_progres';
   const isAdminUtama   = role === 'admin_utama';
@@ -34,8 +35,10 @@ export default function ProjectListPage() {
   const [newCompanyName, setNewCompanyName] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10));
+  const [isPrivate, setIsPrivate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [settingsProject, setSettingsProject] = useState<Project | null>(null);
 
   const handleCreateProject = (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +56,7 @@ export default function ProjectListPage() {
       company_name: newCompanyName.trim() || null,
       start: startDate,
       end: endDate,
+      is_private: isPrivate,
     }, {
       onError: (errors) => {
         setErrorMsg(Object.values(errors)[0] as string || 'Failed to create project.');
@@ -61,6 +65,16 @@ export default function ProjectListPage() {
       onFinish: () => {
         setSubmitting(false);
       },
+    });
+  };
+
+  const togglePrivate = (projectId: number, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    router.put(`/projects/${projectId}/toggle-private`, {}, {
+      preserveScroll: true
     });
   };
 
@@ -82,6 +96,16 @@ function getProjectTitleClasses(title: string) {
         subtitle="Select a project to view its details and progress."
         actions={
           <div className="flex items-center gap-2">
+            {canCreate && isPIC && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                onClick={() => setShowCreateModal(true)}
+              >
+                New Project
+              </Button>
+            )}
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-brand-light text-brand border border-brand-border shadow-2xs">
               <FolderOpen size={14} />
               {projects?.length ?? 0} Projects
@@ -137,13 +161,26 @@ function getProjectTitleClasses(title: string) {
                   {/* Card Header: Project Name & Dates only */}
                   <div>
                     {/* Project Name (Enlarged, Dynamic Sizing, Contained) */}
-                    <div className="min-h-[50px] sm:min-h-[56px] flex items-center mb-1">
+                    <div className="min-h-[50px] sm:min-h-[56px] flex items-start justify-between gap-2 mb-1">
                       <h3
                         className={`${getProjectTitleClasses(project.name)} text-neutral-900 group-hover:text-brand transition-colors break-words`}
                         title={project.name}
                       >
                         {project.name}
                       </h3>
+                      {isPIC && hasPrivateFeature && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSettingsProject(project);
+                          }}
+                          title="Project Settings"
+                          className="p-1.5 rounded-lg flex-shrink-0 transition-colors text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100"
+                        >
+                          <Settings size={18} />
+                        </button>
+                      )}
                     </div>
 
                     {/* Start Date & End Date */}
@@ -167,6 +204,48 @@ function getProjectTitleClasses(title: string) {
             );
           })}
         </div>
+      )}
+
+      {/* Project Settings Modal */}
+      {settingsProject && (
+        <Modal
+          title="Project Settings"
+          onClose={() => setSettingsProject(null)}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-[14px] font-bold text-neutral-800 mb-1">{settingsProject.name}</h4>
+              <p className="text-[12px] text-neutral-500">Configure access and visibility settings for this project.</p>
+            </div>
+            
+            <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h5 className="text-[13px] font-bold text-neutral-800 flex items-center gap-1.5">
+                    <ShieldAlert size={15} className="text-amber-500" />
+                    Private Project
+                  </h5>
+                </div>
+                
+                {/* Switch Toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    togglePrivate(settingsProject.id);
+                    setSettingsProject({ ...settingsProject, is_private: !settingsProject.is_private });
+                  }}
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 transition-colors duration-200 ease-in-out ${settingsProject.is_private ? 'bg-brand' : 'bg-neutral-300'}`}
+                >
+                  <span className="sr-only">Toggle Private</span>
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${settingsProject.is_private ? 'translate-x-2' : '-translate-x-2'}`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* Modal Create Project (PIC Only) */}
@@ -269,12 +348,21 @@ function getProjectTitleClasses(title: string) {
               </div>
             </div>
 
-            <div className="p-3 bg-brand/5 border border-brand/20 rounded-lg flex items-start gap-2 text-[11.5px] text-neutral-600">
-              <Sparkles size={14} className="text-brand flex-shrink-0 mt-0.5" />
-              <span>
-                Upon creation, the system will automatically initialize the 17-job industrial WBS template along with all sub-tasks and division assignments.
-              </span>
-            </div>
+            {hasPrivateFeature && (
+              <label className="flex items-center gap-2 mt-4 p-3 border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50">
+                <input 
+                  type="checkbox" 
+                  checked={isPrivate} 
+                  onChange={e => setIsPrivate(e.target.checked)} 
+                  className="rounded text-brand focus:ring-brand"
+                />
+                <div className="flex items-center gap-1.5 text-[13px] font-semibold text-neutral-800">
+                  <ShieldAlert size={15} className="text-amber-500" />
+                  Make this project Private
+                </div>
+              </label>
+            )}
+
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
               <Button

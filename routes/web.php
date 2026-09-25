@@ -22,25 +22,67 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 // Protected Routes
 Route::middleware('auth')->group(function () {
 
-    // Root redirect based on role
+    // Root redirect based on role and permissions
     Route::get('/', function () {
-        $role = Auth::user()?->role?->name ?? '';
+        $user = Auth::user();
+        $role = $user?->role?->name ?? '';
         if ($role === 'SuperAdmin') return redirect('/admin');
-        if ($role === 'worker') return redirect('/tasks');
+        
+        if ($user && is_array($user->permission_matrix) && !empty($user->permission_matrix['sidebar'])) {
+            $firstAllowed = $user->permission_matrix['sidebar'][0];
+            $map = [
+                'Dashboard' => '/dashboard',
+                'Project List' => '/projectlistpage',
+                'Project Detail' => '/projectdetailpage',
+                'Tasks' => '/tasks',
+                'Timeline' => '/timeline',
+                'Weekly Progress' => '/weekly',
+                'S-Curve Report' => '/scurve',
+                'Budget Management' => '/budget',
+                'Division Progress' => '/division-progress',
+                'User Management' => '/users',
+            ];
+            if (isset($map[$firstAllowed])) {
+                return redirect($map[$firstAllowed]);
+            }
+        }
+        
+        // If role fallbacks are still needed as a last resort:
+        if ($role === 'worker') {
+            if ($user && is_array($user->permission_matrix) && isset($user->permission_matrix['sidebar']) && empty($user->permission_matrix['sidebar'])) {
+                abort(403);
+            }
+            return redirect('/tasks');
+        }
+        if ($role === 'pic') {
+            $features = $user->permission_matrix['features']['projects'] ?? [];
+            $hasMultipleProjects = in_array('Multiple Projects', $features);
+            return redirect($hasMultipleProjects ? '/projectlistpage' : '/dashboard');
+        }
         if ($role === 'admin_progres') return redirect('/projectlistpage');
         return redirect('/projectlistpage');
     });
 
     // ── SuperAdmin Exclusive Zone ──
     Route::middleware(SuperAdminOnly::class)->prefix('admin')->group(function () {
-        Route::get('/',             [SuperAdminController::class, 'dashboard'])->name('admin.dashboard');
-        Route::get('/audit-log',    [SuperAdminController::class, 'auditLog'])->name('admin.audit-log');
-        Route::get('/users',        [SuperAdminController::class, 'userManagement'])->name('admin.users');
+        Route::get('/',              [SuperAdminController::class, 'dashboard'])->name('admin.dashboard');
+        Route::get('/audit-log',     [SuperAdminController::class, 'auditLog'])->name('admin.audit-log');
+        Route::get('/users',         [SuperAdminController::class, 'userManagement'])->name('admin.users');
+        Route::get('/companies',     [SuperAdminController::class, 'companiesPage'])->name('admin.companies');
+        Route::get('/projects',      [SuperAdminController::class, 'allProjectsPage'])->name('admin.projects');
 
         // User CRUD scoped under SuperAdmin prefix
-        Route::post('/users',       [UserManagementController::class, 'store'])->name('admin.users.store');
-        Route::put('/users/{id}',   [UserManagementController::class, 'update'])->name('admin.users.update');
-        Route::delete('/users/{id}',[UserManagementController::class, 'destroy'])->name('admin.users.destroy');
+        Route::post('/users',        [UserManagementController::class, 'store'])->name('admin.users.store');
+        Route::put('/users/{id}',    [UserManagementController::class, 'update'])->name('admin.users.update');
+        Route::delete('/users/{id}', [UserManagementController::class, 'destroy'])->name('admin.users.destroy');
+
+        // Company CRUD
+        Route::post('/companies',        [\App\Http\Controllers\CompanyController::class, 'store'])->name('admin.companies.store');
+        Route::put('/companies/{id}',    [\App\Http\Controllers\CompanyController::class, 'update'])->name('admin.companies.update');
+        Route::delete('/companies/{id}', [\App\Http\Controllers\CompanyController::class, 'destroy'])->name('admin.companies.destroy');
+
+        // Project delete (SuperAdmin only)
+        Route::delete('/projects/{id}',  [\App\Http\Controllers\ProjectController::class, 'superAdminDestroy'])->name('admin.projects.destroy');
     });
 
     // ── Project card selector (ProjectListPage) ──
@@ -54,6 +96,7 @@ Route::middleware('auth')->group(function () {
     // ── Create project (PIC only) ──
     Route::post('/projectlistpage', [ProjectController::class, 'store'])->name('projectlistpage.store');
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
+    Route::put('/projects/{id}/toggle-private', [ProjectController::class, 'togglePrivate'])->name('projects.toggle-private');
 
     // ── Single project dashboard ──
     Route::get('/projects/{id}', [ProjectController::class, 'dashboard'])->middleware('sidebar:Dashboard')->name('projects.show');

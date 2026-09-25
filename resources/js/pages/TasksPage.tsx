@@ -15,6 +15,56 @@ import { useAuth } from '@/context/AuthContext';
 
 const STATUSES: Status[] = ['Open', 'On Track', 'At Risk', 'Delayed', 'Cancelled', 'Completed'];
 
+function EditableProgress({ value, disabled, onSave, isChecked }: { value: number, disabled: boolean, onSave: (val: number) => void, isChecked: boolean }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [val, setVal] = useState(value.toString());
+
+  useEffect(() => {
+    setVal(value.toString());
+  }, [value]);
+
+  if (isEditing && !disabled) {
+    return (
+      <input
+        autoFocus
+        type="number"
+        min="0" max="100"
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onBlur={() => {
+          setIsEditing(false);
+          const parsed = parseInt(val);
+          if (!isNaN(parsed) && parsed !== value && parsed >= 0 && parsed <= 100) onSave(parsed);
+          else setVal(value.toString());
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            setIsEditing(false);
+            const parsed = parseInt(val);
+            if (!isNaN(parsed) && parsed !== value && parsed >= 0 && parsed <= 100) onSave(parsed);
+            else setVal(value.toString());
+          } else if (e.key === 'Escape') {
+            setIsEditing(false);
+            setVal(value.toString());
+          }
+        }}
+        className="w-12 h-6 text-right text-[12.5px] font-black border border-brand/50 rounded outline-none p-0 hide-arrows -mr-1"
+        style={{ appearance: 'textfield' }}
+      />
+    );
+  }
+
+  return (
+    <span 
+      className={`text-[12.5px] font-black w-11 text-right tabular-nums ${!disabled ? 'cursor-text hover:bg-neutral-100 rounded px-1 -mx-1' : ''} ${isChecked ? 'text-emerald-700' : 'text-neutral-800'}`}
+      onClick={() => { if (!disabled) setIsEditing(true); }}
+      title={!disabled ? "Click to set percentage manually" : ""}
+    >
+      {value}%
+    </span>
+  );
+}
+
 export default function TasksPage() {
   const { user } = useAuth();
   const pageProps = usePage().props as any;
@@ -81,44 +131,81 @@ export default function TasksPage() {
   const [todaySectionOpen, setTodaySectionOpen] = useState(true);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const handleSaveEvidence = (taskId: string, evidence: EvidenceItem, completeTo100: boolean = false) => {
-    setProjectData(prev => {
-      const newData = { ...prev };
-      newData.mainJobs = newData.mainJobs.map(mj => ({
-        ...mj,
-        subMainJobs: mj.subMainJobs.map(smj => ({
-          ...smj,
-          subtasks: smj.subtasks.map(st => {
-            if (st.id === taskId) {
-              const targetProg = completeTo100 ? 100 : st.progress;
-              const isDone = targetProg >= 100;
-              return {
-                ...st,
-                evidence,
-                progress: targetProg,
-                checked: isDone,
-              };
-            }
-            return st;
-          })
-        }))
-      }));
-      return recalculateSchedule(recalculateProgress(newData));
-    });
+  const handleSaveEvidence = (taskId: string, newEvidences: EvidenceItem[], completeTo100: boolean = false, rawFiles?: File[]) => {
+    if (!projectData.id) return;
 
-    if (completeTo100 && projectData.id) {
-      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
-        preserveScroll: true,
-        preserveState: true,
+    // Find current progress
+    let currentProg = 0;
+    projectData.mainJobs.forEach(mj => {
+      mj.subMainJobs.forEach(smj => {
+        smj.subtasks.forEach(st => {
+          if (st.id === taskId) currentProg = st.progress;
+        });
       });
+    });
+    const targetProgress = completeTo100 ? 100 : currentProg;
+
+    // Build the payload — Inertia router.post handles File objects natively
+    const payload: Record<string, unknown> = {
+      progress: targetProgress,
+    };
+
+    if (rawFiles && rawFiles.length > 0) {
+      if (rawFiles.length === 1) {
+        payload['evidence_file'] = rawFiles[0];
+      } else {
+        rawFiles.forEach((f, i) => {
+          payload[`evidence_file_${i}`] = f;
+        });
+        payload['evidence_file_count'] = rawFiles.length;
+      }
     }
 
-    setToastMsg(
-      completeTo100
-        ? 'Bukti penyelesaian berhasil diunggah & task selesai (100%) ✓'
-        : 'Bukti berhasil dilampirkan ke task ✓'
-    );
-    setUploadEvidenceTask(null);
+    router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, payload, {
+      preserveScroll: true,
+      preserveState: true,
+      forceFormData: true,
+      onSuccess: (page) => {
+        // Optimistically merge new evidences into local state so UI updates immediately
+        // without needing a full page reload
+        const serverProject = (page.props as any)?.project;
+        if (serverProject) {
+          setProjectData(recalculateSchedule(recalculateProgress(serverProject)));
+        } else {
+          // Fallback: manually merge new evidences into local state
+          setProjectData(prev => {
+            const updated = { ...prev };
+            updated.mainJobs = updated.mainJobs.map(mj => ({
+              ...mj,
+              subMainJobs: mj.subMainJobs.map(smj => ({
+                ...smj,
+                subtasks: smj.subtasks.map(st => {
+                  if (st.id !== taskId) return st;
+                  return {
+                    ...st,
+                    progress: targetProgress,
+                    checked: targetProgress >= 100,
+                    evidences: [...(st.evidences || []), ...newEvidences],
+                  };
+                }),
+              })),
+            }));
+            return recalculateSchedule(recalculateProgress(updated));
+          });
+        }
+        setToastMsg(
+          completeTo100
+            ? 'Bukti penyelesaian berhasil diunggah & task selesai (100%) ✓'
+            : 'Bukti berhasil dilampirkan ke task ✓'
+        );
+        setUploadEvidenceTask(null);
+      },
+      onError: (err) => {
+        console.error(err);
+        setToastMsg('Gagal mengunggah bukti.');
+        setUploadEvidenceTask(null);
+      }
+    });
   };
 
   // Dynamic Today's Tasks
@@ -214,11 +301,6 @@ export default function TasksPage() {
           router.delete(`/projects/${projectData.id}/main-wbs/${targetDbId}`, {
             preserveScroll: true,
             onSuccess: () => {
-              setProjectData(prev => {
-                const newData = { ...prev };
-                newData.mainJobs = newData.mainJobs.filter(mj => mj.id !== mjId);
-                return recalculateSchedule(recalculateProgress(newData));
-              });
               setToastMsg(`Main Task "${mjName}" deleted successfully.`);
             },
             onError: () => setToastMsg('Failed to delete Main Task from server.'),
@@ -261,14 +343,6 @@ export default function TasksPage() {
           router.delete(`/projects/${projectData.id}/sub-wbs/${targetDbId}`, {
             preserveScroll: true,
             onSuccess: () => {
-              setProjectData(prev => {
-                const newData = { ...prev };
-                newData.mainJobs = newData.mainJobs.map(mj => {
-                  if (mj.id !== mjId) return mj;
-                  return { ...mj, subMainJobs: mj.subMainJobs.filter(smj => smj.id !== smjId) };
-                });
-                return recalculateSchedule(recalculateProgress(newData));
-              });
               setToastMsg(`Sub Task "${smjName}" deleted successfully.`);
             },
             onError: () => setToastMsg('Failed to delete Sub Task from server.'),
@@ -292,6 +366,8 @@ export default function TasksPage() {
       predecessor: taskData.predecessor || null,
       dep_type: taskData.depType || 'FS',
       lag: taskData.lag || 0,
+      lead: taskData.lead || 0,
+      requires_evidence: taskData.requiresEvidence || false,
       weight: taskData.weight !== undefined ? taskData.weight : 100,
     };
 
@@ -299,34 +375,6 @@ export default function TasksPage() {
       router.put(`/projects/${projectData.id}/tasks/${taskData.id}`, payload, {
         preserveScroll: true,
         onSuccess: () => {
-          setProjectData(prev => {
-            const newData = { ...prev };
-            newData.mainJobs = newData.mainJobs.map(mj => ({
-              ...mj,
-              subMainJobs: mj.subMainJobs.map(smj => {
-                if (smj.id !== smjId) return smj;
-                return {
-                  ...smj,
-                  subtasks: smj.subtasks.map(st => {
-                    if (st.id !== taskData.id) return st;
-                    return {
-                      ...st,
-                      name: taskData.name || st.name,
-                      weight: taskData.weight !== undefined ? taskData.weight : st.weight,
-                      duration: taskData.duration ?? st.duration,
-                      startDate: taskData.startDate ?? st.startDate,
-                      predecessor: taskData.predecessor !== undefined ? taskData.predecessor : st.predecessor,
-                      depType: taskData.depType || st.depType,
-                      lag: taskData.lag ?? st.lag,
-                      lead: taskData.lead ?? st.lead,
-                      evidence: taskData.evidence ?? st.evidence,
-                    };
-                  })
-                };
-              })
-            }));
-            return recalculateSchedule(recalculateProgress(newData));
-          });
           setToastMsg(`Task "${taskData.name}" updated successfully.`);
           setShowAddTaskModal(null);
         },
@@ -340,44 +388,6 @@ export default function TasksPage() {
       router.post(`/projects/${projectData.id}/tasks`, payload, {
         preserveScroll: true,
         onSuccess: () => {
-          setProjectData(prev => {
-            const newData = { ...prev };
-            const newTaskId = `st-custom-${Date.now()}`;
-            const targetSmj = newData.mainJobs.flatMap(m => m.subMainJobs).find(s => s.id === smjId);
-            const nextIndex = (targetSmj?.subtasks?.length || 0) + 1;
-            const generatedCode = targetSmj ? `${targetSmj.code}.${nextIndex}` : `1.1.${nextIndex}`;
-
-            newData.mainJobs = newData.mainJobs.map(mj => ({
-              ...mj,
-              subMainJobs: mj.subMainJobs.map(smj => {
-                if (smj.id !== smjId) return smj;
-                const newSubtask: SubSubtask = {
-                  id: newTaskId,
-                  code: generatedCode,
-                  name: taskData.name!,
-                  weight: taskData.weight !== undefined ? taskData.weight : 100,
-                  division: divisions.find((d: any) => d.id === taskData.divisionId)?.divisi || smj.pic,
-                  duration: taskData.duration || 1,
-                  startDate: taskData.startDate || new Date().toISOString().slice(0, 10),
-                  finishDate: taskData.startDate || new Date().toISOString().slice(0, 10),
-                  daysLeft: taskData.duration || 1,
-                  progress: 0,
-                  status: 'Open',
-                  predecessor: taskData.predecessor,
-                  depType: taskData.depType || 'FS',
-                  lag: taskData.lag || 0,
-                  lead: taskData.lead || 0,
-                  evidence: taskData.evidence,
-                  checked: false,
-                };
-                return {
-                  ...smj,
-                  subtasks: [...smj.subtasks, newSubtask]
-                };
-              })
-            }));
-            return recalculateSchedule(recalculateProgress(newData));
-          });
           setToastMsg(`Task "${taskData.name}" added successfully.`);
           setShowAddTaskModal(null);
         },
@@ -399,17 +409,6 @@ export default function TasksPage() {
           router.delete(`/projects/${projectData.id}/tasks/${taskId}`, {
             preserveScroll: true,
             onSuccess: () => {
-              setProjectData(prev => {
-                const newData = { ...prev };
-                newData.mainJobs = newData.mainJobs.map(mj => ({
-                  ...mj,
-                  subMainJobs: mj.subMainJobs.map(smj => {
-                    if (smj.id !== smjId) return smj;
-                    return { ...smj, subtasks: smj.subtasks.filter(st => st.id !== taskId) };
-                  })
-                }));
-                return recalculateSchedule(recalculateProgress(newData));
-              });
               setToastMsg(`Task "${taskName}" successfully deleted.`);
             },
             onError: () => setToastMsg('Failed to delete task from server.'),
@@ -426,11 +425,11 @@ export default function TasksPage() {
   const isAuthorizedToCheck = (taskDivision: string) => {
     if (isAdmin || isPIC) return false;
     if (isWorker) {
-      const pId = projectData.id?.replace('p-', '') || '';
-      const pAccess = authUser?.permission_matrix?.project_access?.[pId] || {};
-      if (pAccess.edit_task !== true) return false;
+      const tasksFeatures = authUser?.permission_matrix?.features?.tasks || authUser?.permission_matrix?.features?.Tasks || [];
+      const hasEditTask = tasksFeatures.some((f: string) => f.toLowerCase() === 'edit task' || f.toLowerCase() === 'edit_task');
+      if (!hasEditTask) return false;
 
-      const workerDiv = (user?.division ?? pageProps?.division ?? '').trim().toLowerCase();
+      const workerDiv = (authUser?.division ?? '').trim().toLowerCase();
       const targetDiv = (taskDivision ?? '').trim().toLowerCase();
       return workerDiv !== '' && (workerDiv === targetDiv || targetDiv === 'general' || targetDiv === 'internal');
     }
@@ -438,7 +437,7 @@ export default function TasksPage() {
   };
 
   // Continuous Progress Slider Update (0–100%)
-  const handleProgressChange = (taskId: string, newProgress: number, authorized: boolean, taskName: string) => {
+  const handleProgressChange = (taskId: string, newProgress: number, authorized: boolean, taskName: string, commit: boolean = false) => {
     if (!authorized) {
       if (isAdmin) {
         setToastMsg('Action Restricted: Admin role is Read-Only.');
@@ -467,13 +466,17 @@ export default function TasksPage() {
     }
 
     // REQUIREMENT: Evidence attachment is MANDATORY (required) to complete task (100%)
-    if (isCompleted && currentTask && !currentTask.evidence) {
-      setToastMsg(`Bukti (evidence) WAJIB dilampirkan sebelum menyelesaikan task "${taskName}" (100%).`);
-      setUploadEvidenceTask({
-        task: currentTask,
-        requireComplete: true,
-      });
-      return;
+    if (isCompleted && currentTask && (!currentTask.evidences || currentTask.evidences.length === 0)) {
+      if (currentTask.requiresEvidence) {
+        setToastMsg(`Bukti (evidence) WAJIB dilampirkan sebelum menyelesaikan task "${taskName}" (100%).`);
+        if (commit) {
+          setUploadEvidenceTask({
+            task: currentTask,
+            requireComplete: true,
+          });
+        }
+        return;
+      }
     }
 
     setProjectData(prev => {
@@ -499,18 +502,15 @@ export default function TasksPage() {
       return recalculateSchedule(recalculateProgress(newData));
     });
 
-    if (projectData.id) {
-      if ((window as any).progressSaveTimeout) clearTimeout((window as any).progressSaveTimeout);
-      (window as any).progressSaveTimeout = setTimeout(() => {
-        router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: clamped }, {
-          preserveScroll: true,
-          preserveState: true,
-          onSuccess: () => {
-            if (clamped === 100) setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
-            else setToastMsg(`Task "${taskName}" progress saved (${clamped}%)`);
-          }
-        });
-      }, 500);
+    if (commit && projectData.id) {
+      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: clamped }, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+          if (clamped === 100) setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
+          else setToastMsg(`Task "${taskName}" progress saved (${clamped}%)`);
+        }
+      });
     }
   };
 
@@ -947,23 +947,27 @@ export default function TasksPage() {
                               </td>
                               {/* Attachment / Bukti Column */}
                               <td className="px-4 py-2 text-center whitespace-nowrap">
-                                {st.evidence ? (
-                                  <div className="inline-flex items-center gap-1 justify-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => st.evidence && setEvidencePreview(st.evidence)}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100/90 border border-emerald-300 text-emerald-800 text-[11px] font-bold hover:bg-emerald-200 transition-colors shadow-2xs"
-                                      title={`Lihat bukti: ${st.evidence.name}`}
-                                    >
-                                      <Paperclip size={11} className="text-emerald-700" />
-                                      <span className="max-w-[90px] truncate">{st.evidence.name}</span>
-                                    </button>
+                                {(st.evidences && st.evidences.length > 0) ? (
+                                  <div className="inline-flex items-center gap-1 justify-center flex-wrap max-w-[150px]">
+                                    {st.evidences.map((ev, idx) => (
+                                        <button
+                                          key={idx}
+                                          type="button"
+                                          onClick={() => setEvidencePreview(ev)}
+                                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-bold hover:bg-emerald-200 transition-colors"
+                                          title={`Lihat bukti: ${ev.name}`}
+                                        >
+                                          <Paperclip size={10} />
+                                          Bukti {idx+1}
+                                        </button>
+                                    ))}
+                                    {/* Only workers of assigned division can add more evidence */}
                                     {authorized && (
                                       <button
                                         type="button"
                                         onClick={() => setUploadEvidenceTask({ task: st })}
                                         className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
-                                        title="Ganti berkas bukti"
+                                        title="Tambah berkas bukti"
                                       >
                                         <Edit2 size={11} />
                                       </button>
@@ -975,7 +979,7 @@ export default function TasksPage() {
                                       type="button"
                                       onClick={() => setUploadEvidenceTask({ task: st })}
                                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
-                                      title="Upload bukti penyelesaian (wajib untuk 100%)"
+                                      title="Upload bukti penyelesaian"
                                     >
                                       <UploadCloud size={11} className="text-amber-600" />
                                       <span>Upload Bukti</span>
@@ -1203,32 +1207,42 @@ function TodayTaskCard({
               type="range"
               min="0"
               max="100"
-              step="5"
+              step="1"
               value={st.progress}
               disabled={!canCheck}
-              onChange={(e) => onProgressChange(parseInt(e.target.value))}
-              className={`w-full h-2 rounded-lg appearance-none cursor-pointer bg-neutral-200 accent-brand ${
+              onChange={(e) => onProgressChange(parseInt(e.target.value), false)}
+              onMouseUp={(e) => onProgressChange(parseInt((e.target as HTMLInputElement).value), true)}
+              onTouchEnd={(e) => onProgressChange(parseInt((e.target as HTMLInputElement).value), true)}
+              className={`w-full h-2 rounded-lg cursor-pointer bg-neutral-200 accent-brand ${
                 !canCheck ? 'opacity-40 cursor-not-allowed' : 'hover:accent-blue-700'
               }`}
             />
           </div>
-          <span className={`text-[12.5px] font-black w-11 text-right tabular-nums ${isChecked ? 'text-emerald-700' : 'text-neutral-800'}`}>
-            {st.progress}%
-          </span>
+          <EditableProgress 
+            value={st.progress} 
+            disabled={!canCheck} 
+            onSave={(val) => onProgressChange(val, true)} 
+            isChecked={isChecked} 
+          />
         </div>
 
         {/* Evidence badge & details */}
         <div className="flex items-center justify-between text-[11px] pt-1 text-neutral-500">
           <span>{formatDateDisplay(st.startDate)} – {formatDateDisplay(st.finishDate)}</span>
-          {st.evidence ? (
-            <button
-              type="button"
-              onClick={() => onOpenEvidence(st.evidence)}
-              className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline"
-            >
-              <Paperclip size={12} />
-              Bukti: {st.evidence.name}
-            </button>
+          {(st.evidences && st.evidences.length > 0) ? (
+            <div className="flex items-center gap-2">
+                {st.evidences.map((ev, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => onOpenEvidence(ev)}
+                      className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline"
+                    >
+                      <Paperclip size={12} />
+                      Bukti {idx+1}
+                    </button>
+                ))}
+            </div>
           ) : (
             canCheck && onOpenUploadEvidence && (
               <button
@@ -1402,23 +1416,26 @@ function SubtaskRow({
             )}
 
             {/* Evidence attachment indicator & upload button */}
-            {st.evidence ? (
-              <div className="inline-flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => onOpenEvidence(st.evidence)}
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-bold hover:bg-emerald-200 transition-colors shadow-2xs"
-                  title="Lihat berkas bukti"
-                >
-                  <Paperclip size={11} className="text-emerald-700" />
-                  Bukti: {st.evidence.name}
-                </button>
+            {(st.evidences && st.evidences.length > 0) ? (
+              <div className="inline-flex items-center gap-1 flex-wrap">
+                {st.evidences.map((ev, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => onOpenEvidence(ev)}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-bold hover:bg-emerald-200 transition-colors shadow-2xs"
+                    title={`Lihat bukti: ${ev.name}`}
+                  >
+                    <Paperclip size={11} className="text-emerald-700" />
+                    Bukti {idx + 1}
+                  </button>
+                ))}
                 {canCheck && (
                   <button
                     type="button"
                     onClick={onOpenUploadEvidence}
                     className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
-                    title="Ganti berkas bukti"
+                    title="Tambah berkas bukti"
                   >
                     <Edit2 size={11} />
                   </button>
@@ -1449,38 +1466,25 @@ function SubtaskRow({
             type="range"
             min="0"
             max="100"
-            step="5"
+            step="1"
             value={st.progress}
             disabled={!canCheck}
-            onChange={(e) => onProgressChange(parseInt(e.target.value))}
-            className={`w-28 sm:w-32 h-2 rounded-lg appearance-none cursor-pointer bg-neutral-200 accent-brand ${
+            onChange={(e) => onProgressChange(parseInt(e.target.value), false)}
+            onMouseUp={(e) => onProgressChange(parseInt((e.target as HTMLInputElement).value), true)}
+            onTouchEnd={(e) => onProgressChange(parseInt((e.target as HTMLInputElement).value), true)}
+            className={`w-28 sm:w-32 h-2 rounded-lg cursor-pointer bg-neutral-200 accent-brand ${
               !canCheck ? 'opacity-40 cursor-not-allowed' : 'hover:accent-blue-700'
             }`}
             title={`Adjust task progress (Current: ${st.progress}%)`}
           />
-          <span className={`text-[12.5px] font-black w-11 text-right tabular-nums ${isChecked ? 'text-emerald-700' : 'text-neutral-800'}`}>
-            {st.progress}%
-          </span>
+          <EditableProgress 
+            value={st.progress} 
+            disabled={!canCheck} 
+            onSave={(val) => onProgressChange(val, true)} 
+            isChecked={isChecked} 
+          />
         </div>
 
-        {/* Quick Presets for Desktop */}
-        {canCheck && (
-          <div className="hidden xl:flex items-center gap-0.5 bg-neutral-100 p-0.5 rounded border border-neutral-200 text-[10px] font-bold text-neutral-600">
-            {[0, 25, 50, 75, 100].map(val => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => onProgressChange(val)}
-                className={`px-1.5 py-0.5 rounded transition-colors ${
-                  st.progress === val ? 'bg-brand text-white font-extrabold' : 'hover:bg-neutral-200 text-neutral-700'
-                }`}
-                title={`Set to ${val}%`}
-              >
-                {val}%
-              </button>
-            ))}
-          </div>
-        )}
 
         <StatusBadge status={isChecked ? 'Completed' : st.status} size="sm" />
 
@@ -1567,43 +1571,34 @@ function UploadEvidenceModal({
   task: SubSubtask;
   requireComplete?: boolean;
   onClose: () => void;
-  onSave: (taskId: string, evidence: EvidenceItem, completeTo100: boolean) => void;
+  onSave: (taskId: string, evidences: EvidenceItem[], completeTo100: boolean, rawFiles?: File[]) => void;
 }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | undefined>(task.evidence?.previewUrl);
+  const [files, setFiles] = useState<File[]>([]);
   const [completeChecked, setCompleteChecked] = useState(requireComplete || task.progress === 100);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (selected) {
-      setFile(selected);
-      if (selected.type.startsWith('image/')) {
-        setPreviewUrl(URL.createObjectURL(selected));
-      } else {
-        setPreviewUrl(undefined);
-      }
+    const selected = Array.from(e.target.files || []);
+    if (selected.length > 0) {
+      setFiles(prev => [...prev, ...selected]);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file && !task.evidence) return;
+    const hasExisting = task.evidences && task.evidences.length > 0;
+    if (files.length === 0 && !hasExisting) return;
 
-    let evidenceObj: EvidenceItem;
-    if (file) {
+    const newEvidences: EvidenceItem[] = files.map(file => {
       const isImg = file.type.startsWith('image/');
-      const sizeFormatted = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
-      evidenceObj = {
+      return {
         name: file.name,
-        size: sizeFormatted,
+        size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
         type: file.type,
         previewUrl: isImg ? URL.createObjectURL(file) : undefined,
       };
-    } else {
-      evidenceObj = task.evidence!;
-    }
+    });
 
-    onSave(task.id, evidenceObj, completeChecked);
+    onSave(task.id, newEvidences, completeChecked, files.length > 0 ? files : undefined);
   };
 
   return (
@@ -1623,57 +1618,39 @@ function UploadEvidenceModal({
         </div>
 
         {/* Existing / Selected Evidence Display */}
-        {(file || task.evidence) ? (
-          <div className="p-3.5 rounded-xl border border-neutral-200 bg-neutral-50 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              {previewUrl ? (
-                <img
-                  src={previewUrl}
-                  alt="Evidence preview"
-                  className="w-12 h-12 rounded-lg object-cover border border-neutral-200 flex-shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 font-bold">
-                  <FileText size={22} />
+        <div className="space-y-2">
+            {(task.evidences || []).map((ev, i) => (
+                <div key={'ext-'+i} className="p-2 rounded-lg border border-neutral-200 bg-neutral-50 flex items-center gap-3">
+                    <FileText size={20} className="text-neutral-500" />
+                    <span className="text-[12px] font-bold text-neutral-800 truncate flex-1">{ev.name} (Tersimpan)</span>
                 </div>
-              )}
-              <div className="min-w-0">
-                <div className="text-[13px] font-bold text-neutral-800 truncate">
-                  {file ? file.name : task.evidence?.name}
+            ))}
+            {files.map((f, i) => (
+                <div key={'new-'+i} className="p-2 rounded-lg border border-brand/20 bg-brand/5 flex items-center gap-3">
+                    <FileText size={20} className="text-brand" />
+                    <span className="text-[12px] font-bold text-brand truncate flex-1">{f.name} (Siap diunggah)</span>
+                    <button type="button" onClick={() => setFiles(files.filter((_, idx) => idx !== i))} className="text-red-500 font-bold px-2 py-1 hover:bg-red-50 rounded">X</button>
                 </div>
-                <div className="text-[11px] text-neutral-500">
-                  {file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : (task.evidence?.size || 'Attached')} · Siap disimpan
-                </div>
-              </div>
-            </div>
-            <label className="text-[12px] font-bold text-brand hover:underline cursor-pointer">
-              Ganti File
-              <input
-                type="file"
-                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-            </label>
-          </div>
-        ) : (
-          <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-neutral-300 hover:border-brand rounded-xl cursor-pointer bg-neutral-50/50 hover:bg-brand/5 transition-all text-center">
+            ))}
+        </div>
+        
+        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-neutral-300 hover:border-brand rounded-xl cursor-pointer bg-neutral-50/50 hover:bg-brand/5 transition-all text-center">
             <UploadCloud size={32} className="text-brand mb-2" />
             <span className="text-[13.5px] font-bold text-neutral-800">
               Pilih atau seret berkas bukti (evidence) ke sini
             </span>
             <span className="text-[11.5px] text-neutral-400 mt-1">
-              Mendukung foto (JPG, PNG) atau dokumen (PDF, Word, Excel) maksimal 10MB
+              Mendukung foto dan dokumen PDF, bisa pilih lebih dari 1
             </span>
             <input
               type="file"
-              required={!task.evidence}
+              multiple
+              required={(!task.evidences || task.evidences.length === 0) && files.length === 0}
               accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
               className="hidden"
               onChange={handleFileChange}
             />
-          </label>
-        )}
+        </label>
 
         {/* Completion checkbox option */}
         <div className="pt-2 border-t border-neutral-100 flex items-center gap-2">
@@ -1698,7 +1675,7 @@ function UploadEvidenceModal({
             variant="primary"
             size="sm"
             type="submit"
-            disabled={!file && !task.evidence}
+            disabled={(!task.evidences || task.evidences.length === 0) && files.length === 0}
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
           >
             {completeChecked ? 'Upload Bukti & Selesaikan (100%)' : 'Simpan Bukti'}
@@ -1726,8 +1703,12 @@ function EvidencePreviewModal({
     >
       <div className="space-y-4">
         {displayUrl ? (
-          <div className="rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900 flex items-center justify-center max-h-[60vh]">
-            <img src={displayUrl} alt={evidence.name} className="max-w-full max-h-[60vh] object-contain" />
+          <div className="rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900 flex items-center justify-center max-h-[70vh] w-full relative">
+            {evidence.name.toLowerCase().endsWith('.pdf') ? (
+               <iframe src={displayUrl} className="w-full h-[70vh] bg-white border-0" title={evidence.name} />
+            ) : (
+               <img src={displayUrl} alt={evidence.name} className="max-w-full max-h-[70vh] object-contain" />
+            )}
           </div>
         ) : (
           <div className="p-8 rounded-xl border border-neutral-200 bg-neutral-50 text-center">
@@ -1776,14 +1757,14 @@ function SearchablePredecessorSelect({
   const query = search.trim().toLowerCase();
 
   // Find currently selected label
-  let selectedLabel = 'None (No Predecessor)';
+  let selectedLabel = value ? `Unknown Predecessor (${value})` : 'None (No Predecessor)';
   if (value) {
     for (const smj of availableSubMainJobs) {
-      if (smj.code === value) {
+      if (smj.id === value || smj.code === value) {
         selectedLabel = `${smj.code} - ${smj.name} (Sub Task)`;
         break;
       }
-      const st = (smj.subtasks || []).find(s => s.code === value);
+      const st = (smj.subtasks || []).find(s => s.id === value || s.code === value);
       if (st) {
         selectedLabel = `${st.code} - ${st.name}`;
         break;
@@ -1870,26 +1851,15 @@ function SearchablePredecessorSelect({
                   <div className="px-3 py-1 text-[11px] font-black text-neutral-400 uppercase tracking-wider">
                     {smj.code} · {smj.name}
                   </div>
-                  {/* Sub-Task option */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onChange(smj.code);
-                      setIsOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg transition-colors flex items-center justify-between ${
-                      value === smj.code ? 'bg-brand text-white font-bold' : 'text-neutral-800 hover:bg-neutral-50'
-                    }`}
-                  >
-                    <span className="truncate">
+                  {/* Sub-Task label (Unclickable) */}
+                  <div className="w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg flex items-center justify-between text-neutral-800 bg-neutral-100/50 mb-1">
+                    <span className="truncate font-medium">
                       <strong>{smj.code}</strong> - {smj.name}
                     </span>
-                    <span className={`text-[10.5px] px-1.5 py-0.5 rounded font-bold ${
-                      value === smj.code ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-600'
-                    }`}>
-                      Sub-Task
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-neutral-200/80 text-neutral-500 uppercase">
+                      Sub-Task Group
                     </span>
-                  </button>
+                  </div>
 
                   {/* Specific Task items */}
                   {matchingTasks.map(st => (
@@ -1897,11 +1867,11 @@ function SearchablePredecessorSelect({
                       key={st.id || st.code}
                       type="button"
                       onClick={() => {
-                        onChange(st.code);
+                        onChange(st.id);
                         setIsOpen(false);
                       }}
                       className={`w-full text-left pl-6 pr-3 py-1.5 text-[12px] rounded-lg transition-colors flex items-center justify-between ${
-                        value === st.code ? 'bg-brand text-white font-bold' : 'text-neutral-700 hover:bg-neutral-50'
+                        value === st.id ? 'bg-brand text-white font-bold' : 'text-neutral-700 hover:bg-neutral-50'
                       }`}
                     >
                       <span className="truncate">
@@ -2113,19 +2083,65 @@ function AddSubtaskModal({
   const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
   const [lag, setLag] = useState(initialData?.lag ? initialData.lag.toString() : '0');
   const [lead, setLead] = useState(initialData?.lead ? initialData.lead.toString() : '0');
-  const [evidence, setEvidence] = useState<EvidenceItem | null>(initialData?.evidence || null);
+  const [requiresEvidence, setRequiresEvidence] = useState(initialData?.requiresEvidence ?? false);
 
   // Available SubMainJobs across the project
   const availableSubMainJobs = (mainJobs && mainJobs.length > 0)
     ? mainJobs.flatMap(mj => mj.subMainJobs || [])
     : (parentSmj ? [parentSmj] : []);
 
+  // Find predecessor task to calculate automatic start date
+  useEffect(() => {
+    if (!predecessor) return;
+    
+    let predTask = null;
+    for (const mj of mainJobs) {
+      for (const smj of (mj.subMainJobs || [])) {
+        const found = smj.subtasks?.find(st => st.id === predecessor || st.code === predecessor);
+        if (found) {
+          predTask = found;
+          break;
+        }
+      }
+      if (predTask) break;
+    }
+    
+    if (predTask) {
+      const pStart = new Date(predTask.startDate);
+      const pEnd = new Date(predTask.finishDate);
+      const lagDays = parseInt(lag) || 0;
+      const leadDays = parseInt(lead) || 0;
+      const offset = lagDays - leadDays;
+      
+      let newStart = new Date();
+      if (depType === 'FS') {
+        newStart = new Date(pEnd);
+        newStart.setDate(newStart.getDate() + 1 + offset);
+      } else if (depType === 'SS') {
+        newStart = new Date(pStart);
+        newStart.setDate(newStart.getDate() + offset);
+      } else if (depType === 'FF') {
+        const newEnd = new Date(pEnd);
+        newEnd.setDate(newEnd.getDate() + offset);
+        newStart = new Date(newEnd);
+        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1) + 1);
+      } else if (depType === 'SF') {
+        const newEnd = new Date(pStart);
+        newEnd.setDate(newEnd.getDate() + 1 + offset);
+        newStart = new Date(newEnd);
+        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1) + 1);
+      }
+      
+      setStartDate(newStart.toISOString().slice(0, 10));
+    }
+  }, [predecessor, depType, lag, lead, duration, mainJobs]);
+
   // Calculate finish date preview
   const finishDatePreview = useMemo(() => {
     try {
       const d = new Date(startDate);
       const dur = parseInt(duration) || 1;
-      d.setDate(d.getDate() + dur);
+      d.setDate(d.getDate() + dur - 1); // standard inclusive duration
       return d.toISOString().slice(0, 10);
     } catch {
       return startDate;
@@ -2148,55 +2164,35 @@ function AddSubtaskModal({
       depType,
       lag: parseInt(lag) || 0,
       lead: parseInt(lead) || 0,
-      evidence: evidence || undefined,
+      requiresEvidence,
     });
   };
 
   return (
     <Modal
       title={isEdit ? "Edit Task (Sub-task Item)" : "Add New Task (Sub-task Item)"}
-      subtitle={isEdit ? `Editing: ${initialData.code} — ${initialData.name}` : "Add project task breakdown item with single-column layout"}
+      subtitle={isEdit ? `Editing: ${initialData?.code} — ${initialData?.name}` : "Add specific project task breakdown item"}
       onClose={onClose}
       size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
-        {/* 1. Task Name / Description */}
+        {/* Task Name */}
         <div>
           <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Task Description / Name <span className="text-danger">*</span>
+            Task Description <span className="text-danger">*</span>
           </label>
           <input
             type="text"
             required
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="e.g. Build 15 Concrete Columns / Review vendor documents"
+            placeholder="e.g. Preparation and review of vendor documents..."
             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
             autoFocus
           />
         </div>
 
-        {/* 2. Weight (%) */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Weight Allocation (%) <span className="text-danger">*</span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.1"
-            required
-            value={weight}
-            onChange={e => setWeight(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand font-bold bg-white"
-          />
-          <span className="text-[11px] text-neutral-400 mt-1 block">
-            Relative weight contribution to the parent Sub Task.
-          </span>
-        </div>
-
-        {/* 3. Responsible Division */}
+        {/* Division */}
         <div>
           <label className="block text-[12px] font-bold text-neutral-700 mb-1">
             Responsible Division <span className="text-danger">*</span>
@@ -2212,44 +2208,39 @@ function AddSubtaskModal({
           </select>
         </div>
 
-        {/* 4. Start Date */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Start Date <span className="text-danger">*</span>
-          </label>
-          <input
-            type="date"
-            required
-            value={startDate}
-            onChange={e => setStartDate(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-          />
-        </div>
-
-        {/* 5. Duration (Days) & Calculated Finish Date */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="block text-[12px] font-bold text-neutral-700">
+        {/* Duration and Start Date */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
               Duration (Days) <span className="text-danger">*</span>
             </label>
-            <span className="text-[11px] text-neutral-500 font-semibold">
-              Finish Date: <strong className="text-brand">{formatDateDisplay(finishDatePreview)}</strong>
-            </span>
+            <input
+              type="number"
+              min="1"
+              required
+              value={duration}
+              onChange={e => setDuration(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
+            />
           </div>
-          <input
-            type="number"
-            min="1"
-            required
-            value={duration}
-            onChange={e => setDuration(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
-          />
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+              Start Date <span className="text-danger">*</span>
+            </label>
+            <input
+              type="date"
+              required
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+            />
+          </div>
         </div>
 
-        {/* 6. Predecessor (Searchable) */}
+        {/* Predecessor (Full Width) */}
         <div>
           <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Predecessor (Searchable)
+            Predecessor (WBS Task / Sub-sub Task)
           </label>
           <SearchablePredecessorSelect
             value={predecessor}
@@ -2260,7 +2251,7 @@ function AddSubtaskModal({
           />
         </div>
 
-        {/* 7. Dependency Type */}
+        {/* Dependency Type (Full Width) */}
         <div>
           <label className="block text-[12px] font-bold text-neutral-700 mb-1">
             Dependency Type
@@ -2270,140 +2261,69 @@ function AddSubtaskModal({
             onChange={e => setDepType(e.target.value as DependencyType)}
             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
           >
-            <option value="FS">Finish-to-Start (FS) — default</option>
+            <option value="FS">Finish-to-Start (FS)</option>
             <option value="SS">Start-to-Start (SS)</option>
             <option value="FF">Finish-to-Finish (FF)</option>
             <option value="SF">Start-to-Finish (SF)</option>
           </select>
         </div>
-
-        {/* 8. Lag & Lead UI Inputs (Clearly separated) */}
-        <div className="space-y-2 pt-1 border-t border-neutral-100">
-          <div className="flex items-center justify-between">
-            <label className="block text-[12px] font-bold text-neutral-700">
-              Lag & Lead Timing
+        
+        {/* Lag and Lead */}
+        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-100">
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+              Lag (Days)
             </label>
-            <span className="text-[11px] text-neutral-400">Dependency adjustments</span>
+            <input
+              type="number"
+              min="0"
+              value={lag}
+              onChange={e => {
+                const v = e.target.value;
+                setLag(v);
+                if (parseInt(v) > 0) setLead('0');
+              }}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+              placeholder="0"
+            />
           </div>
-
-          <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/70 space-y-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[12px] font-bold text-neutral-800 flex items-center gap-1.5">
-                  <Clock size={13} className="text-amber-600" />
-                  Lag (Delay)
-                </span>
-                <span className="text-[11px] text-neutral-400 font-semibold">[ +days ]</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  value={lag}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setLag(v);
-                    if (parseInt(v) > 0) setLead('0');
-                  }}
-                  className="w-full px-3 py-1.5 rounded border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
-                  placeholder="0"
-                />
-                <span className="text-[12px] text-neutral-500 font-medium">days</span>
-              </div>
-              <p className="text-[11px] text-neutral-500 mt-1 leading-tight">
-                Wait N days after predecessor finishes before starting this task.
-              </p>
-            </div>
-
-            <div className="border-t border-neutral-200/60 pt-2.5">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[12px] font-bold text-neutral-800 flex items-center gap-1.5">
-                  <Sparkles size={13} className="text-blue-600" />
-                  Lead (Acceleration)
-                </span>
-                <span className="text-[11px] text-neutral-400 font-semibold">[ -days ]</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  value={lead}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setLead(v);
-                    if (parseInt(v) > 0) setLag('0');
-                  }}
-                  className="w-full px-3 py-1.5 rounded border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
-                  placeholder="0"
-                />
-                <span className="text-[12px] text-neutral-500 font-medium">days</span>
-              </div>
-              <p className="text-[11px] text-neutral-500 mt-1 leading-tight">
-                Start N days earlier before predecessor finishes (work overlap).
-              </p>
-            </div>
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+              Lead (Days)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={lead}
+              onChange={e => {
+                const v = e.target.value;
+                setLead(v);
+                if (parseInt(v) > 0) setLag('0');
+              }}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+              placeholder="0"
+            />
           </div>
         </div>
 
-        {/* 9. Task Evidence Upload (Requirement 8) */}
-        <div className="space-y-1.5 pt-1 border-t border-neutral-100">
-          <label className="block text-[12px] font-bold text-neutral-700">
-            Task Evidence (Photo / Document)
-          </label>
-          {evidence ? (
-            <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                {evidence.previewUrl ? (
-                  <img src={evidence.previewUrl} alt="Evidence preview" className="w-11 h-11 rounded-lg object-cover border border-neutral-200 flex-shrink-0" />
-                ) : (
-                  <div className="w-11 h-11 rounded-lg bg-brand/10 text-brand flex items-center justify-center flex-shrink-0">
-                    <FileText size={20} />
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <div className="text-[12.5px] font-bold text-neutral-800 truncate">{evidence.name}</div>
-                  <div className="text-[11px] text-neutral-500">{evidence.size} · Attached</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEvidence(null)}
-                className="p-1.5 rounded text-neutral-400 hover:text-danger hover:bg-red-50 transition-colors"
-                title="Remove evidence"
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          ) : (
-            <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-neutral-200 hover:border-brand rounded-xl cursor-pointer bg-neutral-50/50 hover:bg-brand/5 transition-colors">
-              <UploadCloud size={24} className="text-neutral-400 mb-1" />
-              <span className="text-[12.5px] font-bold text-neutral-700">Click or drag & drop evidence file / photo</span>
-              <span className="text-[11px] text-neutral-400 mt-0.5">Supports PNG, JPG, or PDF up to 10MB</span>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const isImg = file.type.startsWith('image/');
-                    const sizeFormatted = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
-                    const previewUrl = isImg ? URL.createObjectURL(file) : undefined;
-                    setEvidence({
-                      name: file.name,
-                      size: sizeFormatted,
-                      type: file.type,
-                      previewUrl,
-                    });
-                  }
-                }}
-              />
-            </label>
-          )}
+        {/* Evidence Requirement */}
+        <div className="pt-2 border-t border-neutral-100">
+           <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 transition-colors">
+             <input 
+               type="checkbox" 
+               checked={requiresEvidence} 
+               onChange={e => setRequiresEvidence(e.target.checked)} 
+               className="w-4 h-4 rounded text-brand border-neutral-300 focus:ring-brand" 
+             />
+             <div className="flex flex-col">
+               <span className="text-[13px] font-bold text-neutral-800">Requires Evidence for Completion</span>
+               <span className="text-[11.5px] text-neutral-500">Workers must upload a file/photo to mark this task 100% complete.</span>
+             </div>
+           </label>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
+        <div className="flex justify-end gap-2 pt-4">
           <Button variant="outline" size="sm" type="button" onClick={onClose}>
             Cancel
           </Button>

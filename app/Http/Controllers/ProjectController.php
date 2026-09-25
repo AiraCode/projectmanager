@@ -43,22 +43,47 @@ class ProjectController extends Controller
         }
 
         if ($role === 'pic') {
-            $project = Project::where('project_manager', $user->id)->first();
-            if ($project) {
-                return redirect()->route('projects.show', $project->id);
+            $projectsFeatures = $user->permission_matrix['features']['projects'] ?? [];
+            $hasMultiple = collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('multiple projects') || collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('multiple_projects');
+            $hasPrivate = collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('private projects') || collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('private_projects');
+
+            $picProjects = Project::where('project_manager', $user->id)->with(['manager', 'company'])->get();
+
+            if (!$hasMultiple && $picProjects->count() > 0) {
+                return redirect()->route('projects.show', $picProjects->first()->id);
             }
-            // PIC has no project yet (e.g. pic4): let them create one!
+
             $companies = Company::select('id', 'name')->get();
+            $mappedProjects = $picProjects->map(function ($p) {
+                return [
+                    'id'               => $p->id,
+                    'name'             => $p->title,
+                    'company'          => $p->company?->name ?? '—',
+                    'manager'          => $p->manager?->username ?? $p->manager?->name ?? '—',
+                    'status'           => $p->status ?? 'Open',
+                    'progress'         => (int) ($p->progress ?? 0),
+                    'planned_progress' => app(\App\Services\WeeklyService::class)->getCurrentPlannedProgress($p->id),
+                    'start_date'       => $p->start ? $p->start->format('Y-m-d') : null,
+                    'end_date'         => $p->end ? $p->end->format('Y-m-d') : null,
+                    'is_private'       => (bool) $p->is_private,
+                ];
+            });
+
             return Inertia::render('ProjectListPage', [
-                'projects'  => [],
-                'canCreate' => true,
+                'projects'  => $mappedProjects,
+                'canCreate' => $hasMultiple || $picProjects->count() === 0,
                 'companies' => $companies,
                 'userRole'  => $role,
+                'hasPrivateFeature' => $hasPrivate,
             ]);
         }
 
         // Admin Utama & Admin Progres: show all projects as cards
-        $projects = Project::with(['manager', 'company'])->get()->map(function ($p) {
+        $query = Project::with(['manager', 'company']);
+        if ($role !== 'SuperAdmin') {
+            $query->where('is_private', false);
+        }
+        $projects = $query->get()->map(function ($p) {
             return [
                 'id'          => $p->id,
                 'name'        => $p->title,
@@ -69,6 +94,7 @@ class ProjectController extends Controller
                 'planned_progress' => app(\App\Services\WeeklyService::class)->getCurrentPlannedProgress($p->id),
                 'start_date'       => $p->start ? $p->start->format('Y-m-d') : null,
                 'end_date'         => $p->end ? $p->end->format('Y-m-d') : null,
+                'is_private'       => (bool) $p->is_private,
             ];
         });
 
@@ -341,9 +367,12 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: Only PICs can create new projects. Admins are not permitted to create projects.');
         }
 
-        // 1 PIC can only manage 1 Project
-        if (Project::where('project_manager', $user->id)->exists()) {
-            return back()->withErrors(['title' => 'You already manage an existing project.']);
+        // Check if PIC is allowed to create multiple projects
+        $matrix = $user->permission_matrix ?? [];
+        $hasMultiple = in_array('Multiple Projects', $matrix['features']['projects'] ?? []);
+
+        if (!$hasMultiple && Project::where('project_manager', $user->id)->exists()) {
+            return back()->withErrors(['title' => 'You already manage an existing project. Request permission to create multiple projects.']);
         }
 
         $validated = $request->validate([
@@ -631,6 +660,47 @@ class ProjectController extends Controller
      * Add Task (Sub-Subtask) under a Sub WBS.
      * PIC only!
      */
+
+    private function cascadeTaskDates($taskId)
+    {
+        $task = \App\Models\Wbs::find($taskId);
+        if (!$task) return;
+
+        $dependentTasks = \App\Models\Wbs::where('predecessor', $taskId)->get();
+        foreach ($dependentTasks as $depTask) {
+            $lag = (int)($depTask->lag ?? 0);
+            $lead = (int)($depTask->lead ?? 0);
+            $totalOffset = $lag - $lead; 
+            
+            $duration = max(1, $depTask->start->diffInDays($depTask->end) + 1);
+            
+            $depType = $depTask->dep_type ?: 'FS';
+            if ($depType === 'FS') {
+                $newStart = $task->end->copy()->addDays(1 + $totalOffset);
+                $newEnd = $newStart->copy()->addDays($duration - 1);
+            } elseif ($depType === 'SS') {
+                $newStart = $task->start->copy()->addDays($totalOffset);
+                $newEnd = $newStart->copy()->addDays($duration - 1);
+            } elseif ($depType === 'FF') {
+                $newEnd = $task->end->copy()->addDays($totalOffset);
+                $newStart = $newEnd->copy()->subDays($duration - 1);
+            } elseif ($depType === 'SF') {
+                $newEnd = $task->start->copy()->addDays(1 + $totalOffset);
+                $newStart = $newEnd->copy()->subDays($duration - 1);
+            } else {
+                continue;
+            }
+
+            if (!$depTask->start->equalTo($newStart) || !$depTask->end->equalTo($newEnd)) {
+                $depTask->update([
+                    'start' => $newStart,
+                    'end' => $newEnd,
+                ]);
+                $this->cascadeTaskDates($depTask->id);
+            }
+        }
+    }
+
     public function addTask(Request $request, int|string $projectId)
     {
         $user = Auth::user();
@@ -657,6 +727,8 @@ class ProjectController extends Controller
             'predecessor'  => 'nullable|string|max:50',
             'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
             'lag'          => 'nullable|integer',
+            'lead'         => 'nullable|integer',
+            'requires_evidence' => 'nullable|boolean',
         ]);
 
         $subWbs = SubWbs::findOrFail($validated['sub_wbs_id']);
@@ -667,7 +739,7 @@ class ProjectController extends Controller
 
         $divisionId = $validated['divisions_id'] ?? $user->divisions_id ?? Division::first()?->id;
 
-        Wbs::create([
+        $taskObj = Wbs::create([
             'id'           => 'st-' . uniqid(),
             'sub_wbs_id'   => $subWbs->id,
             'divisions_id' => $divisionId,
@@ -679,7 +751,13 @@ class ProjectController extends Controller
             'is_completed' => false,
             'status'       => 'Open',
             'predecessor'  => $validated['predecessor'] ?? null,
+            'dep_type'     => $validated['dep_type'] ?? 'FS',
+            'lag'          => $validated['lag'] ?? 0,
+            'lead'         => $validated['lead'] ?? 0,
+            'requires_evidence' => $validated['requires_evidence'] ?? false,
         ]);
+        
+        $this->cascadeTaskDates($taskObj->id);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
@@ -713,6 +791,8 @@ class ProjectController extends Controller
             'predecessor'  => 'nullable|string|max:50',
             'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
             'lag'          => 'nullable|integer',
+            'lead'         => 'nullable|integer',
+            'requires_evidence' => 'nullable|boolean',
         ]);
 
         $task->name = $validated['name'];
@@ -728,7 +808,21 @@ class ProjectController extends Controller
         if (isset($validated['predecessor'])) {
             $task->predecessor = $validated['predecessor'];
         }
+        if (isset($validated['dep_type'])) {
+            $task->dep_type = $validated['dep_type'];
+        }
+        if (isset($validated['lag'])) {
+            $task->lag = $validated['lag'];
+        }
+        if (isset($validated['lead'])) {
+            $task->lead = $validated['lead'];
+        }
+        if (isset($validated['requires_evidence'])) {
+            $task->requires_evidence = $validated['requires_evidence'];
+        }
         $task->save();
+        
+        $this->cascadeTaskDates($task->id);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
@@ -774,11 +868,11 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         if ($role === 'admin_utama' || $role === 'admin_progres') {
-            abort(403, 'Access Denied: Administrators have read-only access and cannot modify task status.');
+            return back()->with('error', 'Access Denied: Administrators have read-only access and cannot modify task status.');
         }
 
         if ($role === 'pic') {
-            abort(403, 'Access Denied: PICs can only manage schedules. Checklist completion can only be performed by workers of the assigned division.');
+            return back()->with('error', 'Access Denied: PICs can only manage schedules. Checklist completion can only be performed by workers of the assigned division.');
         }
 
         $task = Wbs::with('parentSubWbs.mainWbs.project')->where('id', $taskId)->firstOrFail();
@@ -790,33 +884,88 @@ class ProjectController extends Controller
 
         if ($role === 'worker') {
             if ($project->companies_id != $user->companies_id) {
-                abort(403, 'Access Denied: Workers can only update tasks within their assigned company.');
+                return back()->with('error', 'Access Denied: Workers can only update tasks within their assigned company.');
             }
             
-            $projectAccess = $user->permission_matrix['project_access'] ?? [];
-            if (empty($projectAccess[$projectId]['edit_task'])) {
-                abort(403, 'Access Denied: You do not have permission to edit tasks in this project.');
+            $tasksFeatures = $user->permission_matrix['features']['tasks'] ?? $user->permission_matrix['features']['Tasks'] ?? [];
+            $hasEditTask = collect($tasksFeatures)->map(fn($f) => strtolower($f))->contains('edit task') || collect($tasksFeatures)->map(fn($f) => strtolower($f))->contains('edit_task');
+            if (!$hasEditTask) {
+                return back()->with('error', 'Access Denied: You do not have permission to toggle or edit task progress.');
             }
 
             if ($user->divisions_id && $task->divisions_id != $user->divisions_id) {
                 $taskDivName = strtolower(trim($task->division->divisi ?? ''));
                 $userDivName = strtolower(trim($user->division->divisi ?? ''));
                 if ($taskDivName !== $userDivName && $taskDivName !== 'general' && $taskDivName !== 'internal') {
-                    abort(403, 'Access Denied: You can only update tasks assigned to your division.');
+                    return back()->with('error', 'Access Denied: You can only update tasks assigned to your division.');
                 }
             }
         }
 
         $progress = $request->input('progress');
+
+        // Collect all uploaded files — Inertia forceFormData sends multiple files
+        // as evidence_file (single) or evidence_file_0, evidence_file_1... (multiple)
+        $uploadedFiles = [];
+        if ($request->hasFile('evidence_file')) {
+            $f = $request->file('evidence_file');
+            $uploadedFiles = is_array($f) ? $f : [$f];
+        } else {
+            $count = (int) $request->input('evidence_file_count', 0);
+            for ($i = 0; $i < $count; $i++) {
+                if ($request->hasFile("evidence_file_{$i}")) {
+                    $uploadedFiles[] = $request->file("evidence_file_{$i}");
+                }
+            }
+        }
+        $hasFiles = count($uploadedFiles) > 0;
+        $hasExistingEvidence = $task->evidence_path && $task->evidence_path !== '[]';
+
         if ($progress !== null) {
             $task->progress = max(0, min(100, (int)$progress));
+
+            if ($task->progress == 100 && !$hasFiles && !$hasExistingEvidence) {
+                if ($task->requires_evidence) {
+                    return back()->with('error', 'Evidence file is required to mark task as 100% complete.');
+                }
+            }
+
             $task->is_completed = ($task->progress == 100);
             $task->status = $task->is_completed ? 'Completed' : 'Open';
         } else {
+            if (!$task->is_completed && !$hasFiles && !$hasExistingEvidence) {
+                return back()->with('error', 'Evidence file is required to mark task as complete.');
+            }
+
             $task->is_completed = !$task->is_completed;
             $task->progress = $task->is_completed ? 100 : 0;
             $task->status = $task->is_completed ? 'Completed' : 'Open';
         }
+
+        if ($hasFiles) {
+            $existingPaths = [];
+            $existingNames = [];
+            if ($task->evidence_path) {
+                $decoded = json_decode($task->evidence_path, true);
+                if (is_array($decoded)) {
+                    $existingPaths = $decoded;
+                    $existingNames = json_decode($task->evidence_name, true) ?? [];
+                } else {
+                    $existingPaths = [$task->evidence_path];
+                    $existingNames = [$task->evidence_name ?? 'Bukti'];
+                }
+            }
+
+            foreach ($uploadedFiles as $f) {
+                $path = $f->store('evidence', 'public');
+                $existingPaths[] = $path;
+                $existingNames[] = $f->getClientOriginalName();
+            }
+
+            $task->evidence_path = json_encode(array_values($existingPaths));
+            $task->evidence_name = json_encode(array_values($existingNames));
+        }
+
         $task->save();
 
         app(ProgressService::class)->recalculateProjectProgress($projectId);
@@ -889,7 +1038,10 @@ class ProjectController extends Controller
                 return $query->where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->first();
             }
         } else {
-            // Admin Utama & Admin Progres can view any project
+            // Admin Utama & Admin Progres can view any public project (SuperAdmin views all)
+            if ($role !== 'SuperAdmin') {
+                $query->where('is_private', false);
+            }
             if ($id) {
                 return $query->find($id);
             }
@@ -939,10 +1091,30 @@ class ProjectController extends Controller
                         'progress'    => $st->progress > 0 ? (int)$st->progress : ($st->is_completed ? 100 : 0),
                         'status'      => $st->status ?? 'Open',
                         'predecessor' => $st->predecessor ?? '',
-                        'depType'     => 'FS',
+                        'depType'     => $st->dep_type ?? 'FS',
+                        'lag'         => (int) ($st->lag ?? 0),
+                        'lead'        => (int) ($st->lead ?? 0),
                         'weight'      => (float) ($st->weight ?? 0),
                         'checked'     => (bool) $st->is_completed,
+                        'requiresEvidence' => (bool) $st->requires_evidence,
                         'division'    => $st->division?->divisi ?? 'General',
+                        'evidences'   => $st->evidence_path ? (function() use ($st) {
+                            $decoded = json_decode($st->evidence_path, true);
+                            if (is_array($decoded)) {
+                                $names = json_decode($st->evidence_name, true) ?? [];
+                                return collect($decoded)->map(function($path, $idx) use ($names) {
+                                    return [
+                                        'name' => $names[$idx] ?? 'evidence-'.$idx,
+                                        'previewUrl' => asset('storage/' . $path),
+                                    ];
+                                })->toArray();
+                            } else {
+                                return [[
+                                    'name' => $st->evidence_name ?? 'Bukti',
+                                    'previewUrl' => asset('storage/' . $st->evidence_path)
+                                ]];
+                            }
+                        })() : [],
                     ];
                 })->values()->toArray();
 
@@ -1242,5 +1414,45 @@ class ProjectController extends Controller
             'userRole'       => $role,
             'userDivision'   => $user->division?->divisi ?? null,
         ]);
+    }
+
+    public function togglePrivate(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+        
+        $user = auth()->user();
+        if ($user->role->name !== 'pic' && $user->role->name !== 'SuperAdmin') {
+            abort(403);
+        }
+
+        if ($user->role->name === 'pic') {
+            $features = collect($user->permission_matrix['features']['projects'] ?? [])->map(fn($f) => strtolower($f));
+            if (!$features->contains('private projects') && !$features->contains('private_projects')) {
+                abort(403);
+            }
+            if ($project->project_manager !== $user->id) {
+                abort(403);
+            }
+        }
+
+        $project->update([
+            'is_private' => !$project->is_private,
+        ]);
+
+        return redirect()->back();
+    }
+
+    /**
+     * SuperAdmin: delete any project (including private).
+     */
+    public function superAdminDestroy($id)
+    {
+        $user = Auth::user();
+        if ($user->role->name !== 'SuperAdmin') {
+            abort(403);
+        }
+        $project = Project::findOrFail($id);
+        $project->delete();
+        return redirect('/admin/projects')->with('success', 'Project deleted successfully.');
     }
 }

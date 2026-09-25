@@ -115,4 +115,45 @@ class SuperAdminController extends Controller
             'projects'  => $projects,
         ]);
     }
+
+    public function companiesPage()
+    {
+        $companies = \App\Models\Company::withCount(['projects', 'users'])
+            ->latest()
+            ->get()
+            ->map(fn($c) => [
+                'id'             => $c->id,
+                'name'           => $c->name,
+                'projects_count' => $c->projects_count,
+                'users_count'    => $c->users_count,
+                'created_at'     => $c->created_at?->format('d M Y'),
+            ]);
+
+        return Inertia::render('SuperAdmin/CompaniesPage', [
+            'companies' => $companies,
+        ]);
+    }
+
+    public function allProjectsPage()
+    {
+        $projects = Project::with(['company', 'manager'])
+            ->latest()
+            ->get()
+            ->map(fn($p) => [
+                'id'         => $p->id,
+                'title'      => $p->title,
+                'company'    => $p->company?->name,
+                'is_private' => (bool) $p->is_private,
+                'status'     => $p->status ?? 'Open',
+                'progress'   => $p->progress ?? 0,
+                'start_date' => $p->start?->format('Y-m-d'),
+                'end_date'   => $p->end?->format('Y-m-d'),
+                'created_by' => $p->manager?->username ?? 'System',
+                'created_at' => $p->created_at?->format('d M Y'),
+            ]);
+
+        return Inertia::render('SuperAdmin/AllProjectsPage', [
+            'projects' => $projects,
+        ]);
+    }
 }
