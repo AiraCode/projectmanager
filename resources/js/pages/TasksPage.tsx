@@ -615,6 +615,9 @@ export default function TasksPage() {
     return true;
   });
 
+  const hasFilter = Boolean(search.trim() || filterStatus);
+  const hasProjectTasks = (projectData?.mainJobs || []).length > 0;
+
   const handleExportCSV = () => {
     const headers = ['WBS Code', 'Level', 'Description', 'PIC', 'Status', 'Progress (%)', 'Start Date', 'Finish Date', 'Duration', 'Predecessor'];
     const rows: any[][] = [];
@@ -640,8 +643,8 @@ export default function TasksPage() {
         title="Task Management"
         subtitle={`3-Tier WBS: Main Job → Sub Task (Sub Main Job) → Task (${projectData.name || 'Project'})`}
         actions={
-          <div className="flex items-center gap-3">
-            <span className="text-[12px] text-neutral-500 hidden sm:inline">
+          <div className="flex items-center flex-wrap gap-2.5 sm:gap-3">
+            <span className="text-[12px] text-neutral-500 hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-100 border border-neutral-200/80">
               Role: <strong className="text-neutral-800">{user?.displayRole || user?.role}</strong>
               {isAdmin && <span className="ml-1 text-warning font-semibold">(Read-Only)</span>}
               {isPIC && <span className="ml-1 text-emerald-600 font-semibold">(PIC - Manage & Add Tasks)</span>}
@@ -650,7 +653,7 @@ export default function TasksPage() {
 
             {isWorker && availableProjects.length > 1 && (
               <select
-                className="bg-white border border-neutral-200 text-[12px] font-semibold text-neutral-800 rounded-md px-2 py-1"
+                className="bg-white border border-neutral-200 text-[12px] font-semibold text-neutral-800 rounded-md px-2 py-1 flex-shrink-0"
                 value={projectData.id?.replace('p-', '')}
                 onChange={(e) => router.get(`/tasks?project_id=${e.target.value}`)}
               >
@@ -666,13 +669,13 @@ export default function TasksPage() {
                 size="sm"
                 onClick={() => setShowMainJobModal({ mode: 'create' })}
                 icon={Plus}
-                className="text-[12px] h-[34px]"
+                className="text-[12px] h-[34px] flex-shrink-0"
               >
                 Add Main Task
               </Button>
             )}
             
-            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
+            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200 flex-shrink-0">
               <button
                 onClick={() => setViewMode('checklist')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
@@ -681,7 +684,7 @@ export default function TasksPage() {
                     : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
-                <ListTodo size={14} /> <span className="hidden sm:inline">Checklist View</span>
+                <ListTodo size={14} /> <span>Checklist View</span>
               </button>
               <button
                 onClick={() => setViewMode('table')}
@@ -691,12 +694,12 @@ export default function TasksPage() {
                     : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
-                <TableProperties size={14} /> <span className="hidden sm:inline">Table View</span>
+                <TableProperties size={14} /> <span>Table View</span>
               </button>
             </div>
             
-            <Button variant="outline" size="sm" onClick={handleExportCSV} icon={Download} className="text-[12px] h-[34px]">
-              <span className="hidden sm:inline">Export CSV</span>
+            <Button variant="outline" size="sm" onClick={handleExportCSV} icon={Download} className="text-[12px] h-[34px] flex-shrink-0">
+              Export CSV
             </Button>
           </div>
         }
@@ -744,33 +747,34 @@ export default function TasksPage() {
               {/* Level 1: Main Job Header */}
               <div
                 onClick={() => toggleMJ(mj.id)}
-                className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-neutral-50/70 transition-colors text-left cursor-pointer"
+                className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 py-3.5 hover:bg-neutral-50/70 transition-colors text-left cursor-pointer"
               >
-                <div className="text-neutral-400 flex-shrink-0">
-                  {expandedMJ[mj.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </div>
-                <div className="w-6 h-6 rounded bg-brand text-white flex items-center justify-center flex-shrink-0 shadow-xs">
-                  <span className="text-[10px] font-bold">{mj.code}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[15px] sm:text-[16px] font-black text-neutral-900 truncate">{mj.name}</div>
-                  <div className="text-[12.5px] text-neutral-600 font-bold hidden sm:block mt-0.5">
-                    Main Job Weight: {mj.weight}%
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div className="text-neutral-400 flex-shrink-0 mt-1">
+                    {expandedMJ[mj.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </div>
+                  <div className="w-6 h-6 rounded bg-brand text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
+                    <span className="text-[10px] font-bold">{mj.code}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[15px] sm:text-[16px] font-black text-neutral-900 leading-snug break-words">{mj.name}</div>
+                    <div className="flex items-center gap-2 mt-1 text-[12px] text-neutral-600 font-semibold flex-wrap">
+                      <span>Main Job Weight: <strong className="text-neutral-800 font-bold">{mj.weight}%</strong></span>
+                      <span className="text-neutral-300">•</span>
+                      <span>{mj.subMainJobs.length} Sub Tasks</span>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0 ml-2">
-                  <span className="text-[12px] font-semibold text-neutral-500 hidden sm:inline">
-                    {mj.subMainJobs.length} Sub Tasks
-                  </span>
+                <div className="flex items-center flex-wrap gap-2.5 sm:gap-3 flex-shrink-0 self-start md:self-center pl-9 md:pl-0">
                   <StatusBadge status={mj.status} size="sm" />
-                  <div className="w-16 hidden md:block">
+                  <div className="w-16 hidden sm:block">
                     <ProgressBar value={mj.progress} size="xs" showLabel={false} />
                   </div>
-                  <span className="text-[15px] sm:text-[16px] font-black text-neutral-900 w-12 text-right">{mj.progress}%</span>
+                  <span className="text-[14px] sm:text-[16px] font-black text-neutral-900 w-11 text-right tabular-nums">{mj.progress}%</span>
 
                   {/* PIC can add Sub Task, edit Main Task & delete Main Task */}
                   {isPIC && (
-                    <div className="flex items-center gap-1.5 ml-1" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5 ml-1 flex-wrap" onClick={e => e.stopPropagation()}>
                       <Button
                         variant="outline"
                         size="sm"
@@ -783,7 +787,7 @@ export default function TasksPage() {
                             currentSubCount: mj.subMainJobs.length,
                           });
                         }}
-                        className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300"
+                        className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300 flex-shrink-0"
                         icon={Plus}
                       >
                         Add Sub Task
@@ -799,7 +803,7 @@ export default function TasksPage() {
                           startDate: mj.startDate,
                           finishDate: mj.finishDate
                         })}
-                        className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors"
+                        className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
                         title="Edit Main Task (Name & Weight)"
                       >
                         <Edit2 size={13} />
@@ -807,7 +811,7 @@ export default function TasksPage() {
                       <button
                         type="button"
                         onClick={() => handleDeleteMainJob(mj.id, (mj as any).dbId, mj.name)}
-                        className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors"
+                        className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
                         title="Delete Main Task"
                       >
                         <Trash2 size={13} />
@@ -1000,16 +1004,52 @@ export default function TasksPage() {
       )}
 
       {filteredMJs.length === 0 && (
-        <EmptyState
-          icon={Search}
-          title="No tasks match your filter"
-          description="Try clearing your search keyword or selecting 'All Statuses'."
-          action={
-            <Button variant="outline" size="sm" onClick={() => { setSearch(''); setFilterStatus(''); }}>
-              Clear Filters
-            </Button>
-          }
-        />
+        hasFilter ? (
+          <EmptyState
+            icon={Search}
+            title="No tasks match your filter"
+            description="Try clearing your search keyword or selecting 'All Statuses'."
+            action={
+              <Button variant="outline" size="sm" onClick={() => { setSearch(''); setFilterStatus(''); }}>
+                Clear Filters
+              </Button>
+            }
+          />
+        ) : !hasProjectTasks ? (
+          <EmptyState
+            icon={ListTodo}
+            title="No Tasks in this Project Yet"
+            description={
+              isPIC
+                ? "This project doesn't have any tasks yet. Click 'Add Main Task' to start creating your WBS structure."
+                : "This project does not have any tasks recorded yet."
+            }
+            action={
+              isPIC ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Plus}
+                  onClick={() => setShowMainJobModal({ mode: 'create' })}
+                >
+                  Add Main Task
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : isWorker ? (
+          <EmptyState
+            icon={Shield}
+            title="No Tasks Assigned to Your Division"
+            description={`There are currently no tasks assigned to the "${user?.division || pageProps?.division || 'Worker'}" division in this project.`}
+          />
+        ) : (
+          <EmptyState
+            icon={ListTodo}
+            title="No Tasks Available"
+            description="There are currently no tasks to display."
+          />
+        )
       )}
 
       {/* Modal Add / Edit Main Task (Main Job) */}
@@ -1279,33 +1319,35 @@ function SubMainJobSection({
 }) {
   return (
     <div className="transition-colors">
-      <div className="flex items-center gap-3 pl-6 sm:pl-9 pr-4 py-3 hover:bg-neutral-50/80">
-        <button onClick={onToggle} className="text-neutral-400 hover:text-neutral-600 flex-shrink-0">
-          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-        </button>
-        <div className="w-5 h-5 rounded bg-neutral-200/80 flex items-center justify-center flex-shrink-0">
-          <span className="text-[10px] font-bold text-neutral-700">{smj.code}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[14px] sm:text-[15px] font-bold text-neutral-900 truncate">{smj.name}</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pl-6 sm:pl-9 pr-4 py-3 hover:bg-neutral-50/80 transition-colors">
+        <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+          <button onClick={onToggle} className="text-neutral-400 hover:text-neutral-600 flex-shrink-0 mt-0.5 sm:mt-0">
+            {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          </button>
+          <div className="w-5 h-5 rounded bg-neutral-200/80 flex items-center justify-center flex-shrink-0 mt-0.5 sm:mt-0">
+            <span className="text-[10px] font-bold text-neutral-700">{smj.code}</span>
           </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[12px] text-neutral-600 font-semibold">Sub Task (Sub Main Job) · Weight: {smj.weight}%</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[14px] sm:text-[15px] font-bold text-neutral-900 break-words leading-snug">{smj.name}</span>
+            </div>
+            <div className="flex items-center gap-2 mt-0.5 text-[12px] text-neutral-600 font-semibold flex-wrap">
+              <span>Sub Task (Sub Main Job) · Weight: {smj.weight}%</span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2.5 flex-shrink-0">
+        <div className="flex items-center flex-wrap gap-2.5 flex-shrink-0 self-start sm:self-center pl-8 sm:pl-0">
           <StatusBadge status={smj.status} size="sm" />
-          <span className="text-[13px] sm:text-[14px] font-black text-neutral-800 w-10 text-right">{smj.progress}%</span>
+          <span className="text-[13px] sm:text-[14px] font-black text-neutral-800 tabular-nums">{smj.progress}%</span>
           
           {/* Only PIC can add tasks / delete sub tasks */}
           {isPIC && (
-            <div className="flex items-center gap-1.5 ml-1">
+            <div className="flex items-center gap-1.5 ml-1 flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={onOpenAddModal}
-                className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300"
+                className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300 flex-shrink-0"
                 icon={Plus}
               >
                 Add Task
@@ -1313,7 +1355,7 @@ function SubMainJobSection({
               <button
                 type="button"
                 onClick={onDeleteSubMainJob}
-                className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors"
+                className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
                 title="Delete Sub Task"
               >
                 <Trash2 size={13} />

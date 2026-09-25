@@ -97,12 +97,12 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-      <div>
+    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+      <div className="min-w-0 flex-1">
         <h1 className="text-[20px] lg:text-[22px] font-bold text-neutral-900 tracking-tight leading-tight">{title}</h1>
-        {subtitle && <p className="text-[13px] text-neutral-500 mt-1">{subtitle}</p>}
+        {subtitle && <p className="text-[13px] text-neutral-500 mt-1 break-words">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap flex-shrink-0">{actions}</div>}
+      {actions && <div className="flex items-center gap-2 flex-wrap flex-shrink-0 w-full lg:w-auto justify-start lg:justify-end">{actions}</div>}
     </div>
   );
 }
