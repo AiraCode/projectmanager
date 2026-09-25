@@ -92,7 +92,7 @@ export default function SuperAdminUserManagementPage({
       divisions_id: '',
       permission_matrix: { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
     });
-    setModalOpen(true);
+    setModalOpen(false);
   };
 
   const openEdit = (u: User) => {
