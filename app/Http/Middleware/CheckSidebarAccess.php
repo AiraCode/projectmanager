@@ -20,7 +20,18 @@ class CheckSidebarAccess
             return $next($request);
         }
 
-        $sidebar = $user->permission_matrix['sidebar'] ?? null;
+        $matrix = $user->permission_matrix ?? [];
+        $projectId = $request->query('project_id') ?? $request->route('id');
+        
+        if ($projectId && isset($matrix['is_unified']) && $matrix['is_unified'] === false) {
+            $perProject = $matrix['per_project'][$projectId] ?? null;
+            if ($perProject) {
+                $matrix['sidebar'] = $perProject['sidebar'] ?? [];
+                $matrix['features'] = $perProject['features'] ?? [];
+            }
+        }
+
+        $sidebar = $matrix['sidebar'] ?? null;
         if ($sidebar === null) {
             // Fallback rules if not set
             if ($menuName === 'Budget Management' || $menuName === 'User Management') {
@@ -50,6 +61,21 @@ class CheckSidebarAccess
 
         if ($menuName === 'Project Detail' && in_array($user->role?->name, ['pic', 'admin_utama', 'worker'])) {
             return $next($request);
+        }
+
+        if ($menuName === 'Project List') {
+            $hasMultiple = in_array('Multiple Projects', $user->permission_matrix['features']['projects'] ?? []);
+            
+            $projectAccess = $user->permission_matrix['project_access'] ?? [];
+            $visibleProjects = 0;
+            foreach ($projectAccess as $pid => $access) {
+                if (!empty($access['view_project'])) $visibleProjects++;
+            }
+            $hasMultipleProjectAccess = $visibleProjects > 1;
+
+            if ($hasMultiple || $hasMultipleProjectAccess || in_array($user->role?->name, ['admin_utama', 'admin_progres'])) {
+                return $next($request);
+            }
         }
 
         if (!in_array($menuName, $sidebar)) {

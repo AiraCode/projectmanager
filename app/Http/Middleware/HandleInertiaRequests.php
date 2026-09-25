@@ -37,6 +37,18 @@ class HandleInertiaRequests extends Middleware
     {
         $user = $request->user();
         
+        $permissionMatrix = $user?->permission_matrix ?? [];
+        $projectId = $request->query('project_id') ?? $request->route('id');
+        
+        if ($projectId && isset($permissionMatrix['is_unified']) && $permissionMatrix['is_unified'] === false) {
+            $perProject = $permissionMatrix['per_project'][$projectId] ?? null;
+            if ($perProject) {
+                $permissionMatrix['sidebar'] = $perProject['sidebar'] ?? [];
+                $permissionMatrix['features'] = $perProject['features'] ?? [];
+                $permissionMatrix['data_scope'] = $perProject['data_scope'] ?? 'own_company';
+            }
+        }
+
         return [
             ...parent::share($request),
             'auth' => [
@@ -53,7 +65,7 @@ class HandleInertiaRequests extends Middleware
                     'company'          => $user->company?->name ?? null,
                     'companies_id'     => $user->companies_id,
                     'canCreateProject' => $user->canCreateProject(),
-                    'permission_matrix'=> $user->permission_matrix,
+                    'permission_matrix'=> $permissionMatrix,
                     'isSuperAdmin'     => ($user->role?->name ?? '') === 'SuperAdmin',
                 ] : null,
             ],

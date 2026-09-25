@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
 import { Plus, Edit2, Trash2, Shield, FolderOpen, Search, ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -30,7 +30,6 @@ interface User {
 
 const MODULE_PERMISSIONS = [
   { module: 'Dashboard', sidebarKey: 'Dashboard', features: [] },
-  { module: 'Project List', sidebarKey: 'Project List', featureGroup: 'projects', features: ['create', 'edit', 'delete'] },
   { module: 'Project Detail', sidebarKey: 'Project Detail', features: [] },
   { module: 'Tasks', sidebarKey: 'Tasks', featureGroup: 'tasks', features: ['create', 'edit', 'delete', 'Edit Task'] },
   { module: "Today's Tasks", sidebarKey: "Today's Tasks", features: [] },
@@ -39,7 +38,7 @@ const MODULE_PERMISSIONS = [
   { module: 'S-Curve Report', sidebarKey: 'S-Curve Report', featureGroup: 'reports', features: [] },
   { module: 'Budget Management', sidebarKey: 'Budget Management', featureGroup: 'budget', features: ['create', 'edit', 'delete'] },
   { module: 'Division Progress', sidebarKey: 'Division Progress', features: [] },
-  { module: 'User Management', sidebarKey: 'User Management', features: [] },
+  { module: 'User Management', sidebarKey: 'User Management', featureGroup: 'users', features: ['create', 'edit'] },
 ];
 
 const ROLE_COLORS: Record<string, string> = {
@@ -53,7 +52,9 @@ const ROLE_COLORS: Record<string, string> = {
 export default function SuperAdminUserManagementPage({
   users, companies, divisions, roles, projects
 }: { users: User[]; companies: Company[]; divisions: Division[]; roles: Role[]; projects: Project[] }) {
-
+  const { auth } = usePage<any>().props;
+  const currentUser = auth.user;
+  
   const [search, setSearch]       = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editUser, setEditUser]   = useState<User | null>(null);
@@ -196,8 +197,10 @@ export default function SuperAdminUserManagementPage({
 
   const selectedRoleName = roles.find(r => r.id.toString() === data.roles_id)?.name;
   const isWorkerTarget   = selectedRoleName === 'worker';
+  const isAdminTarget    = selectedRoleName === 'admin_utama' || selectedRoleName === 'admin_progres';
   
-  const showCompany = selectedRoleName === 'worker' || selectedRoleName === 'pic' || selectedRoleName === 'worker_b';
+  // Only SuperAdmin can select company. For PIC, it's auto-inherited on backend, so we hide it.
+  const showCompany = (selectedRoleName === 'worker' || selectedRoleName === 'pic' || selectedRoleName === 'worker_b') && (currentUser?.role?.name === 'SuperAdmin');
   const showDivision = selectedRoleName === 'worker' || selectedRoleName === 'worker_b';
   
   const selectedCompanyId = data.companies_id ? Number(data.companies_id) : null;
@@ -236,7 +239,10 @@ export default function SuperAdminUserManagementPage({
                   {errors.email && <p className="text-red-500 text-[11px] mt-1">{errors.email}</p>}
                 </div>
                 <div>
-                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">Password {editUser && '(blank = keep)'}</label>
+                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                    Password {editUser && '(blank = keep)'}
+                    <span className="block text-[10px] font-normal text-neutral-500 mt-0.5">Min. 8 characters, letters & numbers</span>
+                  </label>
                   <input type="password" value={data.password} onChange={e => setData('password', e.target.value)} required={!editUser} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" />
                 </div>
                 <div>
@@ -267,8 +273,8 @@ export default function SuperAdminUserManagementPage({
               </div>
 
               {/* Global Permission Matrix */}
-              {selectedRoleName && selectedRoleName !== 'SuperAdmin' && (
-                <div className="border border-neutral-200 rounded-2xl overflow-hidden">
+              {selectedRoleName && selectedRoleName !== 'SuperAdmin' && !isAdminTarget && (
+                <div className="border border-neutral-200 rounded-2xl overflow-hidden mt-6 bg-white/50">
                   <div 
                     className="px-4 py-3 flex items-center justify-between border-b border-neutral-100 bg-neutral-50 cursor-pointer hover:bg-neutral-100 transition-colors"
                     onClick={() => setIsGlobalMatrixOpen(!isGlobalMatrixOpen)}
@@ -283,7 +289,8 @@ export default function SuperAdminUserManagementPage({
                   {isGlobalMatrixOpen && (
                     <div className="p-4 space-y-5">
                       {/* Scope & Advanced Project Features */}
-                      <div className="flex flex-wrap gap-6 items-start">
+                      {!isWorkerTarget && (
+                        <div className="flex flex-wrap gap-6 items-start">
                         <div>
                           <h4 className="text-[11px] font-bold text-neutral-600 uppercase tracking-wide mb-2">Data Scope</h4>
                           <div className="flex gap-4 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200 w-fit">
@@ -312,7 +319,8 @@ export default function SuperAdminUserManagementPage({
                             ))}
                           </div>
                         </div>
-                      </div>
+                        </div>
+                      )}
 
                       {/* Unified Module Permissions */}
                       <div>
@@ -328,6 +336,8 @@ export default function SuperAdminUserManagementPage({
                             </thead>
                             <tbody className="divide-y divide-neutral-100">
                               {MODULE_PERMISSIONS.map(mod => {
+                                if (isWorkerTarget && mod.sidebarKey === 'User Management') return null;
+                                
                                 const isView = (data.permission_matrix.sidebar || []).includes(mod.sidebarKey);
                                 return (
                                   <tr key={mod.sidebarKey} className="hover:bg-neutral-50/50">

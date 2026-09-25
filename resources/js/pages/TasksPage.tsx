@@ -425,10 +425,6 @@ export default function TasksPage() {
   const isAuthorizedToCheck = (taskDivision: string) => {
     if (isAdmin || isPIC) return false;
     if (isWorker) {
-      const tasksFeatures = authUser?.permission_matrix?.features?.tasks || authUser?.permission_matrix?.features?.Tasks || [];
-      const hasEditTask = tasksFeatures.some((f: string) => f.toLowerCase() === 'edit task' || f.toLowerCase() === 'edit_task');
-      if (!hasEditTask) return false;
-
       const workerDiv = (authUser?.division ?? '').trim().toLowerCase();
       const targetDiv = (taskDivision ?? '').trim().toLowerCase();
       return workerDiv !== '' && (workerDiv === targetDiv || targetDiv === 'general' || targetDiv === 'internal');
@@ -827,6 +823,7 @@ export default function TasksPage() {
                   {mj.subMainJobs.map(smj => (
                     <SubMainJobSection
                       key={smj.id}
+                      mainJobs={mainJobs}
                       smj={smj}
                       expanded={!!expandedSMJ[smj.id]}
                       onToggle={() => toggleSMJ(smj.id)}
@@ -1262,8 +1259,9 @@ function TodayTaskCard({
 }
 
 function SubMainJobSection({
-  smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onCheck, onProgressChange, onOpenEvidence, onOpenUploadEvidence
+  mainJobs, smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onCheck, onProgressChange, onOpenEvidence, onOpenUploadEvidence
 }: {
+  mainJobs: MainJob[];
   smj: SubMainJob;
   expanded: boolean;
   onToggle: () => void;
@@ -1335,13 +1333,34 @@ function SubMainJobSection({
           ) : (
             smj.subtasks.map(st => {
               const authorized = isAuthorizedToCheck(st.division || smj.pic);
+              
+              // Evaluate predecessor (FS)
+              let predCompleted = true;
+              if (st.predecessor && (!st.depType || st.depType === 'FS')) {
+                let foundPred = false;
+                for (const m of mainJobs) {
+                  for (const s of (m.subMainJobs || [])) {
+                    const pTask = s.subtasks?.find(t => t.id === st.predecessor || t.code === st.predecessor);
+                    if (pTask) {
+                      if (pTask.progress < 100) predCompleted = false;
+                      foundPred = true;
+                      break;
+                    }
+                  }
+                  if (foundPred) break;
+                }
+              }
+
+              const effectivelyAuthorized = authorized && predCompleted;
+
               return (
                 <SubtaskRow
                   key={st.id}
                   st={st}
                   divisi={st.division || smj.pic}
                   isChecked={st.checked || st.progress >= 100}
-                  canCheck={authorized}
+                  canCheck={effectivelyAuthorized}
+                  lockedByPred={authorized && !predCompleted}
                   canEdit={isPIC}
                   onProgressChange={(val) => onProgressChange(st.id, val, authorized, st.name)}
                   onEdit={() => onOpenEditModal(st)}
@@ -1359,12 +1378,13 @@ function SubMainJobSection({
 }
 
 function SubtaskRow({
-  st, divisi, isChecked, canCheck, canEdit, onProgressChange, onEdit, onDelete, onOpenEvidence, onOpenUploadEvidence
+  st, divisi, isChecked, canCheck, lockedByPred, canEdit, onProgressChange, onEdit, onDelete, onOpenEvidence, onOpenUploadEvidence
 }: {
   st: SubSubtask;
   divisi: string;
   isChecked: boolean;
   canCheck: boolean;
+  lockedByPred?: boolean;
   canEdit: boolean;
   onProgressChange: (val: number) => void;
   onEdit: () => void;
@@ -1390,7 +1410,8 @@ function SubtaskRow({
             <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
               Weight {st.weight ?? 100}%
             </span>
-            {!canCheck && <span title="You are not authorized to adjust progress for this task"><Lock size={12} className="text-neutral-300" /></span>}
+            {!canCheck && !lockedByPred && <span title="You are not authorized to adjust progress for this task"><Lock size={12} className="text-neutral-300" /></span>}
+            {lockedByPred && <span title="Locked: Predecessor (FS) is not 100% completed"><Lock size={12} className="text-amber-500" /></span>}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">

@@ -57,7 +57,7 @@ class UserManagementController extends Controller
         $request->validate([
             'username' => 'required|string|max:45',
             'email' => 'required|string|email|max:45|unique:users',
-            'password' => 'required|string|min:6',
+            'password' => 'required|string|min:8|regex:/[a-zA-Z]/|regex:/[0-9]/',
             'roles_id' => 'required|integer|exists:roles,id',
             'companies_id' => 'nullable|integer|exists:companies,id',
             'divisions_id' => 'nullable|integer|exists:divisions,id',
@@ -69,7 +69,11 @@ class UserManagementController extends Controller
 
         // Security enforcement
         if ($user->role?->name === 'pic') {
-            abort(403, 'Access Denied: PICs are not allowed to create users.');
+            $usersFeatures = $user->permission_matrix['features']['users'] ?? [];
+            if (!in_array('create', $usersFeatures)) {
+                abort(403, 'Access Denied: You do not have permission to create users.');
+            }
+            $data['companies_id'] = $user->companies_id; // Force PIC's company
         }
 
         $data['created_by'] = $user->id;
@@ -96,8 +100,10 @@ class UserManagementController extends Controller
                 abort(403, 'Unauthorized to edit this user.');
             }
             
-            // PIC can update project_access, sidebar, and features (except User Management)
-            $request->validate([
+            $usersFeatures = $user->permission_matrix['features']['users'] ?? [];
+            if (!in_array('edit', $usersFeatures)) {
+                // PIC only has restricted access (e.g., to manage project access)
+                $request->validate([
                 'permission_matrix' => 'nullable|array',
             ]);
 
@@ -135,12 +141,13 @@ class UserManagementController extends Controller
             ]);
 
             return redirect()->back()->with('success', 'Project access updated successfully.');
+            }
         }
 
         $request->validate([
             'username' => 'sometimes|required|string|max:45',
             'email' => 'sometimes|required|string|email|max:45|unique:users,email,' . $id,
-            'password' => 'nullable|string|min:6',
+            'password' => 'nullable|string|min:8|regex:/[a-zA-Z]/|regex:/[0-9]/',
             'roles_id' => 'sometimes|required|integer|exists:roles,id',
             'companies_id' => 'nullable|integer|exists:companies,id',
             'divisions_id' => 'nullable|integer|exists:divisions,id',

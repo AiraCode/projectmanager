@@ -381,6 +381,7 @@ class ProjectController extends Controller
             'company_name' => 'nullable|string|max:100',
             'start'        => 'required|date',
             'end'          => 'required|date|after_or_equal:start',
+            'is_private'   => 'nullable|boolean',
         ]);
 
         // Assign company to PIC if not yet set
@@ -409,6 +410,7 @@ class ProjectController extends Controller
             'actual_end'      => $end,
             'progress'        => 0,
             'status'          => 'Open',
+            'is_private'      => $validated['is_private'] ?? false,
         ]);
 
         // Automatically initialize standard 17 Main Jobs WBS template for new project
@@ -886,12 +888,6 @@ class ProjectController extends Controller
             if ($project->companies_id != $user->companies_id) {
                 return back()->with('error', 'Access Denied: Workers can only update tasks within their assigned company.');
             }
-            
-            $tasksFeatures = $user->permission_matrix['features']['tasks'] ?? $user->permission_matrix['features']['Tasks'] ?? [];
-            $hasEditTask = collect($tasksFeatures)->map(fn($f) => strtolower($f))->contains('edit task') || collect($tasksFeatures)->map(fn($f) => strtolower($f))->contains('edit_task');
-            if (!$hasEditTask) {
-                return back()->with('error', 'Access Denied: You do not have permission to toggle or edit task progress.');
-            }
 
             if ($user->divisions_id && $task->divisions_id != $user->divisions_id) {
                 $taskDivName = strtolower(trim($task->division->divisi ?? ''));
@@ -899,6 +895,15 @@ class ProjectController extends Controller
                 if ($taskDivName !== $userDivName && $taskDivName !== 'general' && $taskDivName !== 'internal') {
                     return back()->with('error', 'Access Denied: You can only update tasks assigned to your division.');
                 }
+            }
+        }
+
+        // --- ENFORCE PREDECESSOR RULE (FS) ---
+        if ($task->predecessor && ($task->dep_type === 'FS' || empty($task->dep_type))) {
+            // Find the predecessor task. The predecessor field stores the task ID.
+            $predTask = Wbs::find($task->predecessor);
+            if ($predTask && $predTask->progress < 100) {
+                return back()->with('error', "Cannot start task. Predecessor task '{$predTask->name}' must be 100% completed first.");
             }
         }
 
@@ -934,7 +939,9 @@ class ProjectController extends Controller
             $task->status = $task->is_completed ? 'Completed' : 'Open';
         } else {
             if (!$task->is_completed && !$hasFiles && !$hasExistingEvidence) {
-                return back()->with('error', 'Evidence file is required to mark task as complete.');
+                if ($task->requires_evidence) {
+                    return back()->with('error', 'Evidence file is required to mark task as complete.');
+                }
             }
 
             $task->is_completed = !$task->is_completed;
@@ -1122,7 +1129,7 @@ class ProjectController extends Controller
                     'id'         => 'smj-' . $smj->id,
                     'dbId'       => $smj->id,
                     'code'       => $smjCode,
-                    'name'       => $smj->listName?->name ?? $smj->name ?? '',
+                    'name'       => $smj->name ?? $smj->listName?->name ?? '',
                     'pic'        => $smj->wbsTasks->first()?->division?->divisi ?? 'General',
                     'startDate'  => $smj->start ? $smj->start->format('Y-m-d') : '',
                     'finishDate' => $smj->end ? $smj->end->format('Y-m-d') : '',
@@ -1143,7 +1150,7 @@ class ProjectController extends Controller
                 'id'          => 'mj-' . $mj->id,
                 'dbId'        => $mj->id,
                 'code'        => $mjCode,
-                'name'        => $mj->listName?->name ?? $mj->name ?? '',
+                'name'        => $mj->name ?? $mj->listName?->name ?? '',
                 'weight'      => (float) $mj->percentage,
                 'startDate'   => $mj->start ? $mj->start->format('Y-m-d') : ($mj->actual_start ? $mj->actual_start->format('Y-m-d') : ''),
                 'finishDate'  => $mj->end ? $mj->end->format('Y-m-d') : ($mj->actual_end ? $mj->actual_end->format('Y-m-d') : ''),
