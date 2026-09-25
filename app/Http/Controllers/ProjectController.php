@@ -35,11 +35,36 @@ class ProjectController extends Controller
             $projectAccess = $user->permission_matrix['project_access'] ?? [];
             $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
             
-            $hasProject = Project::where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->exists();
-            if (!$hasProject) {
+            $projectsQuery = Project::where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->with(['manager', 'company']);
+            $projects = $projectsQuery->get();
+            if ($projects->count() === 0) {
                 abort(403, 'Anda belum diberikan akses ke proyek manapun. Silakan hubungi Administrator.');
             }
-            return redirect()->route('tasks.index');
+
+            if ($projects->count() === 1) {
+                return redirect()->route('tasks.index', ['project_id' => $projects->first()->id]);
+            }
+
+            $mappedProjects = $projects->map(function ($p) {
+                return [
+                    'id'               => $p->id,
+                    'name'             => $p->title,
+                    'company'          => $p->company?->name ?? '—',
+                    'manager'          => $p->manager?->username ?? $p->manager?->name ?? '—',
+                    'status'           => $p->status ?? 'Open',
+                    'progress'         => (int) ($p->progress ?? 0),
+                    'planned_progress' => app(\App\Services\WeeklyService::class)->getCurrentPlannedProgress($p->id),
+                    'start_date'       => $p->start ? $p->start->format('Y-m-d') : null,
+                    'end_date'         => $p->end ? $p->end->format('Y-m-d') : null,
+                    'is_private'       => (bool) $p->is_private,
+                ];
+            });
+
+            return Inertia::render('ProjectListPage', [
+                'projects'  => $mappedProjects,
+                'canCreate' => false,
+                'userRole'  => $role,
+            ]);
         }
 
         if ($role === 'pic') {
@@ -47,7 +72,16 @@ class ProjectController extends Controller
             $hasMultiple = collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('multiple projects') || collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('multiple_projects');
             $hasPrivate = collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('private projects') || collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('private_projects');
 
-            $picProjects = Project::where('project_manager', $user->id)->with(['manager', 'company'])->get();
+            $picProjectsQuery = Project::query();
+            if ($user->companies_id) {
+                $picProjectsQuery->where(function ($q) use ($user) {
+                    $q->where('companies_id', $user->companies_id)
+                      ->orWhere('project_manager', $user->id);
+                });
+            } else {
+                $picProjectsQuery->where('project_manager', $user->id);
+            }
+            $picProjects = $picProjectsQuery->with(['manager', 'company'])->get();
 
             if (!$hasMultiple && $picProjects->count() > 0) {
                 return redirect()->route('projects.show', $picProjects->first()->id);
@@ -429,7 +463,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || $project->project_manager != $user->id) {
+        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: Only the PIC of this project can add a Main Task.');
         }
 
@@ -475,7 +509,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || $project->project_manager != $user->id) {
+        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: Only the PIC of this project can modify Main Tasks.');
         }
 
@@ -517,7 +551,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || $project->project_manager != $user->id) {
+        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: Only the PIC of this project can delete Main Tasks.');
         }
 
@@ -545,7 +579,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || $project->project_manager != $user->id) {
+        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: Only the PIC of this project can add a Sub Task.');
         }
 
@@ -602,7 +636,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || $project->project_manager != $user->id) {
+        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: Only the PIC of this project can modify Sub Tasks.');
         }
 
@@ -642,7 +676,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || $project->project_manager != $user->id) {
+        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: Only the PIC of this project can delete Sub Tasks.');
         }
 
@@ -709,7 +743,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || $project->project_manager != $user->id) {
+        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: Only the PIC of this project can add Tasks.');
         }
 
@@ -776,7 +810,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || $project->project_manager != $user->id) {
+        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: Only the PIC of this project can modify Tasks.');
         }
 
@@ -841,7 +875,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || $project->project_manager != $user->id) {
+        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: Only the PIC of this project can delete Tasks.');
         }
 
@@ -981,6 +1015,18 @@ class ProjectController extends Controller
     }
 
     /**
+     * Check if a PIC is authorized to manage a project.
+     * Authorized if they are the direct project_manager OR if the project belongs to their company.
+     */
+    private function isPicAuthorizedForProject($user, $project): bool
+    {
+        if (!$user || !$project) return false;
+        if ($project->project_manager == $user->id) return true;
+        if ($user->companies_id && $project->companies_id == $user->companies_id) return true;
+        return false;
+    }
+
+    /**
      * Helper to resolve project for user based on strict multi-tenant and role rules.
      */
     private function resolveProjectForUser(int|string|null $id = null)
@@ -1003,25 +1049,21 @@ class ProjectController extends Controller
             if ($id) {
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
-                if ($project->project_manager != $user->id || ($user->companies_id && $project->companies_id != $user->companies_id)) {
+                if (!$this->isPicAuthorizedForProject($user, $project)) {
                     abort(403, 'Access Denied: PICs cannot access projects belonging to another company.');
                 }
 
-                // HAPUS ATAU COMMENT BLOK INI:
-                // if ($project->mainWbs->count() === 0) {
-                //     app(ProjectTemplateService::class)->applyTemplateToProject($project);
-                //     $project = $query->find($id);
-                // }
-
                 return $project;
             } else {
-                $project = $query->where('project_manager', $user->id)->first();
-
-                // HAPUS ATAU COMMENT BLOK INI JUGA:
-                // if ($project && $project->mainWbs->count() === 0) {
-                //     app(ProjectTemplateService::class)->applyTemplateToProject($project);
-                //     $project = $query->where('project_manager', $user->id)->first();
-                // }
+                $queryPic = clone $query;
+                if ($user->companies_id) {
+                    $project = $queryPic->where(function ($q) use ($user) {
+                        $q->where('companies_id', $user->companies_id)
+                          ->orWhere('project_manager', $user->id);
+                    })->first();
+                } else {
+                    $project = $queryPic->where('project_manager', $user->id)->first();
+                }
 
                 return $project;
             }
@@ -1227,7 +1269,7 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: You are not authorized to add budget realization entries.');
         }
 
-        if ($role === 'pic' && $project->project_manager != $user->id) {
+        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: You are not the PIC of this project.');
         }
 
@@ -1284,7 +1326,7 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: You are not authorized to delete budget realization entries.');
         }
 
-        if ($role === 'pic' && $project->project_manager != $user->id) {
+        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: You are not the PIC of this project.');
         }
 
@@ -1309,7 +1351,7 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: You are not authorized to update weekly progress.');
         }
 
-        if ($role === 'pic' && $project->project_manager != $user->id) {
+        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: You are not the PIC of this project.');
         }
 
@@ -1437,7 +1479,7 @@ class ProjectController extends Controller
             if (!$features->contains('private projects') && !$features->contains('private_projects')) {
                 abort(403);
             }
-            if ($project->project_manager !== $user->id) {
+            if (!$this->isPicAuthorizedForProject($user, $project)) {
                 abort(403);
             }
         }

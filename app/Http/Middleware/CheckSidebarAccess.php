@@ -25,8 +25,8 @@ class CheckSidebarAccess
         
         if ($projectId && isset($matrix['is_unified']) && $matrix['is_unified'] === false) {
             $perProject = $matrix['per_project'][$projectId] ?? null;
-            if ($perProject) {
-                $matrix['sidebar'] = $perProject['sidebar'] ?? [];
+            if ($perProject && !empty($perProject['sidebar'])) {
+                $matrix['sidebar'] = $perProject['sidebar'];
                 $matrix['features'] = $perProject['features'] ?? [];
             }
         }
@@ -55,6 +55,16 @@ class CheckSidebarAccess
         }
 
         // Special exceptions based on roles (matches Layout.tsx)
+        if ($menuName === 'Dashboard') {
+            if ($user->role?->name === 'worker') {
+                $targetId = $request->query('project_id') ?? $request->route('id');
+                return redirect($targetId ? "/tasks?project_id={$targetId}" : '/tasks');
+            }
+            if (in_array($user->role?->name, ['pic', 'admin_utama'])) {
+                return $next($request);
+            }
+        }
+
         if ($menuName === 'Division Progress' && in_array($user->role?->name, ['admin_progres', 'admin_utama', 'pic'])) {
             return $next($request);
         }
@@ -73,7 +83,7 @@ class CheckSidebarAccess
             }
             $hasMultipleProjectAccess = $visibleProjects > 1;
 
-            if ($hasMultiple || $hasMultipleProjectAccess || in_array($user->role?->name, ['admin_utama', 'admin_progres'])) {
+            if ($hasMultiple || $hasMultipleProjectAccess || in_array($user->role?->name, ['admin_utama', 'admin_progres', 'pic'])) {
                 return $next($request);
             }
         }

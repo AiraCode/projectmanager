@@ -823,7 +823,7 @@ export default function TasksPage() {
                   {mj.subMainJobs.map(smj => (
                     <SubMainJobSection
                       key={smj.id}
-                      mainJobs={mainJobs}
+                      mainJobs={projectData.mainJobs}
                       smj={smj}
                       expanded={!!expandedSMJ[smj.id]}
                       onToggle={() => toggleSMJ(smj.id)}

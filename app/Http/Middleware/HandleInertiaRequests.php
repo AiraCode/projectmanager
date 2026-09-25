@@ -42,11 +42,24 @@ class HandleInertiaRequests extends Middleware
         
         if ($projectId && isset($permissionMatrix['is_unified']) && $permissionMatrix['is_unified'] === false) {
             $perProject = $permissionMatrix['per_project'][$projectId] ?? null;
-            if ($perProject) {
+            if ($perProject && !empty($perProject['sidebar'])) {
                 $permissionMatrix['sidebar'] = $perProject['sidebar'] ?? [];
                 $permissionMatrix['features'] = $perProject['features'] ?? [];
                 $permissionMatrix['data_scope'] = $perProject['data_scope'] ?? 'own_company';
             }
+        }
+
+        if (!isset($permissionMatrix['features']) || !is_array($permissionMatrix['features'])) {
+            $permissionMatrix['features'] = [];
+        }
+        if (!isset($permissionMatrix['features']['tasks']) || !is_array($permissionMatrix['features']['tasks'])) {
+            $permissionMatrix['features']['tasks'] = [];
+        }
+        if (!isset($permissionMatrix['features']['projects']) || !is_array($permissionMatrix['features']['projects'])) {
+            $permissionMatrix['features']['projects'] = [];
+        }
+        if (!isset($permissionMatrix['sidebar']) || !is_array($permissionMatrix['sidebar'])) {
+            $permissionMatrix['sidebar'] = [];
         }
 
         return [

@@ -4,6 +4,7 @@ import Layout from './components/Layout'
 import { AuthProvider } from './context/AuthContext'
 import './index.css'
 
+
 createInertiaApp({
   resolve: name => {
     const pages = import.meta.glob('./pages/**/*.tsx', { eager: true }) as Record<string, any>

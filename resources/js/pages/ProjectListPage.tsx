@@ -27,6 +27,7 @@ export default function ProjectListPage() {
   const isAdminProgres = role === 'admin_progres';
   const isAdminUtama   = role === 'admin_utama';
   const isPIC          = role === 'pic';
+  const isWorker       = role === 'worker';
 
   // Modal create project state (PIC only)
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -154,7 +155,7 @@ function getProjectTitleClasses(title: string) {
             return (
               <Link
                 key={project.id}
-                href={isAdminProgres ? `/scurve?project_id=${project.id}` : `/projects/${project.id}`}
+                href={isAdminProgres ? `/scurve?project_id=${project.id}` : (isWorker ? `/tasks?project_id=${project.id}` : `/projects/${project.id}`)}
                 className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-2xl"
               >
                 <div className="p-4 sm:p-5 h-full flex flex-col justify-between bg-white rounded-2xl border-[2.5px] border-[#0F172A] hover:border-[#1E3A8A] shadow-sm hover:shadow-md transition-all duration-200 group-hover:-translate-y-0.5">
