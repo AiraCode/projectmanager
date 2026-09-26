@@ -502,9 +502,18 @@ export default function TasksPage() {
       router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: clamped }, {
         preserveScroll: true,
         preserveState: true,
-        onSuccess: () => {
+        onSuccess: (page: any) => {
+          const flashError = page?.props?.flash?.error;
+          if (flashError) {
+            setToastMsg(flashError);
+            return;
+          }
           if (clamped === 100) setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
           else setToastMsg(`Task "${taskName}" progress saved (${clamped}%)`);
+        },
+        onError: (errors) => {
+          const msg = Object.values(errors).flat().join(', ');
+          setToastMsg(msg || 'Failed to update progress.');
         }
       });
     }
@@ -551,7 +560,7 @@ export default function TasksPage() {
     }
 
     // If incomplete, mark completed (100%)
-    handleProgressChange(taskId, 100, true, taskName);
+    handleProgressChange(taskId, 100, true, taskName, true);
   };
 
   const confirmUncheck = () => {
@@ -584,10 +593,18 @@ export default function TasksPage() {
       router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: revertProgress }, {
         preserveScroll: true,
         preserveState: true,
+        onSuccess: (page: any) => {
+          const flashError = page?.props?.flash?.error;
+          if (flashError) {
+            setToastMsg(flashError);
+            return;
+          }
+          setToastMsg(`Task "${taskName}" marked as incomplete.`);
+        },
+        onError: () => setToastMsg('Failed to update task status.')
       });
     }
 
-    setToastMsg(`Task "${taskName}" marked as incomplete.`);
     setUncheckConfirm(null);
   };
 
@@ -1150,7 +1167,7 @@ function TodayTaskCard({
   parentSmj: SubMainJob;
   timingStatus: 'active' | 'starting' | 'due' | 'overdue';
   canCheck: boolean;
-  onProgressChange: (val: number) => void;
+  onProgressChange: (val: number, commit?: boolean) => void;
   onOpenEvidence: (evidence: any) => void;
   onOpenUploadEvidence?: (task: SubSubtask) => void;
 }) {
@@ -1273,7 +1290,7 @@ function SubMainJobSection({
   onDeleteSubMainJob: () => void;
   onDeleteTask: (taskId: string, taskName: string) => void;
   onCheck: (id: string, auth: boolean, name: string) => void;
-  onProgressChange: (id: string, progress: number, auth: boolean, name: string) => void;
+  onProgressChange: (id: string, progress: number, auth: boolean, name: string, commit?: boolean) => void;
   onOpenEvidence: (evidence: any) => void;
   onOpenUploadEvidence: (task: SubSubtask) => void;
 }) {
@@ -1362,7 +1379,7 @@ function SubMainJobSection({
                   canCheck={effectivelyAuthorized}
                   lockedByPred={authorized && !predCompleted}
                   canEdit={isPIC}
-                  onProgressChange={(val) => onProgressChange(st.id, val, authorized, st.name)}
+                  onProgressChange={(val, commit) => onProgressChange(st.id, val, authorized, st.name, commit)}
                   onEdit={() => onOpenEditModal(st)}
                   onDelete={() => onDeleteTask(st.id, st.name)}
                   onOpenEvidence={onOpenEvidence}
@@ -1386,7 +1403,7 @@ function SubtaskRow({
   canCheck: boolean;
   lockedByPred?: boolean;
   canEdit: boolean;
-  onProgressChange: (val: number) => void;
+  onProgressChange: (val: number, commit?: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
   onOpenEvidence: (evidence: any) => void;

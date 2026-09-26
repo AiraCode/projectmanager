@@ -10,7 +10,7 @@ class ProgressService
     private function getStatusFromProgress($progress, $currentStatus)
     {
         if ($progress == 100) return 'Completed';
-        if ($progress > 0 && $currentStatus === 'Open') return 'On Track';
+        if ($progress > 0 && ($currentStatus === 'Open' || $currentStatus === 'Completed')) return 'On Track';
         if ($progress == 0 && $currentStatus === 'Completed') return 'Open';
         return $currentStatus;
     }
@@ -97,16 +97,21 @@ class ProgressService
                     if ($wbsTasks->count() > 0) {
                         $totalTaskWeight = (float) $wbsTasks->sum('weight');
                         if ($totalTaskWeight > 0) {
-                            $weightedCompleted = (float) $wbsTasks->where('is_completed', true)->sum('weight');
-                            $subWbs->progress = round(($weightedCompleted / $totalTaskWeight) * 100);
+                            $weightedProgress = (float) $wbsTasks->sum(function ($t) {
+                                $p = $t->progress > 0 ? (float)$t->progress : ($t->is_completed ? 100 : 0);
+                                return ($p / 100) * (float)$t->weight;
+                            });
+                            $subWbs->progress = round(($weightedProgress / $totalTaskWeight) * 100);
                         } else {
-                            $completedCount = $wbsTasks->where('is_completed', true)->count();
-                            $subWbs->progress = round(($completedCount / $wbsTasks->count()) * 100);
+                            $avgProgress = $wbsTasks->avg(function ($t) {
+                                return $t->progress > 0 ? (float)$t->progress : ($t->is_completed ? 100 : 0);
+                            });
+                            $subWbs->progress = round($avgProgress ?? 0);
                         }
 
                         // Update individual Wbs status
                         foreach ($wbsTasks as $wbs) {
-                            $wbsProgress = $wbs->is_completed ? 100 : 0;
+                            $wbsProgress = $wbs->progress > 0 ? (int)$wbs->progress : ($wbs->is_completed ? 100 : 0);
                             $wbs->status = $this->getStatusFromProgress($wbsProgress, $wbs->status);
                             if ($wbs->isDirty('status')) {
                                 $wbs->save();

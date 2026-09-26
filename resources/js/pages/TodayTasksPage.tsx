@@ -258,12 +258,22 @@ export default function TodayTasksPage() {
     });
 
     if (commit && projectData.id) {
-      if (clamped === 100) {
-        setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
-      }
       router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: clamped }, {
         preserveScroll: true,
         preserveState: true,
+        onSuccess: (page: any) => {
+          const flashError = page?.props?.flash?.error;
+          if (flashError) {
+            setToastMsg(flashError);
+            return;
+          }
+          if (clamped === 100) setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
+          else setToastMsg(`Task "${taskName}" progress saved (${clamped}%)`);
+        },
+        onError: (errors) => {
+          const msg = Object.values(errors).flat().join(', ');
+          setToastMsg(msg || 'Failed to update progress.');
+        }
       });
     }
   };
@@ -305,7 +315,7 @@ export default function TodayTasksPage() {
       return;
     }
 
-    handleProgressChange(taskId, 100, true, taskName);
+    handleProgressChange(taskId, 100, true, taskName, true);
   };
 
   const confirmUncheck = () => {

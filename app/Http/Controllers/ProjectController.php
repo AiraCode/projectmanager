@@ -239,7 +239,7 @@ class ProjectController extends Controller
         }
 
         return Inertia::render('TasksPage', [
-            'project'           => $this->transformProjectData($project, $workerDivisionId),
+            'project'           => $this->transformProjectData($project, null),
             'availableProjects' => $availableProjects,
             'userRole'          => $role,
             'division'          => $user->division?->divisi ?? null,
@@ -936,7 +936,7 @@ class ProjectController extends Controller
         if ($task->predecessor && ($task->dep_type === 'FS' || empty($task->dep_type))) {
             // Find the predecessor task. The predecessor field stores the task ID.
             $predTask = Wbs::find($task->predecessor);
-            if ($predTask && $predTask->progress < 100) {
+            if ($predTask && !$predTask->is_completed && $predTask->progress < 100) {
                 return back()->with('error', "Cannot start task. Predecessor task '{$predTask->name}' must be 100% completed first.");
             }
         }
@@ -970,7 +970,7 @@ class ProjectController extends Controller
             }
 
             $task->is_completed = ($task->progress == 100);
-            $task->status = $task->is_completed ? 'Completed' : 'Open';
+            $task->status = $task->is_completed ? 'Completed' : ($task->progress > 0 ? 'On Track' : 'Open');
         } else {
             if (!$task->is_completed && !$hasFiles && !$hasExistingEvidence) {
                 if ($task->requires_evidence) {
