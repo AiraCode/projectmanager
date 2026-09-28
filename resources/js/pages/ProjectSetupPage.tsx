@@ -580,13 +580,7 @@ export default function ProjectSetupPage() {
 
       {/* Guidance & Stats Card */}
       <Card className="p-4 sm:p-5 space-y-4">
-        {/* Informative Guidance Banner */}
-        <div className="p-3.5 rounded-xl bg-brand-light/60 border border-brand-border text-neutral-800 text-[12.5px] leading-relaxed flex items-start gap-3">
-          <HelpCircle size={18} className="text-brand flex-shrink-0 mt-0.5" />
-          <div>
-            <strong className="font-bold text-brand-dark">Panduan Konfigurasi WBS:</strong> Halaman lain saat ini <strong>terkunci</strong> hingga konfigurasi selesai. Template 17 Main Task telah dimuat. Anda dapat menyusun Sub Task, Leaf Task, pembagian divisi, vendor, dan dependensi (FS, SS, FF, SF + jeda). Klik tombol <strong>"Selesaikan & Aktifkan Proyek"</strong> setelah seluruh task tersusun dengan rapi untuk membuka akses seluruh halaman Provis.
-          </div>
-        </div>
+
 
         {/* Metrics Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
