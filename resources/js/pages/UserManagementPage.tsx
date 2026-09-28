@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
 import { PageHeader, Card, Button, Modal, Toast } from '@/components/ui';
 import { Plus, Edit2, Trash2, Shield, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';

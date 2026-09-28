@@ -27,7 +27,6 @@ export interface SubSubtask {
   lag?: number;
   lead?: number;
   evidences?: EvidenceItem[];
-  evidences?: EvidenceItem[];
   prevProgress?: number;
   weight: number;
   checked: boolean;

@@ -3,7 +3,7 @@ import { usePage, router } from '@inertiajs/react';
 import {
   CalendarDays, Search, CheckCircle2,
   AlertCircle, Clock, Filter, Paperclip, X, Eye, Download,
-  Layers, ArrowUpRight, Shield, AlertTriangle, UploadCloud, Edit2, FileText
+  Layers, ArrowUpRight, Shield, AlertTriangle, UploadCloud, Edit2, FileText, Lock
 } from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, EvidenceItem } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';

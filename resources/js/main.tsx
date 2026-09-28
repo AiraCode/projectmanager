@@ -1,6 +1,7 @@
 import { createInertiaApp } from '@inertiajs/react'
 import { createRoot } from 'react-dom/client'
 import Layout from './components/Layout'
+import ErrorBoundary from './components/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
 import './index.css'
 
@@ -13,14 +14,16 @@ createInertiaApp({
     if (name === 'LoginPage' || name === 'SuperAdmin/AdminLoginPage' || name.startsWith('SuperAdmin/')) {
       // Login page and SuperAdmin pages: just render the page directly (no main sidebar layout)
       page.default.layout = page.default.layout
-        ?? ((page: React.ReactNode) => <AuthProvider>{page}</AuthProvider>)
+        ?? ((page: React.ReactNode) => <ErrorBoundary><AuthProvider>{page}</AuthProvider></ErrorBoundary>)
     } else {
       // All other pages: wrap with AuthProvider + Layout
       page.default.layout = page.default.layout
         ?? ((page: React.ReactNode) => (
-          <AuthProvider>
-            <Layout>{page}</Layout>
-          </AuthProvider>
+          <ErrorBoundary>
+            <AuthProvider>
+              <Layout>{page}</Layout>
+            </AuthProvider>
+          </ErrorBoundary>
         ))
     }
 

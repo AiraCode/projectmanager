@@ -179,7 +179,6 @@ export default function WeeklyPage() {
               {visible.map((w) => {
                 const isCurrent = w.week === currentWeekIdx + 1;
                 const hasActual = w.actual > 0;
-                const editVal = editing[w.week];
                 const deviation = hasActual ? (w.actualCumulative - w.plannedCumulative) : null;
                 const isExpanded = !!expandedWeeks[w.week];
                 const weekTasks = tasksByWeek[w.week] || [];
@@ -280,19 +279,7 @@ export default function WeeklyPage() {
 
                       {/* Action */}
                       <td className="px-4 py-3 text-center">
-                        {(!hasActual || editMode[w.week]) && editVal !== undefined && editVal !== '' ? (
-                          <Button
-                            variant={saved[w.week] ? 'secondary' : 'primary'}
-                            size="sm"
-                            loading={saving[w.week]}
-                            onClick={() => handleSave(w.week)}
-                            className="py-1 px-2.5 text-[11px]"
-                          >
-                            {saved[w.week] ? 'Saved ✓' : 'Save'}
-                          </Button>
-                        ) : (
-                          <span className="text-neutral-300 text-[11px]">—</span>
-                        )}
+                        <span className="text-neutral-300 text-[11px]">—</span>
                       </td>
                     </tr>
 
