@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
 import { PageHeader, Card, Button, Modal, Toast } from '@/components/ui';
-import { Plus, Edit2, Trash2, Shield, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Edit2, Trash2, Shield, FolderOpen, ChevronDown, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface Role { id: number; name: string; }
 interface Company { id: number; name: string; }
@@ -62,6 +62,9 @@ export default function UserManagementPage({
   const canCreate = isSuperAdmin || (isPIC && currentUser.permission_matrix?.features?.users?.includes('create'));
   const canEditAny = isSuperAdmin || (isPIC && currentUser.permission_matrix?.features?.users?.includes('edit'));
 
+  const [selectedDomain, setSelectedDomain] = useState<string>('@provis.id');
+  const [isCustomDomain, setIsCustomDomain] = useState<boolean>(false);
+
   const { data, setData, post, put, delete: destroy, processing, errors, reset } = useForm({
     username: '',
     email: '',
@@ -80,6 +83,20 @@ export default function UserManagementPage({
   const openModal = (user: User | null = null) => {
     setEditingUser(user);
     if (user) {
+      if (user.email && user.email.includes('@')) {
+        const atIndex = user.email.lastIndexOf('@');
+        const domain = user.email.slice(atIndex).toLowerCase();
+        if (['@provis.id', '@gmail.com', '@yahoo.com', '@outlook.com'].includes(domain)) {
+          setSelectedDomain(domain);
+          setIsCustomDomain(false);
+        } else {
+          setSelectedDomain('custom');
+          setIsCustomDomain(true);
+        }
+      } else {
+        setSelectedDomain('@provis.id');
+        setIsCustomDomain(false);
+      }
       setData({
         username: user.username,
         email: user.email,
@@ -90,6 +107,8 @@ export default function UserManagementPage({
         permission_matrix: user.permission_matrix || { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
       });
     } else {
+      setSelectedDomain('@provis.id');
+      setIsCustomDomain(false);
       setData({
         username: '',
         email: '',
@@ -264,22 +283,49 @@ export default function UserManagementPage({
     return true;
   });
 
+  const handleDomainChange = (newDomain: string) => {
+    if (newDomain === 'custom') {
+      setSelectedDomain('custom');
+      setIsCustomDomain(true);
+      return;
+    }
+    setSelectedDomain(newDomain);
+    setIsCustomDomain(false);
+    const prefix = data.email && data.email.includes('@') ? data.email.split('@')[0] : data.email;
+    setData('email', prefix ? `${prefix}${newDomain}` : '');
+  };
+
+  const toggleCustomDomain = () => {
+    if (isCustomDomain) {
+      setIsCustomDomain(false);
+      setSelectedDomain('@provis.id');
+      const prefix = data.email && data.email.includes('@') ? data.email.split('@')[0] : data.email;
+      setData('email', prefix ? `${prefix}@provis.id` : '');
+    } else {
+      setIsCustomDomain(true);
+      setSelectedDomain('custom');
+    }
+  };
+
   const handleUsernameChange = (newUsername: string) => {
     if (!editingUser) {
       const cleanPrefix = newUsername.toLowerCase().trim().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
       const prevPrefix = data.username.toLowerCase().trim().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
       
-      if (!data.email || data.email === `${prevPrefix}@provis.id` || data.email === '@provis.id') {
+      if (!data.email || data.email === `${prevPrefix}${selectedDomain}` || data.email === selectedDomain || data.email === '@provis.id') {
         setData({
           ...data,
           username: newUsername,
-          email: cleanPrefix ? `${cleanPrefix}@provis.id` : ''
+          email: cleanPrefix ? (isCustomDomain ? cleanPrefix : `${cleanPrefix}${selectedDomain}`) : ''
         });
         return;
       }
     }
     setData('username', newUsername);
   };
+
+  const isPasswordValid = data.password.length >= 8 && /[a-zA-Z]/.test(data.password) && /[0-9]/.test(data.password);
+  const emailPrefix = data.email && data.email.includes('@') ? data.email.split('@')[0] : data.email;
 
   const renderForm = () => (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -291,29 +337,44 @@ export default function UserManagementPage({
             {errors.username && <p className="text-danger text-[11px] mt-1">{errors.username}</p>}
           </div>
           <div>
-            <label className="block text-[12px] font-bold text-neutral-700 mb-1">Email</label>
-            {(!data.email || data.email.toLowerCase().endsWith('@provis.id')) ? (
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[12px] font-bold text-neutral-700">Email</label>
+              <button 
+                type="button" 
+                onClick={toggleCustomDomain}
+                className="text-[11px] font-semibold text-brand hover:underline transition-colors"
+              >
+                {isCustomDomain ? '← Gunakan @provis.id' : 'Ganti domain'}
+              </button>
+            </div>
+            {!isCustomDomain ? (
               <div className="flex rounded-lg border border-neutral-300 focus-within:ring-1 focus-within:ring-brand focus-within:border-brand overflow-hidden bg-white">
                 <input 
                   type="text" 
-                  value={data.email ? data.email.replace(/@provis\.id$/i, '') : ''} 
+                  value={emailPrefix} 
                   onChange={e => {
                     let val = e.target.value.trim();
-                    if (val.toLowerCase().endsWith('@provis.id')) {
-                      val = val.slice(0, -10);
-                    }
                     if (val.includes('@')) {
                       val = val.split('@')[0];
                     }
-                    setData('email', val ? `${val}@provis.id` : '');
+                    setData('email', val ? `${val}${selectedDomain}` : '');
                   }} 
                   required 
-                  placeholder="username / email"
+                  placeholder="nama.user" 
                   className="w-full border-none px-3 py-2 text-[13px] focus:outline-none focus:ring-0 text-neutral-800 placeholder-neutral-400 bg-transparent" 
                 />
-                <span className="inline-flex items-center px-3 bg-neutral-100 text-neutral-600 text-[13px] font-semibold border-l border-neutral-200 select-none">
-                  @provis.id
-                </span>
+                <select 
+                  value={selectedDomain} 
+                  onChange={e => handleDomainChange(e.target.value)}
+                  className="bg-neutral-100 text-neutral-700 text-[12px] font-bold border-l border-neutral-200 px-2 py-2 cursor-pointer focus:outline-none hover:bg-neutral-200 transition-colors"
+                  title="Pilih domain email"
+                >
+                  <option value="@provis.id">@provis.id (Default)</option>
+                  <option value="@gmail.com">@gmail.com</option>
+                  <option value="@yahoo.com">@yahoo.com</option>
+                  <option value="@outlook.com">@outlook.com</option>
+                  <option value="custom">Domain Lain...</option>
+                </select>
               </div>
             ) : (
               <input 
@@ -321,6 +382,7 @@ export default function UserManagementPage({
                 value={data.email} 
                 onChange={e => setData('email', e.target.value)} 
                 required 
+                placeholder="nama@domainlain.com" 
                 className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" 
               />
             )}
@@ -328,19 +390,41 @@ export default function UserManagementPage({
           </div>
           <div>
             <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Password {editingUser && '(Leave blank to keep)'}
-              <span className="block text-[10px] font-normal text-neutral-500 mt-0.5">Min. 8 characters, 1 letter, 1 number</span>
+              Password {editingUser ? '(Kosongkan jika tidak diubah)' : ''}
             </label>
             <input 
               type="password" 
               value={data.password} 
               onChange={e => setData('password', e.target.value)} 
               required={!editingUser} 
-              placeholder={!editingUser ? "Min 8 chars, 1 letter, 1 number" : "Leave blank to keep current"}
+              placeholder={editingUser ? "Kosongkan jika tidak diubah" : "Masukkan password"}
               pattern="^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$"
-              title="Password must contain at least 8 characters, including 1 letter and 1 number."
-              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" 
+              title="Minimal 8 karakter, kombinasi huruf dan angka"
+              className={`w-full border rounded-lg px-3 py-2 text-[13px] focus:outline-none transition-colors ${
+                data.password.length > 0
+                  ? isPasswordValid
+                    ? 'border-emerald-400 focus:ring-1 focus:ring-emerald-400'
+                    : 'border-red-400 focus:ring-1 focus:ring-red-400'
+                  : 'border-neutral-300 focus:ring-1 focus:ring-brand focus:border-brand'
+              }`} 
             />
+            {data.password.length > 0 && (
+              <p className={`text-[11.5px] font-medium mt-1.5 flex items-center gap-1.5 transition-colors ${
+                isPasswordValid ? 'text-emerald-600' : 'text-red-500'
+              }`}>
+                {isPasswordValid ? (
+                  <>
+                    <CheckCircle2 size={13} className="shrink-0" />
+                    <span>Password sudah memenuhi syarat (min. 8 karakter, huruf & angka)</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle size={13} className="shrink-0" />
+                    <span>Belum memenuhi syarat: min. 8 karakter, harus ada huruf dan angka</span>
+                  </>
+                )}
+              </p>
+            )}
             {errors.password && <p className="text-danger text-[11px] mt-1">{errors.password}</p>}
           </div>
           <div>
@@ -597,6 +681,8 @@ export default function UserManagementPage({
                   onClick={() => {
                     setViewMode('create');
                     setEditingUser(null);
+                    setSelectedDomain('@provis.id');
+                    setIsCustomDomain(false);
                     setData({
                       username: '', email: '', password: '', roles_id: '', companies_id: '', divisions_id: '',
                       permission_matrix: { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
