@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePage, Link, router } from '@inertiajs/react';
 import {
   FolderOpen, Plus, Calendar, Layers, ChevronDown, ChevronRight,
   Edit2, Trash2, Link2, CheckCircle2, AlertTriangle, ArrowLeft,
   Sparkles, Shield, Clock, HelpCircle, Save, Check, X, Search,
-  BarChart2, CheckSquare, Lock
+  BarChart2, CheckSquare, Lock, Info
 } from 'lucide-react';
 import { PageHeader, Card, Button, Modal, formatDateDisplay } from '@/components/ui';
 
@@ -338,6 +338,20 @@ export default function ProjectSetupPage() {
     d.setDate(d.getDate() + Math.max(1, duration) - 1);
     return d.toISOString().slice(0, 10);
   };
+
+  useEffect(() => {
+    if (taskModal.isOpen && taskForm.predecessor_wbs_id) {
+      const newStart = calcStartFromPredecessor(
+        taskForm.predecessor_wbs_id,
+        taskForm.dep_type,
+        taskForm.lag,
+        taskForm.duration
+      );
+      if (newStart !== taskForm.start) {
+        setTaskForm(prev => ({ ...prev, start: newStart }));
+      }
+    }
+  }, [taskForm.predecessor_wbs_id, taskForm.dep_type, taskForm.lag, taskForm.duration, taskModal.isOpen]);
 
   // Leaf Task Add / Edit Handlers
   const openAddTask = (subId: number) => {
@@ -991,7 +1005,7 @@ export default function ProjectSetupPage() {
                 type="text"
                 value={mainForm.name}
                 onChange={e => setMainForm({ ...mainForm, name: e.target.value })}
-                placeholder="e.g. SIPIL WORKS, PRODUCTION MACHINE, dll"
+                placeholder="e.g. CIVIL WORKS, PRODUCTION MACHINE, dll"
                 className="w-full px-3.5 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
                 required
               />
@@ -1066,12 +1080,17 @@ export default function ProjectSetupPage() {
       )}
 
       {/* Modal Add / Edit Sub Task */}
-      {subModal.isOpen && (
-        <Modal
-          title={subModal.mode === 'add' ? 'Tambah Sub Task Baru' : 'Edit Sub Task'}
-          onClose={() => setSubModal({ isOpen: false, mode: 'add' })}
-          size="md"
-        >
+      {subModal.isOpen && (() => {
+        const parentMain = proj.mainWbs?.find(m => m.id === (subModal.parentId || subModal.item?.main_wbs_id));
+        const mainStart = parentMain?.start || '';
+        const mainEnd = parentMain?.end || '';
+
+        return (
+          <Modal
+            title={subModal.mode === 'add' ? 'Tambah Sub Task Baru' : 'Edit Sub Task'}
+            onClose={() => setSubModal({ isOpen: false, mode: 'add' })}
+            size="md"
+          >
           <form onSubmit={handleSaveSub} className="space-y-4">
             {actionError && (
               <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold">
@@ -1099,6 +1118,8 @@ export default function ProjectSetupPage() {
                 <input
                   type="date"
                   value={subForm.start}
+                  min={mainStart}
+                  max={mainEnd}
                   onChange={e => {
                     const newStart = e.target.value;
                     const nextForm = { ...subForm, start: newStart };
@@ -1117,7 +1138,8 @@ export default function ProjectSetupPage() {
                 <input
                   type="date"
                   value={subForm.end}
-                  min={getMinEndDate(subForm.start)}
+                  min={getMinEndDate(subForm.start) || mainStart}
+                  max={mainEnd}
                   onChange={e => setSubForm({ ...subForm, end: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
                 />
@@ -1143,7 +1165,8 @@ export default function ProjectSetupPage() {
             </div>
           </form>
         </Modal>
-      )}
+        );
+      })()}
 
       {/* Modal Add / Edit Leaf Task (WBS) */}
       {taskModal.isOpen && (() => {
@@ -1152,6 +1175,14 @@ export default function ProjectSetupPage() {
         // Is a predecessor selected?
         const hasPredecessor = !!taskForm.predecessor_wbs_id;
         const selectedPred = hasPredecessor ? allLeafTasks.find(t => String(t.id) === taskForm.predecessor_wbs_id) : null;
+        
+        let parentSub: SubWbs | undefined;
+        for (const m of (proj.mainWbs || [])) {
+          const s = m.subWbs?.find(s => s.id === (taskModal.parentId || taskModal.item?.sub_wbs_id));
+          if (s) { parentSub = s; break; }
+        }
+        const minStart = parentSub?.start || proj.start || '';
+        const maxEnd = parentSub?.end || proj.end || '';
 
         return (
           <Modal
@@ -1221,6 +1252,8 @@ export default function ProjectSetupPage() {
                   <input
                     type="date"
                     value={taskForm.start}
+                    min={minStart}
+                    max={maxEnd}
                     onChange={e => setTaskForm({ ...taskForm, start: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
                     required
@@ -1444,9 +1477,28 @@ export default function ProjectSetupPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
-                    Tipe Ketergantungan <span className="text-red-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11.5px] font-bold text-neutral-700">
+                      Tipe Ketergantungan <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative group">
+                      <Info size={14} className="text-brand cursor-help" />
+                      <div className="pointer-events-none absolute bottom-full right-[-10px] mb-2 w-[280px] opacity-0 group-hover:opacity-100 transition-opacity z-10 p-3 bg-neutral-800 text-white text-[11px] rounded-xl shadow-xl leading-relaxed">
+                        <div className="font-bold text-[12px] mb-2 border-b border-neutral-600 pb-1">Panduan Relasi (Dependency)</div>
+                        <ul className="space-y-2">
+                          <li><strong className="text-emerald-400">FS (Finish-to-Start):</strong> Task B mulai setelah Task A selesai. <br/><span className="text-neutral-400 text-[10.5px] italic">Contoh: Pekerjaan Plesteran mulai setelah Dinding selesai.</span></li>
+                          <li><strong className="text-blue-400">SS (Start-to-Start):</strong> Task B mulai bersamaan dengan Task A.</li>
+                          <li><strong className="text-purple-400">FF (Finish-to-Finish):</strong> Task B selesai bersamaan dengan Task A.</li>
+                          <li><strong className="text-orange-400">SF (Start-to-Finish):</strong> Task B selesai setelah Task A mulai.</li>
+                        </ul>
+                        <div className="mt-2 pt-2 border-t border-neutral-600">
+                          <strong className="text-yellow-400">Jeda (Lag):</strong> Waktu tunggu (hari).<br/>
+                          <span className="text-neutral-400 text-[10px]">Positif (+) = menunda mulai, Negatif (-) = mulai lebih awal (percepatan).</span>
+                        </div>
+                        <div className="absolute top-full right-3 border-4 border-transparent border-t-neutral-800" />
+                      </div>
+                    </div>
+                  </div>
                   <select
                     value={depForm.dependency_type}
                     onChange={e => setDepForm({ ...depForm, dependency_type: e.target.value as any })}

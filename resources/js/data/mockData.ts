@@ -11,6 +11,14 @@ export interface EvidenceItem {
   url?: string;
 }
 
+export interface DependencyItem {
+  id: number;
+  predecessor_wbs_id: string;
+  predecessor_name: string;
+  dependency_type: 'FS' | 'SS' | 'FF' | 'SF';
+  lag_days: number;
+}
+
 export interface SubSubtask {
   id: string;
   code: string;
@@ -26,6 +34,7 @@ export interface SubSubtask {
   depType?: DependencyType;
   lag?: number;
   lead?: number;
+  dependencies?: DependencyItem[];
   evidences?: EvidenceItem[];
   prevProgress?: number;
   weight: number;

@@ -4,7 +4,7 @@ import {
   Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square,
   Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties,
   Download, AlertCircle, AlertTriangle, CheckCircle2, Clock, UploadCloud,
-  FileText, Sparkles, X, Eye, CalendarDays, Sliders, Paperclip
+  FileText, Sparkles, X, Eye, CalendarDays, Sliders, Paperclip, Link2
 } from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyType, EvidenceItem } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
@@ -132,6 +132,26 @@ export default function TasksPage() {
   } | null>(null);
   const [todaySectionOpen, setTodaySectionOpen] = useState(true);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Manage Dependencies State
+  const [depModal, setDepModal] = useState<{ isOpen: boolean; task?: SubSubtask }>({ isOpen: false });
+  const [depForm, setDepForm] = useState({ predecessor_wbs_id: '', dependency_type: 'FS' as DependencyType, lag_days: 0 });
+  const [actionError, setActionError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Sync depModal task data when projectData updates via Inertia
+  useEffect(() => {
+    if (depModal.isOpen && depModal.task) {
+      const updatedTask = projectData.mainJobs
+        .flatMap(mj => mj.subMainJobs)
+        .flatMap(smj => smj.subtasks)
+        .find(st => st.id === depModal.task!.id);
+      
+      if (updatedTask && JSON.stringify(updatedTask.dependencies) !== JSON.stringify(depModal.task.dependencies)) {
+        setDepModal(prev => ({ ...prev, task: updatedTask }));
+      }
+    }
+  }, [projectData, depModal.isOpen, depModal.task?.id]);
 
   const handleSaveEvidence = (taskId: string, newEvidences: EvidenceItem[], completeTo100: boolean = false, rawFiles?: File[]) => {
     if (!projectData.id) return;
@@ -421,6 +441,43 @@ export default function TasksPage() {
     });
   };
 
+  const handleOpenDepModal = (task: SubSubtask) => {
+    setActionError('');
+    setDepForm({ predecessor_wbs_id: '', dependency_type: 'FS', lag_days: 0 });
+    setDepModal({ isOpen: true, task });
+  };
+
+  const handleAddDependency = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!depModal.task || !depForm.predecessor_wbs_id) return;
+
+    setSubmitting(true);
+    setActionError('');
+    router.post(`/projects/${projectData.id}/tasks/${depModal.task.id}/dependencies`, {
+      predecessor_wbs_id: depForm.predecessor_wbs_id,
+      dependency_type: depForm.dependency_type,
+      lag_days: depForm.lag_days,
+    }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setDepForm({ predecessor_wbs_id: '', dependency_type: 'FS', lag_days: 0 });
+        setSubmitting(false);
+        // We let Inertia handle the props update which will flow into projectData
+      },
+      onError: (errors) => {
+        setActionError(Object.values(errors)[0] as string || 'Gagal menambahkan ketergantungan');
+        setSubmitting(false);
+      }
+    });
+  };
+
+  const handleRemoveDependency = (depId: number) => {
+    if (!confirm('Hapus relasi ketergantungan ini?')) return;
+    router.delete(`/projects/${projectData.id}/tasks/${depModal.task?.id}/dependencies/${depId}`, {
+      preserveScroll: true,
+    });
+  };
+
   // Checklist authorization:
   // - Admin (Utama & Progres): FALSE (strictly read-only)
   // - PIC: FALSE (PIC CANNOT check tasks, only manages and adds tasks)
@@ -467,7 +524,7 @@ export default function TasksPage() {
     // REQUIREMENT: Evidence attachment is MANDATORY (required) to complete task (100%)
     if (isCompleted && currentTask && (!currentTask.evidences || currentTask.evidences.length === 0)) {
       if (currentTask.requiresEvidence) {
-        setToastMsg(`Bukti (evidence) WAJIB dilampirkan sebelum menyelesaikan task "${taskName}" (100%).`);
+        setToastMsg(`Bukti (evidence) diperlukan sebelum menyelesaikan task "${taskName}" (100%).`);
         if (commit) {
           setUploadEvidenceTask({
             task: currentTask,
@@ -869,6 +926,7 @@ export default function TasksPage() {
                       onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, parentSmj: smj, task })}
                       onDeleteSubMainJob={() => handleDeleteSubMainJob(mj.id, smj.id, (smj as any).dbId, smj.name)}
                       onDeleteTask={(taskId, taskName) => handleDeleteSubtask(smj.id, taskId, taskName)}
+                      onManageDependencies={handleOpenDepModal}
                       onCheck={handleCheck}
                       onProgressChange={handleProgressChange}
                       onOpenEvidence={(ev) => setEvidencePreview(ev)}
@@ -972,7 +1030,54 @@ export default function TasksPage() {
                               <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.finishDate)}</td>
                               <td className="px-4 py-2 text-right text-neutral-600">{st.duration}d</td>
                               <td className="px-4 py-2 font-mono text-[11.5px] text-neutral-500">
-                                {st.predecessor ? `${st.predecessor} (${st.depType || 'FS'}${st.lag ? `+${st.lag}` : ''})` : '—'}
+                                {st.dependencies && st.dependencies.length > 0 ? (
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {st.dependencies.map(dep => (
+                                      <span key={dep.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type})`}>
+                                        <Link2 size={9} />
+                                        <span>{dep.dependency_type}</span>
+                                      </span>
+                                    ))}
+                                    {isPIC && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenDepModal(st)}
+                                        className="p-0.5 rounded text-neutral-400 hover:text-brand"
+                                        title="Kelola Ketergantungan"
+                                      >
+                                        <Link2 size={11} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : st.predecessor ? (
+                                  <div className="flex items-center gap-1">
+                                    <span>{st.predecessor} ({st.depType || 'FS'}{st.lag ? `+${st.lag}` : ''})</span>
+                                    {isPIC && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenDepModal(st)}
+                                        className="p-0.5 rounded text-neutral-400 hover:text-brand"
+                                        title="Kelola Ketergantungan"
+                                      >
+                                        <Link2 size={11} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1">
+                                    <span>—</span>
+                                    {isPIC && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenDepModal(st)}
+                                        className="p-0.5 rounded text-neutral-400 hover:text-brand"
+                                        title="Kelola Ketergantungan"
+                                      >
+                                        <Link2 size={11} />
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </td>
                               {/* Attachment / Bukti Column */}
                               <td className="px-4 py-2 text-center whitespace-nowrap">
@@ -1197,6 +1302,20 @@ export default function TasksPage() {
         />
       )}
 
+      {/* Manage Dependencies Modal */}
+      <ManageDependenciesModal
+        isOpen={depModal.isOpen}
+        task={depModal.task}
+        allSubtasks={projectData.mainJobs.flatMap(mj => mj.subMainJobs).flatMap(smj => smj.subtasks)}
+        depForm={depForm}
+        setDepForm={setDepForm}
+        onClose={() => setDepModal({ isOpen: false })}
+        onAddDependency={handleAddDependency}
+        onRemoveDependency={handleRemoveDependency}
+        submitting={submitting}
+        actionError={actionError}
+      />
+
       {/* Action Toast Feedback */}
       {toastMsg && (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
@@ -1316,7 +1435,7 @@ function TodayTaskCard({
                 className="inline-flex items-center gap-1 text-amber-700 font-bold hover:underline"
               >
                 <UploadCloud size={12} />
-                Upload Bukti (Wajib)
+                Upload Bukti
               </button>
             )
           )}
@@ -1327,7 +1446,7 @@ function TodayTaskCard({
 }
 
 function SubMainJobSection({
-  mainJobs, smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onCheck, onProgressChange, onOpenEvidence, onOpenUploadEvidence
+  mainJobs, smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onManageDependencies, onCheck, onProgressChange, onOpenEvidence, onOpenUploadEvidence
 }: {
   mainJobs: MainJob[];
   smj: SubMainJob;
@@ -1340,6 +1459,7 @@ function SubMainJobSection({
   onOpenEditModal: (task: SubSubtask) => void;
   onDeleteSubMainJob: () => void;
   onDeleteTask: (taskId: string, taskName: string) => void;
+  onManageDependencies: (task: SubSubtask) => void;
   onCheck: (id: string, auth: boolean, name: string) => void;
   onProgressChange: (id: string, progress: number, auth: boolean, name: string, commit?: boolean) => void;
   onOpenEvidence: (evidence: any) => void;
@@ -1421,6 +1541,24 @@ function SubMainJobSection({
                 }
               }
 
+              if (predCompleted && st.dependencies && st.dependencies.length > 0) {
+                for (const dep of st.dependencies) {
+                  if (!dep.dependency_type || dep.dependency_type === 'FS') {
+                    for (const m of mainJobs) {
+                      for (const s of (m.subMainJobs || [])) {
+                        const pTask = s.subtasks?.find(t => t.id === dep.predecessor_wbs_id || (t as any).dbId === dep.predecessor_wbs_id);
+                        if (pTask && pTask.progress < 100) {
+                          predCompleted = false;
+                          break;
+                        }
+                      }
+                      if (!predCompleted) break;
+                    }
+                  }
+                  if (!predCompleted) break;
+                }
+              }
+
               const effectivelyAuthorized = authorized && predCompleted;
 
               return (
@@ -1434,6 +1572,7 @@ function SubMainJobSection({
                   canEdit={isPIC}
                   onProgressChange={(val, commit) => onProgressChange(st.id, val, authorized, st.name, commit)}
                   onEdit={() => onOpenEditModal(st)}
+                  onManageDependencies={() => onManageDependencies(st)}
                   onDelete={() => onDeleteTask(st.id, st.name)}
                   onOpenEvidence={onOpenEvidence}
                   onOpenUploadEvidence={() => onOpenUploadEvidence(st)}
@@ -1448,7 +1587,7 @@ function SubMainJobSection({
 }
 
 function SubtaskRow({
-  st, divisi, isChecked, canCheck, lockedByPred, canEdit, onProgressChange, onEdit, onDelete, onOpenEvidence, onOpenUploadEvidence
+  st, divisi, isChecked, canCheck, lockedByPred, canEdit, onProgressChange, onEdit, onManageDependencies, onDelete, onOpenEvidence, onOpenUploadEvidence
 }: {
   st: SubSubtask;
   divisi: string;
@@ -1458,6 +1597,7 @@ function SubtaskRow({
   canEdit: boolean;
   onProgressChange: (val: number, commit?: boolean) => void;
   onEdit: () => void;
+  onManageDependencies: () => void;
   onDelete: () => void;
   onOpenEvidence: (evidence: any) => void;
   onOpenUploadEvidence: () => void;
@@ -1480,8 +1620,24 @@ function SubtaskRow({
             <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
               Weight {st.weight ?? 100}%
             </span>
-            {!canCheck && !lockedByPred && <span title="You are not authorized to adjust progress for this task"><Lock size={12} className="text-neutral-300" /></span>}
-            {lockedByPred && <span title="Locked: Predecessor (FS) is not 100% completed"><Lock size={12} className="text-amber-500" /></span>}
+            {!canCheck && !lockedByPred && (
+              <span className="relative group cursor-help">
+                <Lock size={12} className="text-neutral-300" />
+                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
+                  Anda tidak memiliki otoritas untuk mengubah progres task ini.
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
+                </div>
+              </span>
+            )}
+            {lockedByPred && (
+              <span className="relative group cursor-help">
+                <Lock size={12} className="text-amber-500" />
+                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
+                  Terkunci: Pekerjaan sebelumnya (Predecessor) belum selesai 100%.
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
+                </div>
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
@@ -1498,13 +1654,26 @@ function SubtaskRow({
                 {st.daysLeft} days left
               </span>
             )}
-            {st.predecessor && (
+            {st.dependencies && st.dependencies.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1">
+                {st.dependencies.map(dep => (
+                  <span
+                    key={dep.id}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                    title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type}, Lag: ${dep.lag_days}d)`}
+                  >
+                    <Link2 size={10} />
+                    <span>{dep.predecessor_name} ({dep.dependency_type})</span>
+                  </span>
+                ))}
+              </div>
+            ) : st.predecessor ? (
               <span className="font-medium text-neutral-600">
                 Pred: {st.predecessor} ({st.depType || 'FS'}
                 {st.lag ? ` +${st.lag}d lag` : ''}
                 {st.lead ? ` -${st.lead}d lead` : ''})
               </span>
-            )}
+            ) : null}
 
             {/* Evidence attachment indicator & upload button */}
             {(st.evidences && st.evidences.length > 0) ? (
@@ -1538,10 +1707,10 @@ function SubtaskRow({
                   type="button"
                   onClick={onOpenUploadEvidence}
                   className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
-                  title="Upload bukti penyelesaian (wajib untuk 100%)"
+                  title="Upload bukti penyelesaian"
                 >
                   <UploadCloud size={11} className="text-amber-600" />
-                  <span>Upload Bukti (Wajib)</span>
+                  <span>Upload Bukti</span>
                 </button>
               )
             )}
@@ -1582,6 +1751,9 @@ function SubtaskRow({
         {/* Edit / Delete: PIC only */}
         {canEdit && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+            <button onClick={onManageDependencies} className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Kelola Ketergantungan (Predecessor)">
+              <Link2 size={14} />
+            </button>
             <button onClick={onEdit} className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Edit Task (Name & Weight)">
               <Edit2 size={14} />
             </button>
@@ -2298,8 +2470,9 @@ function AddSubtaskModal({
       onClose={onClose}
       size="md"
     >
-      <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
-        {/* Task Name */}
+      <form onSubmit={handleSubmit} className="flex flex-col">
+        <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+          {/* Task Name */}
         <div>
           <label className="block text-[12px] font-bold text-neutral-700 mb-1">
             Task Description <span className="text-danger">*</span>
@@ -2360,74 +2533,7 @@ function AddSubtaskModal({
           </div>
         </div>
 
-        {/* Predecessor (Full Width) */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Predecessor (WBS Task / Sub-sub Task)
-          </label>
-          <SearchablePredecessorSelect
-            value={predecessor}
-            onChange={setPredecessor}
-            availableSubMainJobs={availableSubMainJobs}
-            currentTaskId={initialData?.id}
-            currentTaskCode={initialData?.code}
-          />
-        </div>
 
-        {/* Dependency Type (Full Width) */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Dependency Type
-          </label>
-          <select
-            value={depType}
-            onChange={e => setDepType(e.target.value as DependencyType)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
-          >
-            <option value="FS">Finish-to-Start (FS)</option>
-            <option value="SS">Start-to-Start (SS)</option>
-            <option value="FF">Finish-to-Finish (FF)</option>
-            <option value="SF">Start-to-Finish (SF)</option>
-          </select>
-        </div>
-        
-        {/* Lag and Lead */}
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-100">
-          <div>
-            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Lag (Days)
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={lag}
-              onChange={e => {
-                const v = e.target.value;
-                setLag(v);
-                if (parseInt(v) > 0) setLead('0');
-              }}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
-              placeholder="0"
-            />
-          </div>
-          <div>
-            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Lead (Days)
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={lead}
-              onChange={e => {
-                const v = e.target.value;
-                setLead(v);
-                if (parseInt(v) > 0) setLag('0');
-              }}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
-              placeholder="0"
-            />
-          </div>
-        </div>
 
         {/* Evidence Requirement */}
         <div className="pt-2 border-t border-neutral-100">
@@ -2445,8 +2551,10 @@ function AddSubtaskModal({
            </label>
         </div>
 
+        </div>
+
         {/* Action Buttons */}
-        <div className="flex justify-end gap-2 pt-4">
+        <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-neutral-100 shrink-0">
           <Button variant="outline" size="sm" type="button" onClick={onClose}>
             Cancel
           </Button>
@@ -2460,6 +2568,206 @@ function AddSubtaskModal({
           </Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function ManageDependenciesModal({
+  isOpen,
+  task,
+  allSubtasks,
+  depForm,
+  setDepForm,
+  onClose,
+  onAddDependency,
+  onRemoveDependency,
+  submitting,
+  actionError
+}: {
+  isOpen: boolean;
+  task?: SubSubtask;
+  allSubtasks: SubSubtask[];
+  depForm: any;
+  setDepForm: (val: any) => void;
+  onClose: () => void;
+  onAddDependency: (e: React.FormEvent) => void;
+  onRemoveDependency: (depId: number) => void;
+  submitting: boolean;
+  actionError: string;
+}) {
+  if (!isOpen || !task) return null;
+
+  return (
+    <Modal
+      title={`Kelola Ketergantungan: ${task.name}`}
+      onClose={onClose}
+      size="lg"
+    >
+      <div className="space-y-5">
+        {/* Task Info Header */}
+        <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200 text-[12.5px] flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span className="text-neutral-500 font-medium">Task ID / Code:</span>{' '}
+            <strong className="font-mono text-neutral-900">{task.code}</strong>
+          </div>
+          <div>
+            <span className="text-neutral-500 font-medium">Jadwal:</span>{' '}
+            <strong>{task.startDate ? formatDateDisplay(task.startDate) : '-'} → {task.finishDate ? formatDateDisplay(task.finishDate) : '-'}</strong>
+          </div>
+          <div>
+            <span className="text-neutral-500 font-medium">Durasi:</span>{' '}
+            <strong>{task.duration} hari</strong>
+          </div>
+        </div>
+
+        {actionError && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold">
+            {actionError}
+          </div>
+        )}
+
+        {/* List of existing dependencies */}
+        <div>
+          <h4 className="text-[13px] font-bold text-neutral-900 mb-2 flex items-center gap-1.5">
+            <Link2 size={15} className="text-brand" />
+            Predecessor Terhubung ({task.dependencies?.length || 0})
+          </h4>
+
+          {(!task.dependencies || task.dependencies.length === 0) ? (
+            <div className="p-4 text-center rounded-xl bg-neutral-50 border border-neutral-200 text-neutral-500 text-[12.5px] italic">
+              Belum ada predecessor yang terhubung dengan task ini.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {task.dependencies.map((dep) => (
+                <div
+                  key={dep.id}
+                  className="p-3 rounded-xl bg-white border border-neutral-200 flex items-center justify-between gap-3 shadow-2xs hover:border-neutral-300 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded text-[11px] font-mono font-black bg-indigo-100 text-indigo-800">
+                      {dep.dependency_type}
+                    </span>
+                    <div>
+                      <strong className="text-[13px] text-neutral-900 block">
+                        {dep.predecessor_name}
+                      </strong>
+                      <span className="text-[11.5px] text-neutral-500">
+                        {dep.dependency_type === 'FS' && 'Finish-to-Start (Task ini mulai setelah predecessor selesai)'}
+                        {dep.dependency_type === 'SS' && 'Start-to-Start (Task ini mulai bersamaan dengan predecessor)'}
+                        {dep.dependency_type === 'FF' && 'Finish-to-Finish (Task ini selesai bersamaan dengan predecessor)'}
+                        {dep.dependency_type === 'SF' && 'Start-to-Finish (Task ini selesai setelah predecessor mulai)'}
+                        {dep.lag_days !== 0 && ` • Jeda: ${dep.lag_days > 0 ? `+${dep.lag_days}` : dep.lag_days} hari`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onRemoveDependency(dep.id)}
+                    className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="Hapus Ketergantungan"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Add New Dependency Form */}
+        <form onSubmit={onAddDependency} className="p-4 rounded-xl bg-neutral-50/80 border border-neutral-200 space-y-3">
+          <h5 className="text-[12.5px] font-bold text-neutral-900">
+            + Tambah Ketergantungan Baru
+          </h5>
+
+          <div>
+            <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
+              Pilih Task Predecessor <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={depForm.predecessor_wbs_id}
+              onChange={e => setDepForm({ ...depForm, predecessor_wbs_id: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+              required
+            >
+              <option value="">-- Pilih Task --</option>
+              {allSubtasks
+                .filter(t => t.id !== task.id)
+                .map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.code} - {t.name} ({t.startDate ? formatDateDisplay(t.startDate) : ''} - {t.finishDate ? formatDateDisplay(t.finishDate) : ''})
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11.5px] font-bold text-neutral-700">
+                  Tipe Ketergantungan <span className="text-red-500">*</span>
+                </label>
+                <div className="relative group">
+                  <Info size={14} className="text-brand cursor-help" />
+                  <div className="pointer-events-none absolute bottom-full right-[-10px] mb-2 w-[280px] opacity-0 group-hover:opacity-100 transition-opacity z-10 p-3 bg-neutral-800 text-white text-[11px] rounded-xl shadow-xl leading-relaxed">
+                    <div className="font-bold text-[12px] mb-2 border-b border-neutral-600 pb-1">Panduan Relasi (Dependency)</div>
+                    <ul className="space-y-2">
+                      <li><strong className="text-emerald-400">FS (Finish-to-Start):</strong> Task B mulai setelah Task A selesai.</li>
+                      <li><strong className="text-blue-400">SS (Start-to-Start):</strong> Task B mulai bersamaan dengan Task A.</li>
+                      <li><strong className="text-purple-400">FF (Finish-to-Finish):</strong> Task B selesai bersamaan dengan Task A.</li>
+                      <li><strong className="text-orange-400">SF (Start-to-Finish):</strong> Task B selesai setelah Task A mulai.</li>
+                    </ul>
+                    <div className="mt-2 pt-2 border-t border-neutral-600">
+                      <strong className="text-yellow-400">Jeda (Lag):</strong> Waktu tunggu (hari).<br/>
+                      <span className="text-neutral-400 text-[10px]">Positif (+) = menunda mulai, Negatif (-) = mulai lebih awal.</span>
+                    </div>
+                    <div className="absolute top-full right-3 border-4 border-transparent border-t-neutral-800" />
+                  </div>
+                </div>
+              </div>
+              <select
+                value={depForm.dependency_type}
+                onChange={e => setDepForm({ ...depForm, dependency_type: e.target.value as any })}
+                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
+              >
+                <option value="FS">FS: Finish-to-Start (Standar)</option>
+                <option value="SS">SS: Start-to-Start</option>
+                <option value="FF">FF: Finish-to-Finish</option>
+                <option value="SF">SF: Start-to-Finish</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
+                Jeda / Lag (Hari)
+              </label>
+              <input
+                type="number"
+                value={depForm.lag_days}
+                onChange={e => setDepForm({ ...depForm, lag_days: parseInt(e.target.value) || 0 })}
+                placeholder="0"
+                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+              />
+              <span className="text-[10.5px] text-neutral-500 mt-0.5 block">
+                Nilai positif (+) = jeda hari, negatif (-) = percepatan (lead time).
+              </span>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button
+              variant="primary"
+              size="sm"
+              type="submit"
+              disabled={submitting || !depForm.predecessor_wbs_id}
+              icon={Link2}
+            >
+              {submitting ? 'Menyambungkan...' : 'Hubungkan Predecessor'}
+            </Button>
+          </div>
+        </form>
+      </div>
     </Modal>
   );
 }

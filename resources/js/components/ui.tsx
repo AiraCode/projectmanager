@@ -75,14 +75,14 @@ export function formatDateDisplay(dateStr?: string | null): string {
 
 /**
  * Standardize display of division names to English across UI chrome without altering database models.
- * E.g. 'Produksi' -> 'Production', 'Sipil' -> 'Civil Works'.
+ * E.g. 'Produksi' -> 'Production', 'Civil' -> 'Civil Works'.
  */
 export function formatDivisionName(div?: string | null): string {
   if (!div) return '';
   const d = String(div).trim();
   const lower = d.toLowerCase();
   if (lower === 'produksi') return 'Production';
-  if (lower === 'sipil' || lower === 'sipil works') return 'Civil Works';
+  if (lower === 'civil' || lower === 'civil works') return 'Civil Works';
   return d;
 }
 

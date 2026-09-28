@@ -648,8 +648,12 @@ export default function TodayTasksPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       {lockedByPred && (
-                        <span title="Locked: Predecessor (FS) is not 100% completed">
+                        <span className="relative group cursor-help">
                           <Lock size={12} className="text-amber-500" />
+                          <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
+                            Terkunci: Pekerjaan sebelumnya (Predecessor) belum selesai 100%.
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
+                          </div>
                         </span>
                       )}
                       <StatusBadge status={isChecked ? 'Completed' : st.status} size="xs" />
@@ -737,7 +741,7 @@ export default function TodayTasksPage() {
                           title="Upload bukti penyelesaian (wajib untuk 100%)"
                         >
                           <UploadCloud size={11} className="text-amber-600" />
-                          <span>Upload Bukti (Wajib)</span>
+                          <span>Upload Bukti</span>
                         </button>
                       )
                     )}
