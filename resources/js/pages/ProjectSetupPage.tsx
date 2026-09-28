@@ -3,9 +3,10 @@ import { usePage, Link, router } from '@inertiajs/react';
 import {
   FolderOpen, Plus, Calendar, Layers, ChevronDown, ChevronRight,
   Edit2, Trash2, Link2, CheckCircle2, AlertTriangle, ArrowLeft,
-  Sparkles, Shield, Clock, HelpCircle, Save, Check, X, Search
+  Sparkles, Shield, Clock, HelpCircle, Save, Check, X, Search,
+  BarChart2, CheckSquare, Lock
 } from 'lucide-react';
-import { PageHeader, Button, Modal, formatDateDisplay } from '@/components/ui';
+import { PageHeader, Card, Button, Modal, formatDateDisplay } from '@/components/ui';
 
 interface DependencyItem {
   id: number;
@@ -108,12 +109,11 @@ export default function ProjectSetupPage() {
     name: '',
     divisions_id: divisions[0]?.id || 1,
     start: proj.start || '',
-    end: proj.end || '',
     duration: 5,
     vendor: 'INTERNAL',
     requires_evidence: false,
-    predecessor: '',
-    dep_type: 'FS',
+    predecessor_wbs_id: '',   // ID of predecessor WBS task
+    dep_type: 'FS' as 'FS' | 'SS' | 'FF' | 'SF',
     lag: 0,
   });
 
@@ -290,19 +290,66 @@ export default function ProjectSetupPage() {
     }
   };
 
+  // ────────────────────────────────────────────────────────────────────────────
+  // Helper: get a flat list of ALL leaf tasks across all mainWbs (used for predecessor picker)
+  const allLeafTasks = useMemo(() => {
+    const tasks: WbsTask[] = [];
+    (proj.mainWbs || []).forEach(m => {
+      (m.subWbs || []).forEach(s => {
+        (s.wbsTasks || []).forEach(t => tasks.push(t));
+      });
+    });
+    return tasks;
+  }, [proj.mainWbs]);
+
+  // Helper: calculate start date from predecessor + dependency type + lag
+  const calcStartFromPredecessor = (
+    predecessorId: string,
+    depType: 'FS' | 'SS' | 'FF' | 'SF',
+    lag: number,
+    duration: number,
+  ): string => {
+    const pred = allLeafTasks.find(t => String(t.id) === String(predecessorId));
+    if (!pred) return taskForm.start;
+
+    const addDays = (dateStr: string, days: number): string => {
+      const d = new Date(dateStr);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+
+    if (!pred.start || !pred.end) return taskForm.start;
+
+    // FS: this task starts after predecessor finishes (+lag)
+    if (depType === 'FS') return addDays(pred.end, 1 + lag);
+    // SS: this task starts when predecessor starts (+lag)
+    if (depType === 'SS') return addDays(pred.start, lag);
+    // FF: this task should finish when predecessor finishes → start = predEnd - duration + lag
+    if (depType === 'FF') return addDays(pred.end, lag - duration + 1);
+    // SF: this task finishes when predecessor starts → start = predStart - duration + lag
+    if (depType === 'SF') return addDays(pred.start, lag - duration + 1);
+    return taskForm.start;
+  };
+
+  // Helper: compute end date from start + duration
+  const calcEndDate = (start: string, duration: number): string => {
+    if (!start) return '';
+    const d = new Date(start);
+    d.setDate(d.getDate() + Math.max(1, duration) - 1);
+    return d.toISOString().slice(0, 10);
+  };
+
   // Leaf Task Add / Edit Handlers
   const openAddTask = (subId: number) => {
-    const today = new Date().toISOString().slice(0, 10);
-    const in5Days = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+    const startDate = proj.start || new Date().toISOString().slice(0, 10);
     setTaskForm({
       name: '',
       divisions_id: divisions[0]?.id || 1,
-      start: proj.start || today,
-      end: in5Days,
+      start: startDate,
       duration: 5,
       vendor: 'INTERNAL',
       requires_evidence: false,
-      predecessor: '',
+      predecessor_wbs_id: '',
       dep_type: 'FS',
       lag: 0,
     });
@@ -311,17 +358,18 @@ export default function ProjectSetupPage() {
   };
 
   const openEditTask = (item: WbsTask) => {
+    // Find existing predecessor from dependencies list
+    const firstDep = item.dependencies?.[0];
     setTaskForm({
       name: item.name,
       divisions_id: item.division_id || divisions[0]?.id || 1,
       start: item.start || proj.start || '',
-      end: item.end || proj.end || '',
       duration: item.duration_days || 1,
       vendor: item.vendor || 'INTERNAL',
       requires_evidence: item.requires_evidence || false,
-      predecessor: item.predecessor || '',
-      dep_type: item.dep_type || 'FS',
-      lag: item.lag || 0,
+      predecessor_wbs_id: firstDep ? String(firstDep.predecessor_wbs_id) : '',
+      dep_type: (firstDep?.dependency_type as any) || 'FS',
+      lag: firstDep?.lag_days ?? 0,
     });
     setActionError(null);
     setTaskModal({ isOpen: true, mode: 'edit', item });
@@ -330,10 +378,13 @@ export default function ProjectSetupPage() {
   const handleSaveTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskForm.name.trim()) return;
-    if (taskForm.start && taskForm.end && taskForm.end <= taskForm.start) {
-      setActionError('Target Finish Date harus setelah Start Date (minimal 1 hari setelahnya).');
+    if (!taskForm.start) {
+      setActionError('Start Date harus diisi.');
       return;
     }
+
+    // Auto-calculate end date from start + duration
+    const computedEnd = calcEndDate(taskForm.start, taskForm.duration);
 
     setSubmitting(true);
     setActionError(null);
@@ -345,12 +396,13 @@ export default function ProjectSetupPage() {
         divisions_id: taskForm.divisions_id,
         duration: taskForm.duration,
         start: taskForm.start,
-        end: taskForm.end,
+        end: computedEnd,
         vendor: taskForm.vendor,
         requires_evidence: taskForm.requires_evidence,
-        predecessor: taskForm.predecessor || null,
-        dep_type: taskForm.dep_type || 'FS',
-        lag: taskForm.lag || 0,
+        // Pass predecessor if selected — backend handles saving as TaskDependency
+        predecessor: taskForm.predecessor_wbs_id || null,
+        dep_type: taskForm.dep_type,
+        lag: taskForm.lag,
       }, {
         onSuccess: () => setTaskModal({ isOpen: false, mode: 'add' }),
         onError: (errs) => setActionError(Object.values(errs)[0] as string || 'Gagal menyimpan Task'),
@@ -362,12 +414,12 @@ export default function ProjectSetupPage() {
         divisions_id: taskForm.divisions_id,
         duration: taskForm.duration,
         start: taskForm.start,
-        end: taskForm.end,
+        end: computedEnd,
         vendor: taskForm.vendor,
         requires_evidence: taskForm.requires_evidence,
-        predecessor: taskForm.predecessor || null,
-        dep_type: taskForm.dep_type || 'FS',
-        lag: taskForm.lag || 0,
+        predecessor: taskForm.predecessor_wbs_id || null,
+        dep_type: taskForm.dep_type,
+        lag: taskForm.lag,
       }, {
         onSuccess: () => setTaskModal({ isOpen: false, mode: 'add' }),
         onError: (errs) => setActionError(Object.values(errs)[0] as string || 'Gagal mengubah Task'),
@@ -486,90 +538,101 @@ export default function ProjectSetupPage() {
   }, [proj.mainWbs, searchTerm]);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      {/* Header Banner */}
-      <div className="bg-white rounded-2xl border-2 border-neutral-900 p-5 sm:p-6 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Link
-                href="/projectlistpage"
-                className="inline-flex items-center gap-1 text-[12px] font-semibold text-neutral-500 hover:text-neutral-900 transition-colors"
-              >
-                <ArrowLeft size={14} /> Kembali ke Project List
-              </Link>
-              <span className="text-neutral-300">•</span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                <Sparkles size={12} className="text-amber-600 animate-spin" style={{ animationDuration: '4s' }} />
-                {proj.setup_status === 'pending_setup' ? 'WBS Setup Mode (Draft)' : 'Setup Aktif'}
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight">
-              {proj.title}
-            </h1>
-            <p className="text-[13px] text-neutral-600 mt-1 flex flex-wrap items-center gap-y-1 gap-x-3">
-              <span>Perusahaan: <strong className="text-neutral-900">{proj.company}</strong></span>
-              <span>•</span>
-              <span>PIC: <strong className="text-neutral-900">{proj.manager}</strong></span>
-              <span>•</span>
-              <span>Periode Proyek: <strong className="text-neutral-900">{proj.start ? formatDateDisplay(proj.start) : 'N/A'} – {proj.end ? formatDateDisplay(proj.end) : 'N/A'}</strong></span>
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Button
-              variant="outline"
-              size="md"
-              icon={Plus}
-              onClick={openAddMain}
-            >
-              Tambah Main Task
-            </Button>
-            <Button
-              variant="primary"
-              size="md"
-              icon={CheckCircle2}
-              onClick={() => setConfirmCompleteModal(true)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all"
-            >
-              Selesaikan & Aktifkan Proyek
-            </Button>
-          </div>
+    <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl mx-auto space-y-6">
+      {/* Top Breadcrumb & PageHeader */}
+      <div>
+        <div className="flex items-center gap-2 text-[12px] font-semibold text-neutral-500 mb-2">
+          <Link
+            href="/projectlistpage"
+            className="hover:text-brand flex items-center gap-1 transition-colors"
+          >
+            <ArrowLeft size={13} /> Project List
+          </Link>
         </div>
 
+
+        <PageHeader
+          title={proj.title}
+          subtitle={`Perusahaan: ${proj.company} • PIC: ${proj.manager} • Periode Proyek: ${proj.start ? formatDateDisplay(proj.start) : 'N/A'} – ${proj.end ? formatDateDisplay(proj.end) : 'N/A'}`}
+          actions={
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                icon={Plus}
+                onClick={openAddMain}
+              >
+                Tambah Main Task
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={CheckCircle2}
+                onClick={() => setConfirmCompleteModal(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs"
+              >
+                Selesaikan & Aktifkan Proyek
+              </Button>
+            </div>
+          }
+        />
+      </div>
+
+      {/* Guidance & Stats Card */}
+      <Card className="p-4 sm:p-5 space-y-4">
         {/* Informative Guidance Banner */}
-        <div className="mt-5 p-4 rounded-xl bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border border-blue-200/80 flex items-start gap-3">
-          <HelpCircle size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-[12.5px] text-blue-900 leading-relaxed">
-            <strong>Petunjuk Konfigurasi:</strong> Template standar 17 Main Task telah dimuat secara otomatis. Anda dapat menambah, mengubah nama, bobot, divisi, vendor, dan keterkaitan dependensi (FS, SS, FF, SF serta jeda/lag). Pastikan seluruh task tersusun dengan rapi sebelum menekan tombol <strong>"Selesaikan & Aktifkan Proyek"</strong>.
+        <div className="p-3.5 rounded-xl bg-brand-light/60 border border-brand-border text-neutral-800 text-[12.5px] leading-relaxed flex items-start gap-3">
+          <HelpCircle size={18} className="text-brand flex-shrink-0 mt-0.5" />
+          <div>
+            <strong className="font-bold text-brand-dark">Panduan Konfigurasi WBS:</strong> Halaman lain saat ini <strong>terkunci</strong> hingga konfigurasi selesai. Template 17 Main Task telah dimuat. Anda dapat menyusun Sub Task, Leaf Task, pembagian divisi, vendor, dan dependensi (FS, SS, FF, SF + jeda). Klik tombol <strong>"Selesaikan & Aktifkan Proyek"</strong> setelah seluruh task tersusun dengan rapi untuk membuka akses seluruh halaman Provis.
           </div>
         </div>
 
         {/* Metrics Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-neutral-100">
-          <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200">
-            <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Main Tasks</span>
-            <div className="text-xl font-black text-neutral-900 mt-0.5">{totalMainTasks}</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+          <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200/80 flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Main Tasks</span>
+              <div className="text-xl font-black text-neutral-900 mt-0.5">{totalMainTasks}</div>
+            </div>
+            <div className="w-9 h-9 rounded-lg bg-brand-light text-brand flex items-center justify-center">
+              <Layers size={18} />
+            </div>
           </div>
-          <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200">
-            <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Sub Tasks</span>
-            <div className="text-xl font-black text-neutral-900 mt-0.5">{totalSubTasks}</div>
+          <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200/80 flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Sub Tasks</span>
+              <div className="text-xl font-black text-neutral-900 mt-0.5">{totalSubTasks}</div>
+            </div>
+            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+              <FolderOpen size={18} />
+            </div>
           </div>
-          <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200">
-            <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Leaf / WBS Tasks</span>
-            <div className="text-xl font-black text-neutral-900 mt-0.5">{totalLeafTasks}</div>
+          <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200/80 flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Leaf / WBS Tasks</span>
+              <div className="text-xl font-black text-neutral-900 mt-0.5">{totalLeafTasks}</div>
+            </div>
+            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <CheckSquare size={18} />
+            </div>
           </div>
-          <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200">
-            <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Total Bobot</span>
-            <div className={`text-xl font-black mt-0.5 ${Math.round(totalWeight) === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {totalWeight.toFixed(1)}%
+          <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200/80 flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Total Bobot</span>
+              <div className={`text-xl font-black mt-0.5 ${Math.round(totalWeight) === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {totalWeight.toFixed(1)}%
+              </div>
+            </div>
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${Math.round(totalWeight) === 100 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+              <BarChart2 size={18} />
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Control Bar (Search & Bulk Expand) */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3.5 rounded-xl border border-neutral-200 shadow-2xs">
+      <Card className="p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="relative flex-1 max-w-md">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
           <input
@@ -577,7 +640,7 @@ export default function ProjectSetupPage() {
             placeholder="Cari Main Task, Sub Task, atau nama pekerjaan..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-[12.5px] rounded-lg border border-neutral-200 outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+            className="w-full pl-9 pr-4 py-2 text-[12.5px] rounded-lg border border-neutral-200 outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white"
           />
           {searchTerm && (
             <button
@@ -589,99 +652,103 @@ export default function ProjectSetupPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 text-[12px]">
-          <button
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
             onClick={expandAll}
-            className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 font-semibold text-neutral-700 transition-colors"
           >
             Buka Semua
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={collapseAll}
-            className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 font-semibold text-neutral-700 transition-colors"
           >
             Tutup Semua
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* 3-Tier WBS Hierarchy List */}
       <div className="space-y-4">
         {filteredMainWbs.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center">
+          <Card className="p-12 text-center">
             <Layers size={32} className="mx-auto text-neutral-300 mb-3" />
             <h3 className="text-base font-bold text-neutral-800">Tidak ada task yang ditemukan</h3>
             <p className="text-[13px] text-neutral-500 mt-1">Coba sesuaikan kata kunci pencarian Anda.</p>
-          </div>
+          </Card>
         ) : (
           filteredMainWbs.map((main) => {
             const isMainExpanded = expandedMainIds.has(main.id);
             const subCount = main.subWbs?.length || 0;
 
             return (
-              <div
-                key={main.id}
-                className="bg-white rounded-2xl border-2 border-neutral-800 overflow-hidden shadow-xs transition-shadow hover:shadow-md"
-              >
+              <Card key={main.id} className="overflow-hidden">
                 {/* Level 1: Main Task Bar */}
                 <div
-                  className="p-4 sm:p-4.5 bg-neutral-900 text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 cursor-pointer select-none"
+                  className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 py-3.5 bg-white hover:bg-neutral-50/70 border-b border-neutral-200/80 transition-colors text-left cursor-pointer select-none"
                   onClick={() => toggleMain(main.id)}
                 >
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      className="p-1 rounded-lg hover:bg-neutral-800 text-neutral-300 transition-colors"
-                    >
-                      {isMainExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[12px] font-black text-amber-400">
-                        {main.code}
-                      </span>
-                      <h2 className="text-[15px] sm:text-[16px] font-black tracking-tight text-white">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="text-neutral-400 flex-shrink-0 mt-1">
+                      {isMainExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </div>
+                    <div className="w-6 h-6 rounded bg-brand text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
+                      <span className="text-[10px] font-bold">{main.code}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-[15px] sm:text-[16px] font-black text-neutral-900 leading-snug break-words">
                         {main.name}
                       </h2>
+                      <div className="flex items-center gap-2 mt-1 text-[12px] text-neutral-600 font-semibold flex-wrap">
+                        <span>Bobot: <strong className="text-neutral-900 font-bold">{main.weight}%</strong></span>
+                        <span className="text-neutral-300">•</span>
+                        <span>{subCount} Sub Tasks</span>
+                        {main.start && main.end && (
+                          <>
+                            <span className="text-neutral-300">•</span>
+                            <span className="text-neutral-500 font-medium font-mono text-[11.5px]">
+                              {formatDateDisplay(main.start)} – {formatDateDisplay(main.end)}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto" onClick={e => e.stopPropagation()}>
-                    <span className="text-[12px] font-bold px-2.5 py-1 rounded-md bg-neutral-800 text-neutral-300 border border-neutral-700">
-                      Bobot: <strong className="text-white">{main.weight}%</strong>
-                    </span>
-                    <span className={`text-[12px] font-bold px-2.5 py-1 rounded-md ${subCount > 0 ? 'bg-neutral-800 text-neutral-300' : 'bg-amber-900/60 text-amber-300 border border-amber-600'}`}>
-                      {subCount} Sub Task
-                    </span>
-                    <button
-                      type="button"
+                  <div className="flex items-center gap-2 flex-shrink-0 self-start md:self-center pl-9 md:pl-0" onClick={e => e.stopPropagation()}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      icon={Plus}
                       onClick={() => openAddSub(main.id)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11.5px] font-bold bg-brand hover:bg-brand/90 text-white transition-colors"
-                      title="Tambah Sub Task baru di bawah Main Task ini"
+                      className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300 flex-shrink-0"
                     >
-                      <Plus size={13} /> Sub Task
-                    </button>
+                      Add Sub Task
+                    </Button>
                     <button
                       type="button"
                       onClick={() => openEditMain(main)}
-                      className="p-1.5 rounded-lg hover:bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                      className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
                       title="Edit Main Task"
                     >
-                      <Edit2 size={15} />
+                      <Edit2 size={13} />
                     </button>
                     <button
                       type="button"
                       onClick={() => setDeleteModal({ isOpen: true, type: 'main', id: main.id, name: main.name })}
-                      className="p-1.5 rounded-lg hover:bg-red-950 text-neutral-400 hover:text-red-400 transition-colors"
+                      className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
                       title="Hapus Main Task"
                     >
-                      <Trash2 size={15} />
+                      <Trash2 size={13} />
                     </button>
                   </div>
                 </div>
 
                 {/* Level 2 & 3: Sub Tasks & Leaf Tasks */}
                 {isMainExpanded && (
-                  <div className="p-4 sm:p-5 bg-neutral-50/50 space-y-4">
+                  <div className="p-3 sm:p-4 bg-neutral-50/40 space-y-3">
                     {subCount === 0 ? (
                       <div className="p-6 rounded-xl border border-dashed border-amber-300 bg-amber-50/50 text-center">
                         <AlertTriangle size={24} className="mx-auto text-amber-600 mb-2" />
@@ -706,162 +773,165 @@ export default function ProjectSetupPage() {
                         return (
                           <div
                             key={sub.id}
-                            className="bg-white rounded-xl border border-neutral-300 shadow-2xs overflow-hidden"
+                            className="bg-white rounded-lg border border-neutral-200 shadow-2xs overflow-hidden"
                           >
                             {/* Sub Task Bar */}
                             <div
-                              className="p-3 sm:p-3.5 bg-neutral-100/90 border-b border-neutral-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 cursor-pointer select-none"
+                              className="px-3.5 py-2.5 bg-neutral-50/80 border-b border-neutral-200/70 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer select-none hover:bg-neutral-100/60 transition-colors"
                               onClick={() => toggleSub(sub.id)}
                             >
-                              <div className="flex items-center gap-2.5">
+                              <div className="flex items-center gap-2.5 min-w-0">
                                 <button
                                   type="button"
-                                  className="p-1 rounded text-neutral-500 hover:text-neutral-900 transition-colors"
+                                  className="text-neutral-400 hover:text-neutral-700 transition-colors flex-shrink-0"
                                 >
-                                  {isSubExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                  {isSubExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                                 </button>
-                                <span className="text-[12px] font-black text-brand bg-brand/10 px-2 py-0.5 rounded">
+                                <span className="text-[11px] font-bold text-brand bg-brand-light border border-brand-border px-1.5 py-0.5 rounded">
                                   {sub.code}
                                 </span>
-                                <h3 className="text-[13.5px] font-bold text-neutral-900">
+                                <h3 className="text-[13.5px] font-bold text-neutral-900 truncate">
                                   {sub.name}
                                 </h3>
+                                <span className="text-[11.5px] text-neutral-500 font-medium ml-1">
+                                  ({leafCount} Pekerjaan)
+                                </span>
                               </div>
 
-                              <div className="flex items-center gap-2 self-end sm:self-auto" onClick={e => e.stopPropagation()}>
-                                <span className="text-[11.5px] font-semibold text-neutral-500">
-                                  {leafCount} Pekerjaan
-                                </span>
-                                <button
-                                  type="button"
+                              <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  icon={Plus}
                                   onClick={() => openAddTask(sub.id)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 transition-colors"
-                                  title="Tambah Pekerjaan Eksekusi (Leaf WBS)"
+                                  className="py-0.5 px-2 text-[11px] h-6.5 bg-white hover:bg-neutral-50 border-neutral-300"
                                 >
-                                  <Plus size={12} /> Task
-                                </button>
+                                  Task
+                                </Button>
                                 <button
                                   type="button"
                                   onClick={() => openEditSub(sub)}
-                                  className="p-1 rounded text-neutral-400 hover:text-neutral-700 transition-colors"
+                                  className="p-1 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors"
                                   title="Edit Sub Task"
                                 >
-                                  <Edit2 size={13.5} />
+                                  <Edit2 size={12.5} />
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setDeleteModal({ isOpen: true, type: 'sub', id: sub.id, name: sub.name })}
-                                  className="p-1 rounded text-neutral-400 hover:text-red-600 transition-colors"
+                                  className="p-1 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors"
                                   title="Hapus Sub Task"
                                 >
-                                  <Trash2 size={13.5} />
+                                  <Trash2 size={12.5} />
                                 </button>
                               </div>
                             </div>
 
                             {/* Level 3: Leaf Tasks Table */}
                             {isSubExpanded && (
-                              <div className="p-3 sm:p-4">
+                              <div className="p-3 overflow-x-auto scrollbar-thin">
                                 {leafCount === 0 ? (
-                                  <div className="py-4 text-center text-[12px] text-neutral-500 italic">
+                                  <div className="py-4 text-center text-[12px] text-neutral-400 italic">
                                     Belum ada pekerjaan spesifik (leaf task). Klik "+ Task" untuk menambahkan.
                                   </div>
                                 ) : (
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-[12.5px]">
-                                      <thead>
-                                        <tr className="border-b border-neutral-200 text-[11px] font-black uppercase text-neutral-500 tracking-wider">
-                                          <th className="pb-2 pl-1">No</th>
-                                          <th className="pb-2">Nama Pekerjaan</th>
-                                          <th className="pb-2">Divisi</th>
-                                          <th className="pb-2">Vendor</th>
-                                          <th className="pb-2">Start & End</th>
-                                          <th className="pb-2">Durasi</th>
-                                          <th className="pb-2">Dependensi (Predecessor)</th>
-                                          <th className="pb-2 text-right pr-1">Aksi</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-neutral-100">
-                                        {sub.wbsTasks.map((task) => (
-                                          <tr key={task.id} className="hover:bg-neutral-50/70 transition-colors group">
-                                            <td className="py-2.5 pl-1 font-mono text-[11px] text-neutral-400">
-                                              {task.code}
-                                            </td>
-                                            <td className="py-2.5 font-bold text-neutral-900 max-w-[220px] truncate" title={task.name}>
-                                              {task.name}
-                                            </td>
-                                            <td className="py-2.5">
-                                              <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
-                                                {task.division_name}
-                                              </span>
-                                            </td>
-                                            <td className="py-2.5 text-neutral-600 font-medium">
+                                  <table className="w-full min-w-[760px] text-left text-[12.5px] border-collapse">
+                                    <thead>
+                                      <tr className="bg-neutral-100/70 border-b border-neutral-200 text-[11px] font-bold text-neutral-600 uppercase tracking-wider">
+                                        <th className="py-2.5 px-3">WBS Code</th>
+                                        <th className="py-2.5 px-3">Nama Pekerjaan</th>
+                                        <th className="py-2.5 px-3">Divisi</th>
+                                        <th className="py-2.5 px-3">Vendor</th>
+                                        <th className="py-2.5 px-3">Start & End</th>
+                                        <th className="py-2.5 px-3">Durasi</th>
+                                        <th className="py-2.5 px-3">Dependensi (Predecessor)</th>
+                                        <th className="py-2.5 px-3 text-right">Aksi</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-neutral-100">
+                                      {sub.wbsTasks.map((task) => (
+                                        <tr key={task.id} className="hover:bg-neutral-50/70 transition-colors">
+                                          <td className="py-2.5 px-3 font-mono text-[11px] text-neutral-500 font-semibold">
+                                            {task.code}
+                                          </td>
+                                          <td className="py-2.5 px-3 font-bold text-neutral-900 max-w-[220px] truncate" title={task.name}>
+                                            {task.name}
+                                          </td>
+                                          <td className="py-2.5 px-3">
+                                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
+                                              {task.division_name}
+                                            </span>
+                                          </td>
+                                          <td className="py-2.5 px-3 text-neutral-600 font-medium">
+                                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                                               {task.vendor || 'INTERNAL'}
-                                            </td>
-                                            <td className="py-2.5 font-mono text-[11.5px] text-neutral-700 whitespace-nowrap">
-                                              {task.start ? formatDateDisplay(task.start) : '-'} → {task.end ? formatDateDisplay(task.end) : '-'}
-                                            </td>
-                                            <td className="py-2.5 font-semibold text-neutral-700">
+                                            </span>
+                                          </td>
+                                          <td className="py-2.5 px-3 font-mono text-[11.5px] text-neutral-600 whitespace-nowrap">
+                                            {task.start ? formatDateDisplay(task.start) : '-'} → {task.end ? formatDateDisplay(task.end) : '-'}
+                                          </td>
+                                          <td className="py-2.5 px-3 font-semibold text-neutral-700">
+                                            <span className="px-2 py-0.5 bg-neutral-100 rounded text-[11.5px]">
                                               {task.duration_days} hari
-                                            </td>
-                                            <td className="py-2.5">
-                                              <div className="flex flex-wrap items-center gap-1.5">
-                                                {task.dependencies && task.dependencies.length > 0 ? (
-                                                  task.dependencies.map((dep) => (
-                                                    <span
-                                                      key={dep.id}
-                                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
-                                                      title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type}, Lag: ${dep.lag_days}d)`}
-                                                    >
-                                                      <Link2 size={11} />
-                                                      <span className="font-mono">{dep.dependency_type}</span>
-                                                      {dep.lag_days !== 0 && (
-                                                        <span className="text-[10px] text-indigo-500">
-                                                          {dep.lag_days > 0 ? `+${dep.lag_days}d` : `${dep.lag_days}d`}
-                                                        </span>
-                                                      )}
-                                                    </span>
-                                                  ))
-                                                ) : (
-                                                  <span className="text-[11px] text-neutral-400 italic">
-                                                    Tidak ada
+                                            </span>
+                                          </td>
+                                          <td className="py-2.5 px-3">
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                              {task.dependencies && task.dependencies.length > 0 ? (
+                                                task.dependencies.map((dep) => (
+                                                  <span
+                                                    key={dep.id}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                                    title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type}, Lag: ${dep.lag_days}d)`}
+                                                  >
+                                                    <Link2 size={11} />
+                                                    <span className="font-mono">{dep.dependency_type}</span>
+                                                    {dep.lag_days !== 0 && (
+                                                      <span className="text-[10px] text-indigo-500">
+                                                        {dep.lag_days > 0 ? `+${dep.lag_days}d` : `${dep.lag_days}d`}
+                                                      </span>
+                                                    )}
                                                   </span>
-                                                )}
-                                                <button
-                                                  type="button"
-                                                  onClick={() => openManageDependencies(task)}
-                                                  className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-brand/10 transition-colors ml-1"
-                                                  title="Atur Ketergantungan (Predecessor)"
-                                                >
-                                                  <Link2 size={13} />
-                                                </button>
-                                              </div>
-                                            </td>
-                                            <td className="py-2.5 text-right pr-1">
-                                              <div className="inline-flex items-center gap-1">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => openEditTask(task)}
-                                                  className="p-1 rounded text-neutral-400 hover:text-neutral-700 transition-colors"
-                                                  title="Edit Task"
-                                                >
-                                                  <Edit2 size={14} />
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => setDeleteModal({ isOpen: true, type: 'task', id: task.id, name: task.name })}
-                                                  className="p-1 rounded text-neutral-400 hover:text-red-600 transition-colors"
-                                                  title="Hapus Task"
-                                                >
-                                                  <Trash2 size={14} />
-                                                </button>
-                                              </div>
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
+                                                ))
+                                              ) : (
+                                                <span className="text-[11px] text-neutral-400 italic">
+                                                  Tidak ada
+                                                </span>
+                                              )}
+                                              <button
+                                                type="button"
+                                                onClick={() => openManageDependencies(task)}
+                                                className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-brand/10 transition-colors ml-1"
+                                                title="Atur Ketergantungan (Predecessor)"
+                                              >
+                                                <Link2 size={13} />
+                                              </button>
+                                            </div>
+                                          </td>
+                                          <td className="py-2.5 px-3 text-right">
+                                            <div className="inline-flex items-center gap-1">
+                                              <button
+                                                type="button"
+                                                onClick={() => openEditTask(task)}
+                                                className="p-1 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors"
+                                                title="Edit Task"
+                                              >
+                                                <Edit2 size={13} />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => setDeleteModal({ isOpen: true, type: 'task', id: task.id, name: task.name })}
+                                                className="p-1 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors"
+                                                title="Hapus Task"
+                                              >
+                                                <Trash2 size={13} />
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
                                 )}
                               </div>
                             )}
@@ -871,24 +941,24 @@ export default function ProjectSetupPage() {
                     )}
                   </div>
                 )}
-              </div>
+              </Card>
             );
           })
         )}
       </div>
 
       {/* Bottom Sticky Action Bar */}
-      <div className="sticky bottom-4 z-20 bg-white/95 backdrop-blur-md rounded-2xl border-2 border-neutral-900 p-4 shadow-xl flex items-center justify-between gap-4">
+      <div className="sticky bottom-4 z-20 bg-white/95 backdrop-blur-md rounded-xl border border-neutral-200/90 p-4 shadow-lg flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[13px] font-bold text-neutral-800">
-            Pastikan seluruh susunan pekerjaan proyek telah terverifikasi dengan benar.
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[13px] font-semibold text-neutral-700">
+            Pastikan seluruh susunan pekerjaan proyek telah terverifikasi dengan benar sebelum diaktifkan.
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <Button
             variant="outline"
-            size="md"
+            size="sm"
             icon={Plus}
             onClick={openAddMain}
           >
@@ -896,10 +966,10 @@ export default function ProjectSetupPage() {
           </Button>
           <Button
             variant="primary"
-            size="md"
+            size="sm"
             icon={CheckCircle2}
             onClick={() => setConfirmCompleteModal(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs"
           >
             Selesaikan & Aktifkan Proyek
           </Button>
@@ -1082,156 +1152,194 @@ export default function ProjectSetupPage() {
       )}
 
       {/* Modal Add / Edit Leaf Task (WBS) */}
-      {taskModal.isOpen && (
-        <Modal
-          title={taskModal.mode === 'add' ? 'Tambah Pekerjaan Eksekusi (Leaf Task)' : 'Edit Pekerjaan'}
-          onClose={() => setTaskModal({ isOpen: false, mode: 'add' })}
-          size="lg"
-        >
-          <form onSubmit={handleSaveTask} className="space-y-4">
-            {actionError && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold">
-                {actionError}
-              </div>
-            )}
-            <div>
-              <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                Nama Pekerjaan <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={taskForm.name}
-                onChange={e => setTaskForm({ ...taskForm, name: e.target.value })}
-                placeholder="e.g. Penggalian Pondasi, Fabrikasi Tiang Baja, dll"
-                className="w-full px-3.5 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
-                required
-              />
-            </div>
+      {taskModal.isOpen && (() => {
+        // Preview computed end date (for display only, actual save uses computed value)
+        const previewEnd = calcEndDate(taskForm.start, taskForm.duration);
+        // Is a predecessor selected?
+        const hasPredecessor = !!taskForm.predecessor_wbs_id;
+        const selectedPred = hasPredecessor ? allLeafTasks.find(t => String(t.id) === taskForm.predecessor_wbs_id) : null;
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        return (
+          <Modal
+            title={taskModal.mode === 'add' ? 'Add New Task (Sub-task Item)' : 'Edit Task (Sub-task Item)'}
+            subtitle={taskModal.mode === 'add' ? 'Add specific project task breakdown item' : 'Edit project task breakdown item'}
+            onClose={() => setTaskModal({ isOpen: false, mode: 'add' })}
+            size="md"
+          >
+            <form onSubmit={handleSaveTask} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+              {actionError && (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+                  <AlertTriangle size={14} className="flex-shrink-0" />
+                  {actionError}
+                </div>
+              )}
+
+              {/* Task Name */}
               <div>
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                  Divisi Penanggung Jawab
+                  Task Description <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={taskForm.name}
+                  onChange={e => setTaskForm({ ...taskForm, name: e.target.value })}
+                  placeholder="e.g. Preparation and review of vendor documents..."
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
+                  required
+                />
+              </div>
+
+              {/* Division */}
+              <div>
+                <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                  Responsible Division <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={taskForm.divisions_id}
                   onChange={e => setTaskForm({ ...taskForm, divisions_id: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
                 >
                   {divisions.map((d: DivisionOption) => (
                     <option key={d.id} value={d.id}>{d.divisi}</option>
                   ))}
                 </select>
               </div>
+
+              {/* Duration and Start Date */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                    Duration (Days) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={taskForm.duration}
+                    onChange={e => setTaskForm({ ...taskForm, duration: Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-[13px] outline-none focus:border-brand font-semibold"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                    Start Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={taskForm.start}
+                    onChange={e => setTaskForm({ ...taskForm, start: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Predecessor (Full Width) */}
               <div>
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                  Vendor / Pelaksana
+                  Predecessor (WBS Task / Sub-sub Task)
                 </label>
-                <input
-                  type="text"
-                  value={taskForm.vendor}
-                  onChange={e => setTaskForm({ ...taskForm, vendor: e.target.value })}
-                  placeholder="e.g. INTERNAL, PT XYZ"
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
-                />
+                <select
+                  value={taskForm.predecessor_wbs_id}
+                  onChange={e => setTaskForm({ ...taskForm, predecessor_wbs_id: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                >
+                  <option value="">None (No Predecessor)</option>
+                  {allLeafTasks
+                    .filter(t => t.id !== taskModal.item?.id)
+                    .map(t => (
+                      <option key={t.id} value={t.id}>
+                        [{t.code}] {t.name}
+                      </option>
+                    ))}
+                </select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Dependency Type (Full Width) */}
               <div>
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                  Start Date <span className="text-red-500">*</span>
+                  Dependency Type
                 </label>
-                <input
-                  type="date"
-                  value={taskForm.start}
-                  onChange={e => {
-                    const newStart = e.target.value;
-                    const nextForm = { ...taskForm, start: newStart };
-                    if (newStart && taskForm.end && taskForm.end <= newStart) {
-                      nextForm.end = getMinEndDate(newStart) || '';
-                    }
-                    setTaskForm(nextForm);
-                  }}
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
-                  required
-                />
+                <select
+                  value={taskForm.dep_type}
+                  onChange={e => setTaskForm({ ...taskForm, dep_type: e.target.value as 'FS' | 'SS' | 'FF' | 'SF' })}
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
+                >
+                  <option value="FS">Finish-to-Start (FS)</option>
+                  <option value="SS">Start-to-Start (SS)</option>
+                  <option value="FF">Finish-to-Finish (FF)</option>
+                  <option value="SF">Start-to-Finish (SF)</option>
+                </select>
               </div>
-              <div>
-                <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                  Target Finish Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={taskForm.end}
-                  min={getMinEndDate(taskForm.start)}
-                  onChange={e => setTaskForm({ ...taskForm, end: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
-                  required
-                />
+
+              {/* Lag and Lead */}
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-100">
+                <div>
+                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                    Lag (Days)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={taskForm.lag}
+                    onChange={e => setTaskForm({ ...taskForm, lag: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                    Lead (Days)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={0}
+                    onChange={() => {}}
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+                    placeholder="0"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                  Durasi (Hari)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={taskForm.duration}
-                  onChange={e => {
-                    const dur = Math.max(1, parseInt(e.target.value) || 1);
-                    const nextForm = { ...taskForm, duration: dur };
-                    if (taskForm.start) {
-                      const d = new Date(taskForm.start);
-                      d.setDate(d.getDate() + dur);
-                      nextForm.end = d.toISOString().slice(0, 10);
-                    }
-                    setTaskForm(nextForm);
-                  }}
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
-                />
+
+              {/* Evidence Requirement */}
+              <div className="pt-2 border-t border-neutral-100">
+                 <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 transition-colors">
+                   <input 
+                     type="checkbox" 
+                     checked={taskForm.requires_evidence} 
+                     onChange={e => setTaskForm({ ...taskForm, requires_evidence: e.target.checked })} 
+                     className="w-4 h-4 rounded text-brand border-neutral-300 focus:ring-brand" 
+                   />
+                   <div className="flex flex-col">
+                     <span className="text-[13px] font-bold text-neutral-800">Requires Evidence for Completion</span>
+                     <span className="text-[11.5px] text-neutral-500">Workers must upload a file/photo to mark this task 100% complete.</span>
+                   </div>
+                 </label>
               </div>
-            </div>
 
-            {taskForm.start && taskForm.end && taskForm.end <= taskForm.start && (
-              <p className="text-[11.5px] text-red-600 font-semibold">
-                Finish date harus setelah Start date (minimal 1 hari setelahnya).
-              </p>
-            )}
-
-            <div className="flex items-center gap-2 pt-1">
-              <label className="flex items-center gap-2 cursor-pointer text-[12.5px] text-neutral-700">
-                <input
-                  type="checkbox"
-                  checked={taskForm.requires_evidence}
-                  onChange={e => setTaskForm({ ...taskForm, requires_evidence: e.target.checked })}
-                  className="rounded text-brand focus:ring-brand"
-                />
-                Wajibkan Bukti / Dokumen Evidence saat menyelesaikan task ini
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
-              <Button
-                variant="outline"
-                size="md"
-                type="button"
-                onClick={() => setTaskModal({ isOpen: false, mode: 'add' })}
-              >
-                Batal
-              </Button>
-              <Button
-                variant="primary"
-                size="md"
-                type="submit"
-                disabled={submitting}
-              >
-                {submitting ? 'Menyimpan...' : 'Simpan Pekerjaan'}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => setTaskModal({ isOpen: false, mode: 'add' })}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  type="submit"
+                  disabled={submitting || !taskForm.name.trim()}
+                >
+                  {submitting ? 'Saving...' : 'Save Task'}
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        );
+      })()}
 
       {/* Modal Manage Dependencies (Predecessors & Types: FS, SS, FF, SF) */}
       {depModal.isOpen && depModal.task && (

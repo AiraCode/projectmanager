@@ -175,8 +175,8 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
-        if (($project->setup_status ?? 'active') === 'pending_setup' && in_array($role, ['pic', 'SuperAdmin', 'admin_utama'])) {
-            return redirect()->route('projects.setup', $project->id);
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
         }
 
         return Inertia::render('DashboardPage', [
@@ -204,8 +204,8 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
-        if (($project->setup_status ?? 'active') === 'pending_setup' && in_array($role, ['pic', 'SuperAdmin', 'admin_utama'])) {
-            return redirect()->route('projects.setup', $project->id);
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
         }
 
         return Inertia::render('ProjectDetailPage', [
@@ -245,8 +245,8 @@ class ProjectController extends Controller
             }
         }
 
-        if ($project && ($project->setup_status ?? 'active') === 'pending_setup' && in_array($role, ['pic', 'SuperAdmin', 'admin_utama'])) {
-            return redirect()->route('projects.setup', $project->id);
+        if ($project && ($redirect = $this->guardProjectSetup($project, $role))) {
+            return $redirect;
         }
 
         $divisions = Division::select('id', 'divisi')->get();
@@ -290,6 +290,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         $divisions = Division::select('id', 'divisi')->get();
         $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
 
@@ -331,6 +335,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
 
         return Inertia::render('TimelinePage', [
@@ -358,6 +366,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         return Inertia::render('WeeklyPage', [
             'project'  => $this->transformProjectData($project),
             'userRole' => $role,
@@ -383,6 +395,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         return Inertia::render('BudgetPage', [
             'project'  => $this->transformProjectData($project),
             'userRole' => $role,
@@ -403,6 +419,10 @@ class ProjectController extends Controller
         if (!$project) {
             // Admin Progres has no specific project selected — send back to project list
             return redirect()->route('projectlistpage');
+        }
+
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
         }
 
         return Inertia::render('SCurvePage', [
@@ -521,6 +541,7 @@ class ProjectController extends Controller
             'project' => [
                 'id'           => $project->id,
                 'title'        => $project->title,
+                'name'         => $project->title,
                 'status'       => $project->status,
                 'setup_status' => $project->setup_status ?? 'pending_setup',
                 'start'        => $project->start ? $project->start->format('Y-m-d') : null,
@@ -1051,6 +1072,7 @@ class ProjectController extends Controller
             'duration'     => 'nullable|integer|min:1',
             'start'        => 'nullable|date',
             'end'          => 'nullable|date',
+            'vendor'       => 'nullable|string|max:255',
             'predecessor'  => 'nullable|string|max:50',
             'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
             'lag'          => 'nullable|integer',
@@ -1077,7 +1099,7 @@ class ProjectController extends Controller
             'divisions_id' => $divisionId,
             'name'         => $validated['name'],
             'weight'       => 0, // Auto-calculated below by ProgressService
-            'vendor'       => 'INTERNAL',
+            'vendor'       => $validated['vendor'] ?? 'INTERNAL',
             'start'        => $startDate,
             'end'          => $endDate,
             'duration_days'=> max(1, $startDate->diffInDays($endDate)),
@@ -1139,6 +1161,7 @@ class ProjectController extends Controller
             'duration'     => 'nullable|integer|min:1',
             'start'        => 'nullable|date',
             'end'          => 'nullable|date',
+            'vendor'       => 'nullable|string|max:255',
             'predecessor'  => 'nullable|string|max:50',
             'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
             'lag'          => 'nullable|integer',
@@ -1179,6 +1202,9 @@ class ProjectController extends Controller
         }
         if (isset($validated['requires_evidence'])) {
             $task->requires_evidence = $validated['requires_evidence'];
+        }
+        if (isset($validated['vendor'])) {
+            $task->vendor = $validated['vendor'] ?: 'INTERNAL';
         }
         $task->save();
 
@@ -1255,6 +1281,10 @@ class ProjectController extends Controller
 
         if (!$project || $project->id != $projectId) {
             abort(404, 'Task does not belong to this project.');
+        }
+
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
         }
 
         if ($role === 'worker') {
@@ -1398,6 +1428,26 @@ class ProjectController extends Controller
         if ($project->project_manager == $user->id) return true;
         if ($user->companies_id && $project->companies_id == $user->companies_id) return true;
         return false;
+    }
+
+    /**
+     * Redirect to setup wizard if project is still in pending_setup.
+     */
+    private function guardProjectSetup(?Project $project, string $role)
+    {
+        if (!$project) {
+            return null;
+        }
+
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            if (in_array($role, ['pic', 'SuperAdmin', 'admin_utama'])) {
+                return redirect()->route('projects.setup', $project->id);
+            }
+            return redirect()->route('projectlistpage')
+                ->with('error', 'Proyek ini sedang dalam tahap konfigurasi WBS (setup) oleh PIC dan belum dapat diakses.');
+        }
+
+        return null;
     }
 
     /**
@@ -1657,6 +1707,10 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: You are not the PIC of this project.');
         }
 
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
+        }
+
         $validated = $request->validate([
             'tanggal'       => 'required|date',
             'code_sub_wbs'  => 'nullable|string|max:50',
@@ -1714,6 +1768,10 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: You are not the PIC of this project.');
         }
 
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
+        }
+
         $entry = BudgetEntry::where('projects_id', $project->id)->where('id', $entryId)->firstOrFail();
         $itemName = $entry->nama_item;
         $entry->delete();
@@ -1737,6 +1795,10 @@ class ProjectController extends Controller
 
         if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403, 'Access Denied: You are not the PIC of this project.');
+        }
+
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
         }
 
         $validated = $request->validate([
@@ -1776,6 +1838,10 @@ class ProjectController extends Controller
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
             return redirect()->route('projectlistpage');
+        }
+
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
         }
 
         // Retrieve all tasks for this project

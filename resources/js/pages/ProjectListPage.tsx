@@ -1,6 +1,6 @@
 import { useState, useId } from 'react';
 import { usePage, Link, router } from '@inertiajs/react';
-import { Calendar, FolderOpen, Plus, ShieldAlert, Sparkles, Settings } from 'lucide-react';
+import { Calendar, FolderOpen, Plus, ShieldAlert, Sparkles, Settings, Lock } from 'lucide-react';
 import { PageHeader, Button, Modal, formatDateDisplay } from '@/components/ui';
 
 interface Project {
@@ -158,10 +158,21 @@ function getProjectTitleClasses(title: string) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {projects.map((project: Project) => {
+            const isPending = project.setup_status === 'pending_setup';
+            const targetHref = isPending
+              ? (isWorker || isAdminProgres ? '#' : `/projects/${project.id}/setup`)
+              : (isAdminProgres ? `/scurve?project_id=${project.id}` : (isWorker ? `/tasks?project_id=${project.id}` : `/projects/${project.id}`));
+
             return (
               <Link
                 key={project.id}
-                href={isAdminProgres ? `/scurve?project_id=${project.id}` : (isWorker ? `/tasks?project_id=${project.id}` : (project.setup_status === 'pending_setup' ? `/projects/${project.id}/setup` : `/projects/${project.id}`))}
+                href={targetHref}
+                onClick={(e) => {
+                  if (isPending && (isWorker || isAdminProgres)) {
+                    e.preventDefault();
+                    alert('Proyek ini masih dalam tahap konfigurasi WBS (setup) oleh PIC dan belum dapat diakses.');
+                  }
+                }}
                 className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-2xl"
               >
                 <div className="p-4 sm:p-5 h-full flex flex-col justify-between bg-white rounded-2xl border-[2.5px] border-[#0F172A] hover:border-[#1E3A8A] shadow-sm hover:shadow-md transition-all duration-200 group-hover:-translate-y-0.5">
@@ -191,11 +202,11 @@ function getProjectTitleClasses(title: string) {
                     </div>
 
                     {/* Setup status badge if pending */}
-                    {project.setup_status === 'pending_setup' && (
+                    {isPending && (
                       <div className="mb-2">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
-                          <Sparkles size={12} className="text-amber-600 animate-pulse" />
-                          Setup Template Pending
+                          <Lock size={12} className="text-amber-600" />
+                          Setup Mode (Terkunci)
                         </span>
                       </div>
                     )}

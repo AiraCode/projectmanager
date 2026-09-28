@@ -3,7 +3,8 @@ import { Link, usePage, router } from '@inertiajs/react';
 import {
   LayoutDashboard, FolderOpen, CheckSquare, GitBranch,
   BarChart2, TrendingUp, DollarSign, Menu, X, LogOut,
-  ChevronRight, ChevronLeft, Shield, User, Users, Clock, CalendarDays
+  ChevronRight, ChevronLeft, Shield, User, Users, Clock, CalendarDays,
+  Lock, Layers
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button } from '@/components/ui';
@@ -33,6 +34,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     return false;
   });
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showLockedModal, setShowLockedModal] = useState(false);
 
   // Real-time 24-hour clock (jam: menit: detik, format 24 jam tanpa am/pm)
   const [currentTime, setCurrentTime] = useState<string>(() => {
@@ -152,11 +154,23 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   const pageProps = usePage().props as any;
   const activeProjectId = pageProps?.project?.id;
   const activeProject = pageProps?.project;
+  const isProjectInSetup = (activeProject?.setup_status ?? '') === 'pending_setup';
   const projectHeaderTitle = activeProject
     ? (activeProject.company && activeProject.name
         ? `${activeProject.company} — ${activeProject.name}`
         : activeProject.name || '')
     : '';
+
+  let finalNav = [...visibleNav];
+  if (isProjectInSetup && activeProjectId) {
+    const setupNavItem = { to: `/projects/${activeProjectId}/setup`, icon: Layers, label: 'WBS Setup' };
+    const pListIdx = finalNav.findIndex(i => i.to === '/projectlistpage' || i.to === '/projects');
+    if (pListIdx !== -1) {
+      finalNav.splice(pListIdx + 1, 0, setupNavItem);
+    } else {
+      finalNav.unshift(setupNavItem);
+    }
+  }
 
   useEffect(() => {
     if (activeProjectId && typeof window !== 'undefined') {
@@ -174,6 +188,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   };
 
   const getNavUrl = (basePath: string) => {
+    if (basePath.includes('/setup')) return basePath;
     if (basePath === '/projectlistpage' || basePath === '/projects') return basePath;
     const resolvedId = activeProjectId || (typeof window !== 'undefined' ? (localStorage.getItem('provis_last_project_id') || localStorage.getItem('jeker_last_project_id')) : null);
     if (!resolvedId) return basePath;
@@ -255,14 +270,18 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
 
           {/* Navigation */}
           <nav className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto scrollbar-hide">
-            {visibleNav.map(({ to, icon: Icon, label }) => {
+            {finalNav.map(({ to, icon: Icon, label }) => {
               const targetUrl = getNavUrl(to);
               const purePath = currentUrl.split('?')[0];
               const isAllProjects = to === '/projectlistpage' || to === '/projects';
+              const isSetupItem = to.includes('/setup');
+              const isLocked = isProjectInSetup && !isAllProjects && to !== '/users' && !isSetupItem;
 
               // Precise active state matching routes in routes/web.php:
               let isActive = false;
-              if (to === '/projectlistpage' || to === '/projects') {
+              if (isSetupItem) {
+                isActive = purePath.includes('/setup');
+              } else if (to === '/projectlistpage' || to === '/projects') {
                 isActive = purePath === '/projectlistpage' || purePath === '/projects';
               } else if (to === '/dashboard') {
                 isActive = purePath === '/dashboard' || /^\/projects\/[^/]+$/.test(purePath);
@@ -286,17 +305,28 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                 isActive = purePath === to || purePath.startsWith(to + '/');
               }
 
-              // Custom click handling for All Projects: confirm before leaving active project
+              // Custom click handling for All Projects / Locked:
               const handleClick = (e: React.MouseEvent) => {
                 setSidebarOpen(false);
+                if (isLocked) {
+                  e.preventDefault();
+                  setShowLockedModal(true);
+                  return;
+                }
                 if (isAllProjects && purePath !== '/projectlistpage' && purePath !== '/projects') {
                   e.preventDefault();
                   setShowExitConfirm(true);
                 }
               };
 
-              // Special distinction for All Projects:
-              const allProjectsStyle = isAllProjects
+              // Special distinction for styles:
+              const allProjectsStyle = isLocked
+                ? 'opacity-40 cursor-not-allowed text-white/40 hover:bg-transparent'
+                : isSetupItem
+                ? (isActive
+                    ? 'bg-brand text-white shadow-sm font-semibold'
+                    : 'text-amber-300 hover:text-amber-200 bg-amber-500/15 hover:bg-amber-500/20 border border-amber-500/30 font-semibold')
+                : isAllProjects
                 ? (isActive
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                     : 'text-amber-300/85 hover:text-amber-200 bg-amber-400/10 hover:bg-amber-400/15 border border-amber-400/25')
@@ -309,7 +339,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                   <Link
                     href={targetUrl}
                     onClick={handleClick}
-                    title={sidebarCollapsed ? label : undefined}
+                    title={sidebarCollapsed ? (isLocked ? `${label} (Terkunci — Selesaikan WBS Setup)` : label) : undefined}
                     className={`flex items-center rounded-lg transition-all duration-150 ${
                       sidebarCollapsed
                         ? `w-10 h-10 mx-auto justify-center ${allProjectsStyle}`
@@ -320,12 +350,18 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                     {!sidebarCollapsed && (
                       <>
                         <span className="truncate">{label}</span>
+                        {isLocked && <Lock size={13} className="ml-auto text-amber-400/70 flex-shrink-0" />}
+                        {isSetupItem && !isActive && (
+                          <span className="ml-auto text-[9.5px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 font-semibold uppercase tracking-wider">
+                            Draft
+                          </span>
+                        )}
                         {isAllProjects && !isActive && (
                           <span className="ml-auto text-[9.5px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 font-semibold uppercase tracking-wider">
                             Home
                           </span>
                         )}
-                        {isActive && !isAllProjects && <ChevronRight size={14} className="ml-auto opacity-70" />}
+                        {isActive && !isAllProjects && !isLocked && <ChevronRight size={14} className="ml-auto opacity-70" />}
                       </>
                     )}
                   </Link>
@@ -482,6 +518,43 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
               }}
             >
               Yes, Back to Project List
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Locked Page Notice Modal */}
+      <Modal
+        isOpen={showLockedModal}
+        onClose={() => setShowLockedModal(false)}
+        title="Halaman Terkunci (Setup Mode)"
+        subtitle="Konfigurasi WBS Proyek Sedang Berjalan"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12.5px] leading-relaxed flex items-start gap-2.5">
+            <Lock size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              Proyek ini baru dibuat dan saat ini masih dalam tahap <strong>WBS Setup Mode</strong>. Seluruh halaman lain terkunci sampai PIC menyelesaikan dan mengaktifkan proyek.
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLockedModal(false)}
+            >
+              Tutup
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setShowLockedModal(false);
+                if (activeProjectId) router.visit(`/projects/${activeProjectId}/setup`);
+              }}
+            >
+              Buka Halaman Setup
             </Button>
           </div>
         </div>
