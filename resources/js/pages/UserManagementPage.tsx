@@ -264,18 +264,66 @@ export default function UserManagementPage({
     return true;
   });
 
+  const handleUsernameChange = (newUsername: string) => {
+    if (!editingUser) {
+      const cleanPrefix = newUsername.toLowerCase().trim().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
+      const prevPrefix = data.username.toLowerCase().trim().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
+      
+      if (!data.email || data.email === `${prevPrefix}@provis.id` || data.email === '@provis.id') {
+        setData({
+          ...data,
+          username: newUsername,
+          email: cleanPrefix ? `${cleanPrefix}@provis.id` : ''
+        });
+        return;
+      }
+    }
+    setData('username', newUsername);
+  };
+
   const renderForm = () => (
     <form onSubmit={handleSubmit} className="space-y-5">
       {(isSuperAdmin || (viewMode === 'create' && canCreate) || (editingUser && canEditAny)) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-[12px] font-bold text-neutral-700 mb-1">Username</label>
-            <input type="text" value={data.username} onChange={e => setData('username', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
+            <input type="text" value={data.username} onChange={e => handleUsernameChange(e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
             {errors.username && <p className="text-danger text-[11px] mt-1">{errors.username}</p>}
           </div>
           <div>
             <label className="block text-[12px] font-bold text-neutral-700 mb-1">Email</label>
-            <input type="email" value={data.email} onChange={e => setData('email', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
+            {(!data.email || data.email.toLowerCase().endsWith('@provis.id')) ? (
+              <div className="flex rounded-lg border border-neutral-300 focus-within:ring-1 focus-within:ring-brand focus-within:border-brand overflow-hidden bg-white">
+                <input 
+                  type="text" 
+                  value={data.email ? data.email.replace(/@provis\.id$/i, '') : ''} 
+                  onChange={e => {
+                    let val = e.target.value.trim();
+                    if (val.toLowerCase().endsWith('@provis.id')) {
+                      val = val.slice(0, -10);
+                    }
+                    if (val.includes('@')) {
+                      val = val.split('@')[0];
+                    }
+                    setData('email', val ? `${val}@provis.id` : '');
+                  }} 
+                  required 
+                  placeholder="username / email"
+                  className="w-full border-none px-3 py-2 text-[13px] focus:outline-none focus:ring-0 text-neutral-800 placeholder-neutral-400 bg-transparent" 
+                />
+                <span className="inline-flex items-center px-3 bg-neutral-100 text-neutral-600 text-[13px] font-semibold border-l border-neutral-200 select-none">
+                  @provis.id
+                </span>
+              </div>
+            ) : (
+              <input 
+                type="email" 
+                value={data.email} 
+                onChange={e => setData('email', e.target.value)} 
+                required 
+                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" 
+              />
+            )}
             {errors.email && <p className="text-danger text-[11px] mt-1">{errors.email}</p>}
           </div>
           <div>

@@ -56,6 +56,17 @@ class UserManagementController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
+
+        if ($request->filled('email')) {
+            $email = trim($request->email);
+            if (!str_contains($email, '@')) {
+                $email .= '@provis.id';
+            }
+            $request->merge(['email' => strtolower($email)]);
+        } elseif ($request->filled('username')) {
+            $prefix = strtolower(preg_replace('/[^a-zA-Z0-9._-]/', '', str_replace(' ', '.', trim($request->username))));
+            $request->merge(['email' => $prefix . '@provis.id']);
+        }
         
         $request->validate([
             'username' => 'required|string|max:45',
@@ -145,6 +156,14 @@ class UserManagementController extends Controller
 
             return redirect()->back()->with('success', 'Project access updated successfully.');
             }
+        }
+
+        if ($request->filled('email')) {
+            $email = trim($request->email);
+            if (!str_contains($email, '@')) {
+                $email .= '@provis.id';
+            }
+            $request->merge(['email' => strtolower($email)]);
         }
 
         $request->validate([

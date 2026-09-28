@@ -240,18 +240,66 @@ export default function SuperAdminUserManagementPage({
     return true;
   });
 
-      const renderForm = () => (
+  const handleUsernameChange = (newUsername: string) => {
+    if (!editUser) {
+      const cleanPrefix = newUsername.toLowerCase().trim().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
+      const prevPrefix = data.username.toLowerCase().trim().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
+      
+      if (!data.email || data.email === `${prevPrefix}@provis.id` || data.email === '@provis.id') {
+        setData({
+          ...data,
+          username: newUsername,
+          email: cleanPrefix ? `${cleanPrefix}@provis.id` : ''
+        });
+        return;
+      }
+    }
+    setData('username', newUsername);
+  };
+
+  const renderForm = () => (
     <form onSubmit={handleSubmit} className="p-6 space-y-5">
               {/* Basic Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[12px] font-bold text-neutral-700 mb-1">Username</label>
-                  <input type="text" value={data.username} onChange={e => setData('username', e.target.value)} required className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                  <input type="text" value={data.username} onChange={e => handleUsernameChange(e.target.value)} required className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" />
                   {errors.username && <p className="text-red-500 text-[11px] mt-1">{errors.username}</p>}
                 </div>
                 <div>
                   <label className="block text-[12px] font-bold text-neutral-700 mb-1">Email</label>
-                  <input type="email" value={data.email} onChange={e => setData('email', e.target.value)} required className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                  {(!data.email || data.email.toLowerCase().endsWith('@provis.id')) ? (
+                    <div className="flex rounded-xl border border-neutral-200 focus-within:ring-2 focus-within:ring-violet-400 overflow-hidden bg-white">
+                      <input 
+                        type="text" 
+                        value={data.email ? data.email.replace(/@provis\.id$/i, '') : ''} 
+                        onChange={e => {
+                          let val = e.target.value.trim();
+                          if (val.toLowerCase().endsWith('@provis.id')) {
+                            val = val.slice(0, -10);
+                          }
+                          if (val.includes('@')) {
+                            val = val.split('@')[0];
+                          }
+                          setData('email', val ? `${val}@provis.id` : '');
+                        }} 
+                        required 
+                        placeholder="username / email"
+                        className="w-full border-none px-3 py-2 text-[13px] focus:outline-none focus:ring-0 text-neutral-800 placeholder-neutral-400 bg-transparent" 
+                      />
+                      <span className="inline-flex items-center px-3 bg-neutral-100 text-neutral-600 text-[13px] font-semibold border-l border-neutral-200 select-none">
+                        @provis.id
+                      </span>
+                    </div>
+                  ) : (
+                    <input 
+                      type="email" 
+                      value={data.email} 
+                      onChange={e => setData('email', e.target.value)} 
+                      required 
+                      className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" 
+                    />
+                  )}
                   {errors.email && <p className="text-red-500 text-[11px] mt-1">{errors.email}</p>}
                 </div>
                 <div>
