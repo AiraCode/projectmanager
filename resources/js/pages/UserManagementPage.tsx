@@ -222,13 +222,27 @@ export default function UserManagementPage({
 
   const selectedRoleName = roles.find(r => r.id.toString() === data.roles_id)?.name;
   
+  // Set default permissions for worker to prevent "broken worker" on login (403)
+  useEffect(() => {
+    if (selectedRoleName === 'worker' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
+      setData('permission_matrix', {
+        ...data.permission_matrix,
+        sidebar: ['Tasks', 'Division Progress', 'Weekly Progress'],
+        features: {
+          tasks: ['view', 'toggle_status'],
+          weekly: ['view'],
+          reports: ['view']
+        }
+      });
+    }
+  }, [selectedRoleName]);
+  
   // PIC can only assign project access if user is worker (or if they just want to give specific access)
   const isWorkerTarget = selectedRoleName === 'worker';
   const isAdminTarget = selectedRoleName === 'admin_utama' || selectedRoleName === 'admin_progres';
   
   const showGlobalMatrix = (isSuperAdmin || isPIC) && selectedRoleName !== 'SuperAdmin' && !isAdminTarget;
   
-  const showCompany = selectedRoleName === 'worker' || selectedRoleName === 'pic' || selectedRoleName === 'worker_b';
   const showDivision = selectedRoleName === 'worker' || selectedRoleName === 'worker_b';
   
   const activeProjects = Object.entries(data.permission_matrix.project_access || {})
@@ -267,9 +281,18 @@ export default function UserManagementPage({
           <div>
             <label className="block text-[12px] font-bold text-neutral-700 mb-1">
               Password {editingUser && '(Leave blank to keep)'}
-              <span className="block text-[10px] font-normal text-neutral-500 mt-0.5">Min. 8 characters, letters & numbers</span>
+              <span className="block text-[10px] font-normal text-neutral-500 mt-0.5">Min. 8 characters, 1 letter, 1 number</span>
             </label>
-            <input type="password" value={data.password} onChange={e => setData('password', e.target.value)} required={!editingUser} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" />
+            <input 
+              type="password" 
+              value={data.password} 
+              onChange={e => setData('password', e.target.value)} 
+              required={!editingUser} 
+              placeholder={!editingUser ? "Min 8 chars, 1 letter, 1 number" : "Leave blank to keep current"}
+              pattern="^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$"
+              title="Password must contain at least 8 characters, including 1 letter and 1 number."
+              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" 
+            />
             {errors.password && <p className="text-danger text-[11px] mt-1">{errors.password}</p>}
           </div>
           <div>
@@ -281,8 +304,7 @@ export default function UserManagementPage({
               ))}
             </select>
           </div>
-          
-          {showGlobalMatrix && showCompany && (
+          {showGlobalMatrix && (
             <div>
               <label className="block text-[12px] font-bold text-neutral-700 mb-1">Company</label>
               <select value={data.companies_id} onChange={e => setData('companies_id', e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">

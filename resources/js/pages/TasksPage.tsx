@@ -84,7 +84,7 @@ export default function TasksPage() {
   
   const [projectData, setProjectData] = useState<Project>(() => {
     if (!project || !project.mainJobs) {
-      return recalculateSchedule(recalculateProgress(PROJECT));
+      return { id: 0, title: 'No Project Assigned', mainJobs: [], weeklyData: [], scurveData: [] } as any as Project;
     }
     return recalculateSchedule(recalculateProgress(project));
   });
@@ -92,6 +92,8 @@ export default function TasksPage() {
   useEffect(() => {
     if (project && project.mainJobs) {
       setProjectData(recalculateSchedule(recalculateProgress(project)));
+    } else {
+      setProjectData({ id: 0, title: 'No Project Assigned', mainJobs: [], weeklyData: [], scurveData: [] } as any as Project);
     }
   }, [project]);
   
@@ -475,6 +477,7 @@ export default function TasksPage() {
       }
     }
 
+    const originalData = projectData;
     setProjectData(prev => {
       const newData = { ...prev };
       newData.mainJobs = newData.mainJobs.map(mj => ({
@@ -506,6 +509,7 @@ export default function TasksPage() {
           const flashError = page?.props?.flash?.error;
           if (flashError) {
             setToastMsg(flashError);
+            setProjectData(originalData);
             return;
           }
           if (clamped === 100) setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
@@ -514,6 +518,7 @@ export default function TasksPage() {
         onError: (errors) => {
           const msg = Object.values(errors).flat().join(', ');
           setToastMsg(msg || 'Failed to update progress.');
+          setProjectData(originalData);
         }
       });
     }
@@ -568,6 +573,7 @@ export default function TasksPage() {
     const { taskId, taskName, prevProgress } = uncheckConfirm;
     const revertProgress = (prevProgress !== undefined && prevProgress < 100) ? prevProgress : 0;
 
+    const originalData = projectData;
     setProjectData(prev => {
       const newData = { ...prev };
       newData.mainJobs = newData.mainJobs.map(mj => ({
@@ -597,11 +603,15 @@ export default function TasksPage() {
           const flashError = page?.props?.flash?.error;
           if (flashError) {
             setToastMsg(flashError);
+            setProjectData(originalData);
             return;
           }
           setToastMsg(`Task "${taskName}" marked as incomplete.`);
         },
-        onError: () => setToastMsg('Failed to update task status.')
+        onError: () => {
+            setToastMsg('Failed to update task status.');
+            setProjectData(originalData);
+        }
       });
     }
 

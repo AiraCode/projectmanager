@@ -24,10 +24,6 @@ export default function WeeklyPage() {
 
   const weeks = projectData.weeklyData;
   const [page, setPage] = useState(0);
-  const [editing, setEditing] = useState<Record<number, string>>({});
-  const [editMode, setEditMode] = useState<Record<number, boolean>>({});
-  const [saving, setSaving] = useState<Record<number, boolean>>({});
-  const [saved, setSaved] = useState<Record<number, boolean>>({});
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const totalPages = Math.ceil(weeks.length / PAGE_SIZE);
@@ -86,70 +82,7 @@ export default function WeeklyPage() {
     currentWeekIdx = (weeks.length > 0 && todayStr < weeks[0].startDate) ? 0 : Math.max(0, weeks.length - 1);
   }
 
-  const handleEdit = (weekNo: number, val: string) => {
-    setEditing(p => ({ ...p, [weekNo]: val }));
-  };
 
-  const startEdit = (weekNo: number, currentActual: number) => {
-    setEditing(p => ({ ...p, [weekNo]: String(currentActual || '') }));
-    setEditMode(p => ({ ...p, [weekNo]: true }));
-  };
-
-  const cancelEdit = (weekNo: number) => {
-    setEditMode(p => ({ ...p, [weekNo]: false }));
-  };
-
-  const handleSave = (weekNo: number) => {
-    const val = parseFloat(editing[weekNo]);
-    if (isNaN(val) || val < 0) {
-      setToastMsg('Please enter a valid value (0 or greater).');
-      return;
-    }
-
-    if (projectData.id) {
-      setSaving(p => ({ ...p, [weekNo]: true }));
-      router.post(`/projects/${projectData.id}/weekly`, {
-        week: weekNo,
-        actual: val,
-      }, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setProjectData(prev => {
-            const newData = { ...prev };
-            const weekIndex = newData.weeklyData.findIndex(w => w.week === weekNo);
-            if (weekIndex !== -1) {
-              newData.weeklyData[weekIndex].actual = val;
-            }
-            return recalculateWeeklyData(newData);
-          });
-          setSaved(p => ({ ...p, [weekNo]: true }));
-          setEditMode(p => ({ ...p, [weekNo]: false }));
-          setSaving(p => ({ ...p, [weekNo]: false }));
-          setToastMsg(`Actual progress for W${weekNo} (${val}%) saved successfully.`);
-          setTimeout(() => setSaved(p => ({ ...p, [weekNo]: false })), 2000);
-        },
-        onError: (errors) => {
-          const errText = Object.values(errors).flat().join(', ');
-          setToastMsg(`Failed to save: ${errText || 'An error occurred'}`);
-          setSaving(p => ({ ...p, [weekNo]: false }));
-        },
-        onFinish: () => setSaving(p => ({ ...p, [weekNo]: false })),
-      });
-    } else {
-      setProjectData(prev => {
-        const newData = { ...prev };
-        const weekIndex = newData.weeklyData.findIndex(w => w.week === weekNo);
-        if (weekIndex !== -1) {
-          newData.weeklyData[weekIndex].actual = val;
-        }
-        return recalculateWeeklyData(newData);
-      });
-      setSaved(p => ({ ...p, [weekNo]: true }));
-      setEditMode(p => ({ ...p, [weekNo]: false }));
-      setToastMsg(`Actual progress for W${weekNo} (${val}%) saved successfully.`);
-      setTimeout(() => setSaved(p => ({ ...p, [weekNo]: false })), 2000);
-    }
-  };
 
   const totalPlanned = weeks.reduce((a, w) => a + w.planned, 0);
   const totalActual = weeks.filter(w => w.actual > 0).reduce((a, w) => a + w.actual, 0);
@@ -309,7 +242,7 @@ export default function WeeklyPage() {
 
                       {/* Actual */}
                       <td className="px-4 py-3">
-                        {hasActual && !editMode[w.week] ? (
+                        {hasActual ? (
                           <div className="flex items-center gap-2">
                             <div className="w-14 h-1.5 bg-neutral-200 rounded-full overflow-hidden">
                               <div
@@ -318,36 +251,9 @@ export default function WeeklyPage() {
                               />
                             </div>
                             <span className="font-semibold text-success">{w.actual.toFixed(2)}%</span>
-                            <button
-                              onClick={() => startEdit(w.week, w.actual)}
-                              className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors ml-1"
-                              title="Edit actual progress"
-                            >
-                              <Edit3 size={12} />
-                            </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="100"
-                              placeholder="0.00"
-                              value={editVal ?? ''}
-                              onChange={e => handleEdit(w.week, e.target.value)}
-                              className="w-20 px-2 py-1 rounded border border-neutral-200 text-[12px] outline-none focus:border-brand bg-white text-center shadow-xs"
-                            />
-                            {editMode[w.week] && (
-                              <button
-                                onClick={() => cancelEdit(w.week)}
-                                className="p-1 rounded text-neutral-400 hover:text-danger hover:bg-red-50 transition-colors"
-                                title="Cancel edit"
-                              >
-                                <X size={12} />
-                              </button>
-                            )}
-                          </div>
+                          <span className="text-neutral-300">-</span>
                         )}
                       </td>
 

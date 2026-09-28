@@ -221,8 +221,11 @@ class ProjectController extends Controller
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
-            // No project found — redirect appropriately instead of 404
-            return redirect()->route('projectlistpage');
+            if ($role === 'worker') {
+                $project = null; // Let the frontend handle the empty state
+            } else {
+                return redirect()->route('projectlistpage');
+            }
         }
 
         $divisions = Division::select('id', 'divisi')->get();
@@ -239,7 +242,7 @@ class ProjectController extends Controller
         }
 
         return Inertia::render('TasksPage', [
-            'project'           => $this->transformProjectData($project, null),
+            'project'           => $project ? $this->transformProjectData($project, null) : null,
             'availableProjects' => $availableProjects,
             'userRole'          => $role,
             'division'          => $user->division?->divisi ?? null,
@@ -907,10 +910,6 @@ class ProjectController extends Controller
             return back()->with('error', 'Access Denied: Administrators have read-only access and cannot modify task status.');
         }
 
-        if ($role === 'pic') {
-            return back()->with('error', 'Access Denied: PICs can only manage schedules. Checklist completion can only be performed by workers of the assigned division.');
-        }
-
         $task = Wbs::with('parentSubWbs.mainWbs.project')->where('id', $taskId)->firstOrFail();
         $project = $task->parentSubWbs?->mainWbs?->project;
 
@@ -932,16 +931,16 @@ class ProjectController extends Controller
             }
         }
 
+        $progress = $request->input('progress');
+
         // --- ENFORCE PREDECESSOR RULE (FS) ---
-        if ($task->predecessor && ($task->dep_type === 'FS' || empty($task->dep_type))) {
+        if ($progress > 0 && $task->predecessor && ($task->dep_type === 'FS' || empty($task->dep_type))) {
             // Find the predecessor task. The predecessor field stores the task ID.
             $predTask = Wbs::find($task->predecessor);
             if ($predTask && !$predTask->is_completed && $predTask->progress < 100) {
                 return back()->with('error', "Cannot start task. Predecessor task '{$predTask->name}' must be 100% completed first.");
             }
         }
-
-        $progress = $request->input('progress');
 
         // Collect all uploaded files — Inertia forceFormData sends multiple files
         // as evidence_file (single) or evidence_file_0, evidence_file_1... (multiple)

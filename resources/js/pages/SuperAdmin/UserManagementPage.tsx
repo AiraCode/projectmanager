@@ -196,11 +196,27 @@ export default function SuperAdminUserManagementPage({
   };
 
   const selectedRoleName = roles.find(r => r.id.toString() === data.roles_id)?.name;
+  
+  // Set default permissions for worker to prevent "broken worker" on login (403)
+  useEffect(() => {
+    if (selectedRoleName === 'worker' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
+      setData('permission_matrix', {
+        ...data.permission_matrix,
+        sidebar: ['Tasks', 'Division Progress', 'Weekly Progress'],
+        features: {
+          tasks: ['view', 'toggle_status'],
+          weekly: ['view'],
+          reports: ['view']
+        }
+      });
+    }
+  }, [selectedRoleName]);
+  
   const isWorkerTarget   = selectedRoleName === 'worker';
   const isAdminTarget    = selectedRoleName === 'admin_utama' || selectedRoleName === 'admin_progres';
   
   // Only SuperAdmin can select company. For PIC, it's auto-inherited on backend, so we hide it.
-  const showCompany = (selectedRoleName === 'worker' || selectedRoleName === 'pic' || selectedRoleName === 'worker_b') && (currentUser?.role?.name === 'SuperAdmin');
+  const showCompany = true; // SuperAdmin can always assign company
   const showDivision = selectedRoleName === 'worker' || selectedRoleName === 'worker_b';
   
   const selectedCompanyId = data.companies_id ? Number(data.companies_id) : null;
@@ -241,9 +257,18 @@ export default function SuperAdminUserManagementPage({
                 <div>
                   <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                     Password {editUser && '(blank = keep)'}
-                    <span className="block text-[10px] font-normal text-neutral-500 mt-0.5">Min. 8 characters, letters & numbers</span>
+                    <span className="block text-[10px] font-normal text-neutral-500 mt-0.5">Min. 8 characters, 1 letter, 1 number</span>
                   </label>
-                  <input type="password" value={data.password} onChange={e => setData('password', e.target.value)} required={!editUser} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                  <input 
+                    type="password" 
+                    value={data.password} 
+                    onChange={e => setData('password', e.target.value)} 
+                    required={!editUser} 
+                    placeholder={!editUser ? "Min 8 chars, 1 letter, 1 number" : "Leave blank to keep current"}
+                    pattern="^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$"
+                    title="Password must contain at least 8 characters, including 1 letter and 1 number."
+                    className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" 
+                  />
                 </div>
                 <div>
                   <label className="block text-[12px] font-bold text-neutral-700 mb-1">Role</label>

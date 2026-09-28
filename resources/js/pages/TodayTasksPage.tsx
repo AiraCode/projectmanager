@@ -234,6 +234,7 @@ export default function TodayTasksPage() {
       return;
     }
 
+    const originalData = projectData;
     setProjectData(prev => {
       const newData = { ...prev };
       newData.mainJobs = newData.mainJobs.map(mj => ({
@@ -265,6 +266,7 @@ export default function TodayTasksPage() {
           const flashError = page?.props?.flash?.error;
           if (flashError) {
             setToastMsg(flashError);
+            setProjectData(originalData);
             return;
           }
           if (clamped === 100) setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
@@ -273,6 +275,7 @@ export default function TodayTasksPage() {
         onError: (errors) => {
           const msg = Object.values(errors).flat().join(', ');
           setToastMsg(msg || 'Failed to update progress.');
+          setProjectData(originalData);
         }
       });
     }
@@ -323,6 +326,7 @@ export default function TodayTasksPage() {
     const { taskId, prevProgress, taskName } = uncheckConfirm;
     const targetProg = (prevProgress !== undefined && prevProgress < 100) ? prevProgress : 0;
 
+    const originalData = projectData;
     setProjectData(prev => {
       const newData = { ...prev };
       newData.mainJobs = newData.mainJobs.map(mj => ({
@@ -345,13 +349,25 @@ export default function TodayTasksPage() {
     });
 
     if (projectData.id) {
-      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
+      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: targetProg }, {
         preserveScroll: true,
         preserveState: true,
+        onSuccess: (page: any) => {
+          const flashError = page?.props?.flash?.error;
+          if (flashError) {
+            setToastMsg(flashError);
+            setProjectData(originalData);
+            return;
+          }
+          setToastMsg(`Task "${taskName}" reverted to incomplete (${targetProg}%).`);
+        },
+        onError: () => {
+          setToastMsg('Failed to update task status.');
+          setProjectData(originalData);
+        }
       });
     }
 
-    setToastMsg(`Task "${taskName}" reverted to incomplete (${targetProg}%).`);
     setUncheckConfirm(null);
   };
 
@@ -561,6 +577,25 @@ export default function TodayTasksPage() {
             const authorized = isAuthorizedToCheck(st.division || parentSmj.pic);
             const isChecked = st.checked || st.progress >= 100;
 
+            let predCompleted = true;
+            if (st.predecessor && (!st.depType || st.depType === 'FS')) {
+              let foundPred = false;
+              for (const m of projectData.mainJobs) {
+                for (const s of (m.subMainJobs || [])) {
+                  const pTask = s.subtasks?.find(t => t.id === st.predecessor || t.code === st.predecessor);
+                  if (pTask) {
+                    if (pTask.progress < 100) predCompleted = false;
+                    foundPred = true;
+                    break;
+                  }
+                }
+                if (foundPred) break;
+              }
+            }
+
+            const lockedByPred = authorized && !predCompleted;
+            const canCheck = authorized && predCompleted;
+
             return (
               <div
                 key={st.id}
@@ -599,7 +634,14 @@ export default function TodayTasksPage() {
                         Weight {st.weight ?? 100}%
                       </span>
                     </div>
-                    <StatusBadge status={isChecked ? 'Completed' : st.status} size="xs" />
+                    <div className="flex items-center gap-1.5">
+                      {lockedByPred && (
+                        <span title="Locked: Predecessor (FS) is not 100% completed">
+                          <Lock size={12} className="text-amber-500" />
+                        </span>
+                      )}
+                      <StatusBadge status={isChecked ? 'Completed' : st.status} size="xs" />
+                    </div>
                   </div>
 
                   {/* Task Name - Green if completed, clear text */}
@@ -629,10 +671,10 @@ export default function TodayTasksPage() {
                         max="100"
                         step="1"
                         value={st.progress}
-                        disabled={!authorized}
-                        onChange={(e) => handleProgressChange(st.id, parseInt(e.target.value), authorized, st.name, false)}
-                        onMouseUp={(e) => handleProgressChange(st.id, parseInt((e.target as HTMLInputElement).value), authorized, st.name, true)}
-                        onTouchEnd={(e) => handleProgressChange(st.id, parseInt((e.target as HTMLInputElement).value), authorized, st.name, true)}
+                        disabled={!canCheck}
+                        onChange={(e) => handleProgressChange(st.id, parseInt(e.target.value), canCheck, st.name, false)}
+                        onMouseUp={(e) => handleProgressChange(st.id, parseInt((e.target as HTMLInputElement).value), canCheck, st.name, true)}
+                        onTouchEnd={(e) => handleProgressChange(st.id, parseInt((e.target as HTMLInputElement).value), canCheck, st.name, true)}
                         className={`w-full h-2 rounded-lg cursor-pointer bg-neutral-200 accent-brand ${
                           !authorized ? 'opacity-40 cursor-not-allowed' : 'hover:accent-blue-700'
                         }`}

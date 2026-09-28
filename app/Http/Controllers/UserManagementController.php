@@ -35,9 +35,12 @@ class UserManagementController extends Controller
         
         $projects = [];
         if ($user->role?->name === 'pic') {
-            $projects = \App\Models\Project::where('companies_id', $user->companies_id)
-                ->select('id', 'title')
-                ->get();
+            $projects = \App\Models\Project::where(function($q) use ($user) {
+                if ($user->companies_id) {
+                    $q->where('companies_id', $user->companies_id);
+                }
+                $q->orWhere('project_manager', $user->id);
+            })->select('id', 'title')->get();
         }
 
         return Inertia::render('UserManagementPage', [

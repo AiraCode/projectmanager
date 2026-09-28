@@ -32,14 +32,21 @@ class CheckSidebarAccess
         }
 
         $sidebar = $matrix['sidebar'] ?? null;
-        if ($sidebar === null) {
-            // Fallback rules if not set
-            if ($menuName === 'Budget Management' || $menuName === 'User Management') {
-                if (!in_array($user->role?->name, ['admin_utama'])) {
-                    abort(403, 'Access denied.');
+        if ($sidebar === null || (empty($sidebar) && $user->role?->name === 'worker')) {
+            // Fallback rules if not set or empty for workers
+            if ($user->role?->name === 'worker') {
+                $sidebar = ['WBS Tasks', 'Today Tasks'];
+                if (in_array($menuName, $sidebar)) {
+                    return $next($request);
                 }
+            } else {
+                if ($menuName === 'Budget Management' || $menuName === 'User Management') {
+                    if (!in_array($user->role?->name, ['admin_utama'])) {
+                        abort(403, 'Access denied.');
+                    }
+                }
+                return $next($request);
             }
-            return $next($request);
         }
 
         if (in_array('*', $sidebar)) {
