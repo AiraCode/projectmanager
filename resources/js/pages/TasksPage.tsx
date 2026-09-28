@@ -365,6 +365,7 @@ export default function TasksPage() {
       divisions_id: taskData.divisionId || null,
       duration: taskData.duration || 1,
       start: taskData.startDate || null,
+      end: taskData.finishDate || null,
       predecessor: taskData.predecessor || null,
       dep_type: taskData.depType || 'FS',
       lag: taskData.lag || 0,
@@ -1665,11 +1666,35 @@ function UploadEvidenceModal({
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [completeChecked, setCompleteChecked] = useState(requireComplete || task.progress === 100);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFileError(null);
     const selected = Array.from(e.target.files || []);
-    if (selected.length > 0) {
-      setFiles(prev => [...prev, ...selected]);
+    const validFiles: File[] = [];
+
+    for (const file of selected) {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (!ext || !['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
+        setFileError(`Format berkas "${file.name}" tidak diizinkan. Hanya berkas PDF, JPG, atau PNG yang diperbolehkan.`);
+        return;
+      }
+
+      if (ext === 'pdf' && file.size > 20 * 1024 * 1024) {
+        setFileError(`Ukuran berkas PDF "${file.name}" melebihi batas maksimal 20 MB.`);
+        return;
+      }
+
+      if (['jpg', 'jpeg', 'png'].includes(ext) && file.size > 10 * 1024 * 1024) {
+        setFileError(`Ukuran berkas gambar "${file.name}" melebihi batas maksimal 10 MB.`);
+        return;
+      }
+
+      validFiles.push(file);
+    }
+
+    if (validFiles.length > 0) {
+      setFiles(prev => [...prev, ...validFiles]);
     }
   };
 
@@ -1699,11 +1724,18 @@ function UploadEvidenceModal({
       size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {fileError && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+            <AlertCircle size={16} className="text-red-600 flex-shrink-0" />
+            <span>{fileError}</span>
+          </div>
+        )}
+
         {/* Required Notice Alert */}
         <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12px] leading-relaxed">
           <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
-            <strong className="font-bold">Syarat Wajib:</strong> Lampiran bukti penyelesaian (foto pelaksanaan, berkas serah terima, atau dokumen PDF/gambar) wajib diunggah untuk dapat menandai task ini selesai (100%).
+            <strong className="font-bold">Ketentuan Berkas Bukti:</strong> Hanya format <strong>PDF (maksimal 20 MB)</strong> atau <strong>Foto JPG/PNG (maksimal 10 MB)</strong> yang diperbolehkan untuk diunggah.
           </div>
         </div>
 
@@ -1730,13 +1762,13 @@ function UploadEvidenceModal({
               Pilih atau seret berkas bukti (evidence) ke sini
             </span>
             <span className="text-[11.5px] text-neutral-400 mt-1">
-              Mendukung foto dan dokumen PDF, bisa pilih lebih dari 1
+              Hanya format PDF (maks. 20 MB) atau Foto JPG/PNG (maks. 10 MB)
             </span>
             <input
               type="file"
               multiple
               required={(!task.evidences || task.evidences.length === 0) && files.length === 0}
-              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+              accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
               className="hidden"
               onChange={handleFileChange}
             />
@@ -2226,12 +2258,12 @@ function AddSubtaskModal({
     }
   }, [predecessor, depType, lag, lead, duration, mainJobs]);
 
-  // Calculate finish date preview
+  // Calculate finish date preview - strictly after start date (min. +1 day: e.g. start 28 -> end 29)
   const finishDatePreview = useMemo(() => {
     try {
       const d = new Date(startDate);
-      const dur = parseInt(duration) || 1;
-      d.setDate(d.getDate() + dur - 1); // standard inclusive duration
+      const dur = Math.max(1, parseInt(duration) || 1);
+      d.setDate(d.getDate() + dur);
       return d.toISOString().slice(0, 10);
     } catch {
       return startDate;
@@ -2249,6 +2281,7 @@ function AddSubtaskModal({
       weight: parseFloat(weight) || 100,
       divisionId: divisionId ? parseInt(divisionId) : undefined,
       startDate,
+      finishDate: finishDatePreview,
       duration: parseInt(duration) || 1,
       predecessor: predecessor || undefined,
       depType,

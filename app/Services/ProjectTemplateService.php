@@ -324,10 +324,24 @@ class ProjectTemplateService
                             'dep_type'     => 'FS',
                             'lag'          => 2, // Simulasi lag 2 hari untuk keperluan testing UI
                             'lead'         => 0,
+                            'duration_days'=> 5,
                             'requires_evidence' => false,
                             'deleted_at'   => null,
                         ]
                     );
+
+                    if ($previousTaskId) {
+                        \App\Models\TaskDependency::updateOrCreate(
+                            [
+                                'predecessor_wbs_id' => $previousTaskId,
+                                'successor_wbs_id'   => $wbsId,
+                            ],
+                            [
+                                'dependency_type'    => 'FS',
+                                'lag_days'           => 2,
+                            ]
+                        );
+                    }
 
                     $taskCounter++;
                 }

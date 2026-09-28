@@ -9,6 +9,7 @@ interface Project {
   company: string;
   manager: string;
   status: string;
+  setup_status?: 'pending_setup' | 'active';
   progress: number;
   planned_progress?: number;
   start_date: string | null;
@@ -45,6 +46,11 @@ export default function ProjectListPage() {
     e.preventDefault();
     if (!title.trim()) {
       setErrorMsg('Project name is required.');
+      return;
+    }
+
+    if (endDate <= startDate) {
+      setErrorMsg('Target Finish Date harus setelah Start Date (minimal 1 hari setelahnya).');
       return;
     }
 
@@ -155,7 +161,7 @@ function getProjectTitleClasses(title: string) {
             return (
               <Link
                 key={project.id}
-                href={isAdminProgres ? `/scurve?project_id=${project.id}` : (isWorker ? `/tasks?project_id=${project.id}` : `/projects/${project.id}`)}
+                href={isAdminProgres ? `/scurve?project_id=${project.id}` : (isWorker ? `/tasks?project_id=${project.id}` : (project.setup_status === 'pending_setup' ? `/projects/${project.id}/setup` : `/projects/${project.id}`))}
                 className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-2xl"
               >
                 <div className="p-4 sm:p-5 h-full flex flex-col justify-between bg-white rounded-2xl border-[2.5px] border-[#0F172A] hover:border-[#1E3A8A] shadow-sm hover:shadow-md transition-all duration-200 group-hover:-translate-y-0.5">
@@ -183,6 +189,16 @@ function getProjectTitleClasses(title: string) {
                         </button>
                       )}
                     </div>
+
+                    {/* Setup status badge if pending */}
+                    {project.setup_status === 'pending_setup' && (
+                      <div className="mb-2">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                          <Sparkles size={12} className="text-amber-600 animate-pulse" />
+                          Setup Template Pending
+                        </span>
+                      </div>
+                    )}
 
                     {/* Start Date & End Date */}
                     <div className="flex items-center gap-1.5 text-[12px] text-neutral-500 font-medium mb-3">
@@ -330,7 +346,15 @@ function getProjectTitleClasses(title: string) {
                 <input
                   type="date"
                   value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
+                  onChange={e => {
+                    const newStart = e.target.value;
+                    setStartDate(newStart);
+                    if (newStart && endDate && endDate <= newStart) {
+                      const next = new Date(newStart);
+                      next.setDate(next.getDate() + 1);
+                      setEndDate(next.toISOString().slice(0, 10));
+                    }
+                  }}
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
                   required
                 />
@@ -342,12 +366,23 @@ function getProjectTitleClasses(title: string) {
                 <input
                   type="date"
                   value={endDate}
+                  min={(() => {
+                    if (!startDate) return undefined;
+                    const next = new Date(startDate);
+                    next.setDate(next.getDate() + 1);
+                    return next.toISOString().slice(0, 10);
+                  })()}
                   onChange={e => setEndDate(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
                   required
                 />
               </div>
             </div>
+            {startDate && endDate && endDate <= startDate && (
+              <p className="text-[11.5px] text-red-600 font-semibold mt-1">
+                Target Finish Date harus setelah Start Date (minimal 1 hari setelahnya).
+              </p>
+            )}
 
             {hasPrivateFeature && (
               <label className="flex items-center gap-2 mt-4 p-3 border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50">

@@ -98,6 +98,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::put('/projects/{id}/toggle-private', [ProjectController::class, 'togglePrivate'])->name('projects.toggle-private');
 
+    // ── Project Setup Wizard (PIC only) ──
+    Route::get('/projects/{id}/setup', [ProjectController::class, 'setupWizard'])->name('projects.setup');
+    Route::post('/projects/{id}/setup/complete', [ProjectController::class, 'completeSetup'])->name('projects.setup.complete');
+
     // ── Single project dashboard ──
     Route::get('/projects/{id}', [ProjectController::class, 'dashboard'])->middleware('sidebar:Dashboard')->name('projects.show');
 
@@ -105,6 +109,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/tasks', [ProjectController::class, 'tasks'])->middleware('sidebar:Tasks')->name('tasks.index');
     Route::get('/today-tasks', [ProjectController::class, 'todayTasks'])->name('today-tasks.index');
     Route::get('/projects/{id}/today-tasks', [ProjectController::class, 'todayTasks'])->name('projects.today-tasks');
+
+    // ── Task Dependencies API ──
+    Route::get('/projects/{id}/tasks/{taskId}/dependencies', [ProjectController::class, 'getTaskDependencies'])->name('projects.tasks.dependencies.index');
+    Route::post('/projects/{id}/tasks/{taskId}/dependencies', [ProjectController::class, 'addTaskDependency'])->name('projects.tasks.dependencies.store');
+    Route::delete('/projects/{id}/tasks/{taskId}/dependencies/{depId}', [ProjectController::class, 'removeTaskDependency'])->name('projects.tasks.dependencies.destroy');
 
     // Main Tasks (Main WBS)
     Route::post('/projects/{id}/main-wbs', [ProjectController::class, 'addMainWbs'])->name('projects.mainwbs.store');

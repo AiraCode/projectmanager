@@ -29,6 +29,9 @@ class Wbs extends Model
         'dep_type',
         'lag',
         'lead',
+        'duration_days',
+        'constraint_type',
+        'constraint_date',
         'weight',
         'progress',
         'evidence_path',
@@ -41,6 +44,8 @@ class Wbs extends Model
         'end' => 'datetime',
         'weight' => 'decimal:2',
         'requires_evidence' => 'boolean',
+        'duration_days' => 'integer',
+        'constraint_date' => 'date',
     ];
 
     public function parentSubWbs()
@@ -51,5 +56,29 @@ class Wbs extends Model
     public function division()
     {
         return $this->belongsTo(Division::class, 'divisions_id');
+    }
+
+    public function predecessorDependencies()
+    {
+        return $this->hasMany(TaskDependency::class, 'successor_wbs_id');
+    }
+
+    public function successorDependencies()
+    {
+        return $this->hasMany(TaskDependency::class, 'predecessor_wbs_id');
+    }
+
+    public function predecessorTasks()
+    {
+        return $this->belongsToMany(Wbs::class, 'task_dependencies', 'successor_wbs_id', 'predecessor_wbs_id')
+                    ->withPivot('dependency_type', 'lag_days')
+                    ->withTimestamps();
+    }
+
+    public function successorTasks()
+    {
+        return $this->belongsToMany(Wbs::class, 'task_dependencies', 'predecessor_wbs_id', 'successor_wbs_id')
+                    ->withPivot('dependency_type', 'lag_days')
+                    ->withTimestamps();
     }
 }
