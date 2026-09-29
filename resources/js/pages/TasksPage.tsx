@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
-import { usePage, router } from '@inertiajs/react';
+import { usePage, router, Link } from '@inertiajs/react';
 import {
   Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square,
   Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties,
@@ -750,15 +750,23 @@ export default function TasksPage() {
             )}
 
             {isPIC && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setShowMainJobModal({ mode: 'create' })}
-                icon={Plus}
-                className="text-[12px] h-[34px] flex-shrink-0"
-              >
-                Add Main Task
-              </Button>
+              <>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowMainJobModal({ mode: 'create' })}
+                  icon={Plus}
+                  className="text-[12px] h-[34px] flex-shrink-0"
+                >
+                  Add Main Task
+                </Button>
+                <Link
+                  href={`/projects/${projectData.id}/predecessors`}
+                  className="inline-flex items-center justify-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors h-[34px] flex-shrink-0"
+                >
+                  <Link2 size={14} /> Atur Predecessor
+                </Link>
+              </>
             )}
             
             <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200 flex-shrink-0">
@@ -2686,6 +2694,7 @@ function ManageDependenciesModal({
             >
               {allSubtasks
                 .filter(t => t.id !== task.id)
+                .filter(t => !task.dependencies?.some(dep => String(dep.predecessor_wbs_id) === String(t.id)))
                 .map(t => (
                   <option key={t.id} value={t.id}>
                     {t.code} - {t.name} ({t.startDate ? formatDateDisplay(t.startDate) : ''} - {t.finishDate ? formatDateDisplay(t.finishDate) : ''})

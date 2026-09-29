@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { usePage, router, Link } from '@inertiajs/react';
 import { ArrowLeft, Save, Plus, Edit2, Trash2, LayoutList, GitMerge } from 'lucide-react';
 import { PageHeader, Card, Button, Modal } from '@/components/ui';
@@ -66,18 +66,26 @@ export default function PredecessorManagerPage() {
   // --- React Flow Diagram State ---
   const initialNodes = useMemo(() => {
     const tasks = tableData.filter(t => t.type === 'task');
-    return tasks.map((t, idx) => ({
-      id: String(t.id),
-      type: 'taskNode',
-      position: { x: (idx % 4) * 300, y: Math.floor(idx / 4) * 150 },
-      data: { 
-        code: t.code,
-        name: t.name,
-        start: t.start ? new Date(t.start).toLocaleDateString('id-ID') : '-',
-        end: t.end ? new Date(t.end).toLocaleDateString('id-ID') : '-'
-      }
-    }));
-  }, [tableData]);
+    const savedLayouts = JSON.parse(localStorage.getItem('provis_predecessor_layouts') || '{}');
+    const projectLayouts = savedLayouts[project.id] || {};
+
+    return tasks.map((t, idx) => {
+      const savedPos = projectLayouts[String(t.id)];
+      const position = savedPos ? savedPos : { x: (idx % 4) * 300, y: Math.floor(idx / 4) * 150 };
+
+      return {
+        id: String(t.id),
+        type: 'taskNode',
+        position: position,
+        data: { 
+          code: t.code,
+          name: t.name,
+          start: t.start ? new Date(t.start).toLocaleDateString('id-ID') : '-',
+          end: t.end ? new Date(t.end).toLocaleDateString('id-ID') : '-'
+        }
+      };
+    });
+  }, [tableData, project.id]);
 
   const initialEdges = useMemo(() => {
     const tasks = tableData.filter(t => t.type === 'task');
@@ -90,7 +98,7 @@ export default function PredecessorManagerPage() {
         animated: false,
         markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
         style: { stroke: '#3b82f6', strokeWidth: 2, cursor: 'pointer' },
-        data: { depId: dep.id, taskId: t.id, depType: dep.dependency_type }
+        data: { depId: dep.id, taskId: t.id, depType: dep.dependency_type, lagDays: dep.lag_days || 0 }
       }))
     );
   }, [tableData]);
@@ -98,8 +106,28 @@ export default function PredecessorManagerPage() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
 
+  useEffect(() => {
+    setNodes((currentNodes: any[]) => {
+      return initialNodes.map((inNode: any) => {
+        const existingNode = currentNodes.find(n => n.id === inNode.id);
+        if (existingNode) {
+          return { ...inNode, position: existingNode.position }; // preserve user dragged positions
+        }
+        return inNode;
+      });
+    });
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges]);
+
   const onNodesChange = useCallback((changes: any) => setNodes((nds: any) => applyNodeChanges(changes, nds)), []);
   const onEdgesChange = useCallback((changes: any) => setEdges((eds: any) => applyEdgeChanges(changes, eds)), []);
+
+  const onNodeDragStop = useCallback((event: any, node: any) => {
+    const savedLayouts = JSON.parse(localStorage.getItem('provis_predecessor_layouts') || '{}');
+    if (!savedLayouts[project.id]) savedLayouts[project.id] = {};
+    savedLayouts[project.id][node.id] = node.position;
+    localStorage.setItem('provis_predecessor_layouts', JSON.stringify(savedLayouts));
+  }, [project.id]);
 
   const onConnect = useCallback((params: any) => {
     const { source, target } = params;
@@ -118,11 +146,29 @@ export default function PredecessorManagerPage() {
 
   // Edge editing
   const [edgeModal, setEdgeModal] = useState<any>(null);
+  const [edgeForm, setEdgeForm] = useState({ dependency_type: 'FS', lag_days: 0 });
 
   const onEdgeClick = useCallback((event: any, edge: any) => {
     event.stopPropagation();
     setEdgeModal(edge);
+    setEdgeForm({ dependency_type: edge.data?.depType || 'FS', lag_days: edge.data?.lagDays || 0 });
   }, []);
+
+  const handleUpdateDependency = () => {
+    if (!edgeModal?.data) return;
+    const { taskId, depId } = edgeModal.data;
+    router.post(`/projects/${project.id}/tasks/${taskId}/dependencies`, {
+      predecessor_wbs_ids: [edgeModal.source],
+      dependency_type: edgeForm.dependency_type,
+      lag_days: edgeForm.lag_days,
+    }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setEdgeModal(null);
+        router.reload({ only: ['project'] });
+      }
+    });
+  };
 
   const handleDeleteDependency = () => {
     if (!edgeModal?.data) return;
@@ -139,9 +185,6 @@ export default function PredecessorManagerPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6 h-screen flex flex-col">
       <div>
-        <Link href={`/projects/${project.id}/setup`} className="inline-flex items-center text-sm font-medium text-brand hover:text-brand-dark transition-colors mb-2">
-          <ArrowLeft size={16} className="mr-1.5" /> Back to Project Setup
-        </Link>
         <PageHeader 
           title={`Tree & Predecessor Manager: ${project.title}`} 
           subtitle="Manage tasks and their schedules."
@@ -228,6 +271,7 @@ export default function PredecessorManagerPage() {
             edges={edges} 
             onNodesChange={onNodesChange} 
             onEdgesChange={onEdgesChange}
+            onNodeDragStop={onNodeDragStop}
             onConnect={onConnect}
             onEdgeClick={onEdgeClick}
             nodeTypes={nodeTypes}
@@ -268,14 +312,34 @@ export default function PredecessorManagerPage() {
       {/* Edit Edge Modal */}
       <Modal isOpen={!!edgeModal} onClose={() => setEdgeModal(null)} title="Pengaturan Relasi">
         <div className="space-y-4">
-          <p className="text-sm text-neutral-600">
-            Relasi dari Task <b>{tableData.find(t => String(t.id) === edgeModal?.source)?.code}</b> ke Task <b>{tableData.find(t => String(t.id) === edgeModal?.target)?.code}</b> (Tipe: {edgeModal?.data?.depType}).
+          <p className="text-sm text-neutral-600 mb-4">
+            Relasi dari Task <b>{tableData.find(t => String(t.id) === edgeModal?.source)?.code}</b> ke Task <b>{tableData.find(t => String(t.id) === edgeModal?.target)?.code}</b>.
           </p>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Tipe Relasi</label>
+              <select className="w-full form-input" value={edgeForm.dependency_type} onChange={(e) => setEdgeForm({...edgeForm, dependency_type: e.target.value})}>
+                <option value="FS">FS (Finish-to-Start)</option>
+                <option value="SS">SS (Start-to-Start)</option>
+                <option value="FF">FF (Finish-to-Finish)</option>
+                <option value="SF">SF (Start-to-Finish)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Lag Days</label>
+              <input type="number" className="w-full form-input" value={edgeForm.lag_days} onChange={(e) => setEdgeForm({...edgeForm, lag_days: parseInt(e.target.value) || 0})} />
+            </div>
+          </div>
+
           <div className="flex justify-between items-center mt-6 pt-4 border-t border-neutral-100">
             <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={handleDeleteDependency}>
               <Trash2 size={16} className="mr-2" /> Hapus Relasi
             </Button>
-            <Button variant="primary" onClick={() => setEdgeModal(null)}>Tutup</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEdgeModal(null)}>Batal</Button>
+              <Button variant="primary" onClick={handleUpdateDependency}><Save size={16} className="mr-2" /> Simpan</Button>
+            </div>
           </div>
         </div>
       </Modal>
