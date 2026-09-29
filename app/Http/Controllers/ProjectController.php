@@ -15,10 +15,12 @@ use App\Models\Wbs;
 use App\Models\BudgetEntry;
 use App\Models\WeeklyProgress;
 use App\Models\TaskDependency;
+use App\Models\TaskDependencyGroup;
 use App\Services\ProgressService;
 use App\Services\ProjectTemplateService;
 use App\Services\DependencyScheduler;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class ProjectController extends Controller
@@ -522,6 +524,7 @@ class ProjectController extends Controller
                 $q->with([
                     'division',
                     'predecessorDependencies.predecessor',
+                    'predecessorDependencies.group',
                     'successorDependencies.successor',
                 ])->orderBy('id', 'asc');
             },
@@ -587,6 +590,7 @@ class ProjectController extends Controller
                                         'dependencies'  => $t->predecessorDependencies->map(function ($d) {
                                             return [
                                                 'id'                 => $d->id,
+                                                'dependency_group_id' => $d->dependency_group_id,
                                                 'predecessor_wbs_id' => $d->predecessor_wbs_id,
                                                 'predecessor_name'   => $d->predecessor?->name ?? $d->predecessor_wbs_id,
                                                 'dependency_type'    => $d->dependency_type,
@@ -655,30 +659,33 @@ class ProjectController extends Controller
      */
     public function getTaskDependencies(int|string $projectId, string $taskId)
     {
-        $task = Wbs::findOrFail($taskId);
+        $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($query) use ($projectId) {
+            $query->where('projects_id', $projectId);
+        })->findOrFail($taskId);
         $predecessors = TaskDependency::where('successor_wbs_id', $taskId)
-            ->with('predecessor')
+            ->with(['predecessor', 'group'])
             ->get()
             ->map(function ($d) {
                 return [
                     'id'                 => $d->id,
+                    'dependency_group_id' => $d->dependency_group_id,
                     'predecessor_wbs_id' => $d->predecessor_wbs_id,
                     'predecessor_name'   => $d->predecessor?->name ?? $d->predecessor_wbs_id,
-                    'dependency_type'    => $d->dependency_type,
-                    'lag_days'           => (int)$d->lag_days,
+                    'dependency_type'    => $d->effectiveDependencyType(),
+                    'lag_days'           => $d->effectiveLagDays(),
                 ];
             });
 
         $successors = TaskDependency::where('predecessor_wbs_id', $taskId)
-            ->with('successor')
+            ->with(['successor', 'group'])
             ->get()
             ->map(function ($d) {
                 return [
                     'id'               => $d->id,
                     'successor_wbs_id' => $d->successor_wbs_id,
                     'successor_name'   => $d->successor?->name ?? $d->successor_wbs_id,
-                    'dependency_type'  => $d->dependency_type,
-                    'lag_days'         => (int)$d->lag_days,
+                    'dependency_type'  => $d->effectiveDependencyType(),
+                    'lag_days'         => $d->effectiveLagDays(),
                 ];
             });
 
@@ -708,42 +715,94 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: Only PIC can manage dependencies.');
         }
 
+        if (!$request->has('predecessor_wbs_ids') && $request->filled('predecessor_wbs_id')) {
+            $request->merge(['predecessor_wbs_ids' => [$request->input('predecessor_wbs_id')]]);
+        }
+
         $validated = $request->validate([
-            'predecessor_wbs_id' => 'required|string|exists:wbs,id',
-            'dependency_type'    => 'required|string|in:FS,SS,FF,SF',
-            'lag_days'           => 'nullable|integer',
+            'predecessor_wbs_ids'   => 'required|array|min:1',
+            'predecessor_wbs_ids.*' => 'required|string|distinct|exists:wbs,id',
+            'dependency_type'       => 'required|string|in:FS,SS,FF,SF',
+            'lag_days'              => 'nullable|integer',
         ]);
 
-        $predId = $validated['predecessor_wbs_id'];
-        if ($predId === $taskId) {
-            return back()->with('error', 'Tugas tidak dapat bergantung pada dirinya sendiri.');
+        $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($query) use ($projectId) {
+            $query->where('projects_id', $projectId);
+        })->whereKey($taskId)->firstOrFail();
+
+        $predecessorIds = array_values($validated['predecessor_wbs_ids']);
+        $predecessors = Wbs::whereIn('id', $predecessorIds)
+            ->whereHas('parentSubWbs.mainWbs', function ($query) use ($projectId) {
+                $query->where('projects_id', $projectId);
+            })
+            ->get();
+
+        if ($predecessors->count() !== count($predecessorIds)) {
+            return back()->withErrors([
+                'predecessor_wbs_ids' => 'Semua predecessor harus berasal dari proyek yang sama.',
+            ]);
         }
 
         $scheduler = app(DependencyScheduler::class);
-        if ($scheduler->wouldCauseCycle($predId, $taskId)) {
-            return back()->with('error', 'Ketergantungan tidak dapat ditambahkan: Terdeteksi circular dependency (siklus tak berujung)!');
+        foreach ($predecessorIds as $predecessorId) {
+            if ($predecessorId === $taskId) {
+                return back()->withErrors([
+                    'predecessor_wbs_ids' => 'Tugas tidak dapat bergantung pada dirinya sendiri.',
+                ]);
+            }
+
+            if ($scheduler->wouldCauseCycle($predecessorId, $taskId)) {
+                return back()->withErrors([
+                    'predecessor_wbs_ids' => 'Ketergantungan tidak dapat ditambahkan: terdeteksi circular dependency (siklus tak berujung).',
+                ]);
+            }
         }
 
-        TaskDependency::updateOrCreate(
-            [
-                'predecessor_wbs_id' => $predId,
-                'successor_wbs_id'   => $taskId,
-            ],
-            [
-                'dependency_type'    => $validated['dependency_type'],
-                'lag_days'           => (int) ($validated['lag_days'] ?? 0),
-            ]
-        );
+        $lagDays = (int) ($validated['lag_days'] ?? 0);
+        DB::transaction(function () use ($task, $predecessorIds, $validated, $lagDays) {
+            $group = TaskDependencyGroup::create([
+                'successor_wbs_id' => $task->id,
+                'dependency_type' => $validated['dependency_type'],
+                'lag_days' => $lagDays,
+            ]);
 
-        $task = Wbs::findOrFail($taskId);
-        $task->update([
-            'predecessor' => $predId,
-            'dep_type'    => $validated['dependency_type'],
-            'lag'         => (int) ($validated['lag_days'] ?? 0),
-        ]);
+            $previousGroupIds = [];
+            foreach ($predecessorIds as $predecessorId) {
+                $existing = TaskDependency::where('predecessor_wbs_id', $predecessorId)
+                    ->where('successor_wbs_id', $task->id)
+                    ->first();
+                if ($existing?->dependency_group_id) {
+                    $previousGroupIds[] = $existing->dependency_group_id;
+                }
 
-        // Recalculate and cascade forward
-        $scheduler->propagate($predId);
+                TaskDependency::updateOrCreate(
+                    [
+                        'predecessor_wbs_id' => $predecessorId,
+                        'successor_wbs_id' => $task->id,
+                    ],
+                    [
+                        'dependency_group_id' => $group->id,
+                        'dependency_type' => $validated['dependency_type'],
+                        'lag_days' => $lagDays,
+                    ]
+                );
+            }
+
+            foreach (array_unique($previousGroupIds) as $previousGroupId) {
+                if (!TaskDependency::where('dependency_group_id', $previousGroupId)->exists()) {
+                    TaskDependencyGroup::whereKey($previousGroupId)->delete();
+                }
+            }
+
+            $task->update([
+                'predecessor' => $predecessorIds[0],
+                'dep_type' => $validated['dependency_type'],
+                'lag' => $lagDays,
+            ]);
+        });
+
+        $scheduler->recalculateTaskDates($task);
+        $scheduler->propagate($task->id);
 
         app(ProgressService::class)->recalculateProjectProgress($projectId);
 
@@ -753,7 +812,7 @@ class ProjectController extends Controller
     /**
      * Remove a task dependency.
      */
-    public function removeTaskDependency(Request $request, int|string $projectId, int $depId)
+    public function removeTaskDependency(Request $request, int|string $projectId, string $depId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -763,18 +822,26 @@ class ProjectController extends Controller
             abort(403, 'Access Denied: Only PIC can manage dependencies.');
         }
 
-        $dep = TaskDependency::findOrFail($depId);
+        $dep = TaskDependency::whereHas('successor.parentSubWbs.mainWbs', function ($query) use ($projectId) {
+            $query->where('projects_id', $projectId);
+        })->findOrFail($depId);
         $succId = $dep->successor_wbs_id;
+        $groupId = $dep->dependency_group_id;
         $dep->delete();
+        if ($groupId && !TaskDependency::where('dependency_group_id', $groupId)->exists()) {
+            TaskDependencyGroup::whereKey($groupId)->delete();
+        }
 
         $task = Wbs::find($succId);
         if ($task) {
-            $remaining = TaskDependency::where('successor_wbs_id', $succId)->first();
+            $remaining = TaskDependency::where('successor_wbs_id', $succId)
+                ->with('group')
+                ->first();
             if ($remaining) {
                 $task->update([
                     'predecessor' => $remaining->predecessor_wbs_id,
-                    'dep_type'    => $remaining->dependency_type,
-                    'lag'         => $remaining->lag_days,
+                    'dep_type'    => $remaining->effectiveDependencyType(),
+                    'lag'         => $remaining->effectiveLagDays(),
                 ]);
             } else {
                 $task->update([
@@ -783,7 +850,13 @@ class ProjectController extends Controller
                     'lag'         => 0,
                 ]);
             }
+
+            $scheduler = app(DependencyScheduler::class);
+            $scheduler->recalculateTaskDates($task);
+            $scheduler->propagate($task->id);
         }
+
+        app(ProgressService::class)->recalculateProjectProgress($projectId);
 
         return back()->with('success', 'Ketergantungan berhasil dihapus.');
     }
@@ -1116,15 +1189,11 @@ class ProjectController extends Controller
             $predId = $validated['predecessor'];
             $scheduler = app(DependencyScheduler::class);
             if (!$scheduler->wouldCauseCycle($predId, $taskObj->id)) {
-                TaskDependency::updateOrCreate(
-                    [
-                        'predecessor_wbs_id' => $predId,
-                        'successor_wbs_id'   => $taskObj->id,
-                    ],
-                    [
-                        'dependency_type'    => $validated['dep_type'] ?? 'FS',
-                        'lag_days'           => ((int)($validated['lag'] ?? 0)) - ((int)($validated['lead'] ?? 0)),
-                    ]
+                $this->storeSingleTaskDependency(
+                    $taskObj,
+                    $predId,
+                    $validated['dep_type'] ?? 'FS',
+                    ((int) ($validated['lag'] ?? 0)) - ((int) ($validated['lead'] ?? 0))
                 );
                 $scheduler->recalculateTaskDates($taskObj);
             }
@@ -1169,6 +1238,9 @@ class ProjectController extends Controller
             'requires_evidence' => 'nullable|boolean',
         ]);
 
+        $oldPredecessorId = $task->predecessor;
+        $oldDependencyType = $task->dep_type ?: 'FS';
+        $oldLagDays = (int) ($task->lag ?? 0) - (int) ($task->lead ?? 0);
         $task->name = $validated['name'];
         if (isset($validated['divisions_id'])) {
             $task->divisions_id = $validated['divisions_id'];
@@ -1188,7 +1260,7 @@ class ProjectController extends Controller
             $task->duration_days = max(1, $task->start->diffInDays($task->end));
         }
 
-        if (isset($validated['predecessor'])) {
+        if (array_key_exists('predecessor', $validated)) {
             $task->predecessor = $validated['predecessor'];
         }
         if (isset($validated['dep_type'])) {
@@ -1206,32 +1278,103 @@ class ProjectController extends Controller
         if (isset($validated['vendor'])) {
             $task->vendor = $validated['vendor'] ?: 'INTERNAL';
         }
-        $task->save();
 
-        if (!empty($task->predecessor) && $task->predecessor !== '-') {
-            $predId = $task->predecessor;
-            $scheduler = app(DependencyScheduler::class);
-            if (!$scheduler->wouldCauseCycle($predId, $task->id)) {
-                TaskDependency::updateOrCreate(
-                    [
-                        'predecessor_wbs_id' => $predId,
-                        'successor_wbs_id'   => $task->id,
-                    ],
-                    [
-                        'dependency_type'    => $task->dep_type ?: 'FS',
-                        'lag_days'           => ((int)($task->lag ?? 0)) - ((int)($task->lead ?? 0)),
-                    ]
-                );
+        if (!empty($task->predecessor) && $task->predecessor !== $oldPredecessorId) {
+            if (app(DependencyScheduler::class)->wouldCauseCycle($task->predecessor, $task->id)) {
+                return back()->withErrors([
+                    'predecessor' => 'Ketergantungan tidak dapat diubah: terdeteksi circular dependency.',
+                ]);
             }
-        } elseif (isset($validated['predecessor']) && empty($validated['predecessor'])) {
-            TaskDependency::where('successor_wbs_id', $task->id)->delete();
         }
 
+        $task->save();
+
+        if (array_key_exists('predecessor', $validated)) {
+            $newPredecessorId = $task->predecessor;
+            $newDependencyType = $task->dep_type ?: 'FS';
+            $newLagDays = (int) ($task->lag ?? 0) - (int) ($task->lead ?? 0);
+            $oldDependency = $oldPredecessorId
+                ? TaskDependency::where('successor_wbs_id', $task->id)
+                    ->where('predecessor_wbs_id', $oldPredecessorId)
+                    ->with('group')
+                    ->first()
+                : null;
+
+            if (empty($newPredecessorId) || $newPredecessorId === '-') {
+                $this->deleteTaskDependencies($task);
+            } elseif ($newPredecessorId !== $oldPredecessorId) {
+                $this->deleteTaskDependencies($task);
+                $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
+            } elseif ($oldDependency && ($newDependencyType !== $oldDependencyType || $newLagDays !== $oldLagDays)) {
+                $group = $oldDependency->group;
+                if ($group) {
+                    $group->update([
+                        'dependency_type' => $newDependencyType,
+                        'lag_days' => $newLagDays,
+                    ]);
+                    TaskDependency::where('dependency_group_id', $group->id)->update([
+                        'dependency_type' => $newDependencyType,
+                        'lag_days' => $newLagDays,
+                    ]);
+                } else {
+                    $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
+                }
+            } elseif (!$oldDependency) {
+                $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
+            }
+        }
+
+        app(DependencyScheduler::class)->recalculateTaskDates($task);
         $this->cascadeTaskDates($task->id);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
         return back()->with('success', 'Task updated successfully.');
+    }
+
+    private function storeSingleTaskDependency(Wbs $task, string $predecessorId, string $type, int $lagDays): void
+    {
+        $dependency = TaskDependency::where('predecessor_wbs_id', $predecessorId)
+            ->where('successor_wbs_id', $task->id)
+            ->first();
+        $previousGroupId = $dependency?->dependency_group_id;
+
+        $group = TaskDependencyGroup::create([
+            'successor_wbs_id' => $task->id,
+            'dependency_type' => $type,
+            'lag_days' => $lagDays,
+        ]);
+
+        if ($dependency) {
+            $dependency->update([
+                'dependency_group_id' => $group->id,
+                'dependency_type' => $type,
+                'lag_days' => $lagDays,
+            ]);
+        } else {
+            TaskDependency::create([
+                'predecessor_wbs_id' => $predecessorId,
+                'successor_wbs_id' => $task->id,
+                'dependency_group_id' => $group->id,
+                'dependency_type' => $type,
+                'lag_days' => $lagDays,
+            ]);
+        }
+
+        if ($previousGroupId && !TaskDependency::where('dependency_group_id', $previousGroupId)->exists()) {
+            TaskDependencyGroup::whereKey($previousGroupId)->delete();
+        }
+    }
+
+    private function deleteTaskDependencies(Wbs $task): void
+    {
+        $groupIds = TaskDependency::where('successor_wbs_id', $task->id)
+            ->whereNotNull('dependency_group_id')
+            ->pluck('dependency_group_id')
+            ->unique();
+
+        TaskDependency::where('successor_wbs_id', $task->id)->delete();
+        TaskDependencyGroup::whereIn('id', $groupIds)->delete();
     }
 
     /**
@@ -1466,6 +1609,7 @@ class ProjectController extends Controller
             'mainWbs.subWbs.listName',
             'mainWbs.subWbs.wbsTasks.division',
             'mainWbs.subWbs.wbsTasks.predecessorDependencies.predecessor',
+            'mainWbs.subWbs.wbsTasks.predecessorDependencies.group',
             'budgetEntries',
             'weeklyProgress',
         ]);
@@ -1571,10 +1715,11 @@ class ProjectController extends Controller
                         'dependencies'=> $st->predecessorDependencies ? $st->predecessorDependencies->map(function ($d) {
                             return [
                                 'id'                 => $d->id,
+                                'dependency_group_id' => $d->dependency_group_id,
                                 'predecessor_wbs_id' => $d->predecessor_wbs_id,
                                 'predecessor_name'   => $d->predecessor?->name ?? $d->predecessor_wbs_id,
-                                'dependency_type'    => $d->dependency_type,
-                                'lag_days'           => (int)$d->lag_days,
+                                'dependency_type'    => $d->effectiveDependencyType(),
+                                'lag_days'           => $d->effectiveLagDays(),
                             ];
                         })->values()->toArray() : [],
                         'weight'      => (float) ($st->weight ?? 0),

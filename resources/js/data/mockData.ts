@@ -13,6 +13,7 @@ export interface EvidenceItem {
 
 export interface DependencyItem {
   id: number;
+  dependency_group_id?: number | null;
   predecessor_wbs_id: string;
   predecessor_name: string;
   dependency_type: 'FS' | 'SS' | 'FF' | 'SF';

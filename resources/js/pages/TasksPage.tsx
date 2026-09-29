@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyType, EvidenceItem } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
+import { canStartTask } from '@/utils/taskDependencies';
 import { recalculateProgress } from '@/utils/progressEngine';
 import { exportToCSV } from '@/utils/exportEngine';
 import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast, EmptyState, formatDateDisplay, formatDivisionName } from '@/components/ui';
@@ -135,7 +136,7 @@ export default function TasksPage() {
 
   // Manage Dependencies State
   const [depModal, setDepModal] = useState<{ isOpen: boolean; task?: SubSubtask }>({ isOpen: false });
-  const [depForm, setDepForm] = useState({ predecessor_wbs_id: '', dependency_type: 'FS' as DependencyType, lag_days: 0 });
+  const [depForm, setDepForm] = useState({ predecessor_wbs_ids: [] as string[], dependency_type: 'FS' as DependencyType, lag_days: 0 });
   const [actionError, setActionError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -443,24 +444,24 @@ export default function TasksPage() {
 
   const handleOpenDepModal = (task: SubSubtask) => {
     setActionError('');
-    setDepForm({ predecessor_wbs_id: '', dependency_type: 'FS', lag_days: 0 });
+    setDepForm({ predecessor_wbs_ids: [], dependency_type: 'FS', lag_days: 0 });
     setDepModal({ isOpen: true, task });
   };
 
   const handleAddDependency = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!depModal.task || !depForm.predecessor_wbs_id) return;
+    if (!depModal.task || depForm.predecessor_wbs_ids.length === 0) return;
 
     setSubmitting(true);
     setActionError('');
     router.post(`/projects/${projectData.id}/tasks/${depModal.task.id}/dependencies`, {
-      predecessor_wbs_id: depForm.predecessor_wbs_id,
+      predecessor_wbs_ids: depForm.predecessor_wbs_ids,
       dependency_type: depForm.dependency_type,
       lag_days: depForm.lag_days,
     }, {
       preserveScroll: true,
       onSuccess: () => {
-        setDepForm({ predecessor_wbs_id: '', dependency_type: 'FS', lag_days: 0 });
+        setDepForm({ predecessor_wbs_ids: [], dependency_type: 'FS', lag_days: 0 });
         setSubmitting(false);
         // We let Inertia handle the props update which will flow into projectData
       },
@@ -1524,40 +1525,7 @@ function SubMainJobSection({
             smj.subtasks.map(st => {
               const authorized = isAuthorizedToCheck(st.division || smj.pic);
               
-              // Evaluate predecessor (FS)
-              let predCompleted = true;
-              if (st.predecessor && (!st.depType || st.depType === 'FS')) {
-                let foundPred = false;
-                for (const m of mainJobs) {
-                  for (const s of (m.subMainJobs || [])) {
-                    const pTask = s.subtasks?.find(t => t.id === st.predecessor || t.code === st.predecessor);
-                    if (pTask) {
-                      if (pTask.progress < 100) predCompleted = false;
-                      foundPred = true;
-                      break;
-                    }
-                  }
-                  if (foundPred) break;
-                }
-              }
-
-              if (predCompleted && st.dependencies && st.dependencies.length > 0) {
-                for (const dep of st.dependencies) {
-                  if (!dep.dependency_type || dep.dependency_type === 'FS') {
-                    for (const m of mainJobs) {
-                      for (const s of (m.subMainJobs || [])) {
-                        const pTask = s.subtasks?.find(t => t.id === dep.predecessor_wbs_id || (t as any).dbId === dep.predecessor_wbs_id);
-                        if (pTask && pTask.progress < 100) {
-                          predCompleted = false;
-                          break;
-                        }
-                      }
-                      if (!predCompleted) break;
-                    }
-                  }
-                  if (!predCompleted) break;
-                }
-              }
+              const predCompleted = canStartTask(st, mainJobs);
 
               const effectivelyAuthorized = authorized && predCompleted;
 
@@ -2597,6 +2565,14 @@ function ManageDependenciesModal({
 }) {
   if (!isOpen || !task) return null;
 
+  const dependencyGroups = (task.dependencies ?? []).reduce((groups, dependency) => {
+    const key = dependency.dependency_group_id ?? `dependency-${dependency.id}`;
+    const group = groups.get(key) ?? [];
+    group.push(dependency);
+    groups.set(key, group);
+    return groups;
+  }, new Map<number | string, NonNullable<typeof task.dependencies>>());
+
   return (
     <Modal
       title={`Kelola Ketergantungan: ${task.name}`}
@@ -2638,40 +2614,51 @@ function ManageDependenciesModal({
               Belum ada predecessor yang terhubung dengan task ini.
             </div>
           ) : (
-            <div className="space-y-2">
-              {task.dependencies.map((dep) => (
-                <div
-                  key={dep.id}
-                  className="p-3 rounded-xl bg-white border border-neutral-200 flex items-center justify-between gap-3 shadow-2xs hover:border-neutral-300 transition-colors"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="px-2 py-0.5 rounded text-[11px] font-mono font-black bg-indigo-100 text-indigo-800">
-                      {dep.dependency_type}
-                    </span>
-                    <div>
-                      <strong className="text-[13px] text-neutral-900 block">
-                        {dep.predecessor_name}
-                      </strong>
+            <div className="space-y-3">
+              {[...dependencyGroups.entries()].map(([groupId, dependencies]) => {
+                const type = dependencies[0].dependency_type;
+                const typeDescription = {
+                  FS: 'Finish-to-Start (Task ini mulai setelah predecessor selesai)',
+                  SS: 'Start-to-Start (Task ini mulai setelah predecessor mulai)',
+                  FF: 'Finish-to-Finish (Task ini selesai setelah predecessor selesai)',
+                  SF: 'Start-to-Finish (Task ini selesai setelah predecessor mulai)',
+                }[type];
+
+                return (
+                  <div key={groupId} className="p-3 rounded-xl bg-white border border-neutral-200 shadow-2xs">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-mono font-black bg-indigo-100 text-indigo-800">
+                        {type}
+                      </span>
                       <span className="text-[11.5px] text-neutral-500">
-                        {dep.dependency_type === 'FS' && 'Finish-to-Start (Task ini mulai setelah predecessor selesai)'}
-                        {dep.dependency_type === 'SS' && 'Start-to-Start (Task ini mulai bersamaan dengan predecessor)'}
-                        {dep.dependency_type === 'FF' && 'Finish-to-Finish (Task ini selesai bersamaan dengan predecessor)'}
-                        {dep.dependency_type === 'SF' && 'Start-to-Finish (Task ini selesai setelah predecessor mulai)'}
-                        {dep.lag_days !== 0 && ` • Jeda: ${dep.lag_days > 0 ? `+${dep.lag_days}` : dep.lag_days} hari`}
+                        {dependencies.length > 1 ? `Semua ${dependencies.length} predecessor wajib terpenuhi` : typeDescription}
                       </span>
                     </div>
+                    <div className="space-y-1.5">
+                      {dependencies.map(dep => (
+                        <div key={dep.id} className="flex items-center justify-between gap-3">
+                          <div>
+                            <strong className="text-[13px] text-neutral-900">{dep.predecessor_name}</strong>
+                            {dep.lag_days !== 0 && (
+                              <span className="ml-2 text-[11px] text-neutral-500">
+                                Jeda: {dep.lag_days > 0 ? `+${dep.lag_days}` : dep.lag_days} hari
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveDependency(dep.id)}
+                            className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Hapus Ketergantungan"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onRemoveDependency(dep.id)}
-                    className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    title="Hapus Ketergantungan"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -2684,15 +2671,19 @@ function ManageDependenciesModal({
 
           <div>
             <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
-              Pilih Task Predecessor <span className="text-red-500">*</span>
+              Pilih Task Predecessor (bisa lebih dari satu) <span className="text-red-500">*</span>
             </label>
             <select
-              value={depForm.predecessor_wbs_id}
-              onChange={e => setDepForm({ ...depForm, predecessor_wbs_id: e.target.value })}
+              multiple
+              size={6}
+              value={depForm.predecessor_wbs_ids}
+              onChange={e => setDepForm({
+                ...depForm,
+                predecessor_wbs_ids: Array.from(e.currentTarget.selectedOptions, option => option.value),
+              })}
               className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
               required
             >
-              <option value="">-- Pilih Task --</option>
               {allSubtasks
                 .filter(t => t.id !== task.id)
                 .map(t => (
@@ -2701,6 +2692,7 @@ function ManageDependenciesModal({
                   </option>
                 ))}
             </select>
+            <p className="mt-1 text-[11px] text-neutral-500">Gunakan Ctrl (Windows) atau Command (Mac) untuk memilih beberapa tugas sekaligus.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2760,7 +2752,7 @@ function ManageDependenciesModal({
               variant="primary"
               size="sm"
               type="submit"
-              disabled={submitting || !depForm.predecessor_wbs_id}
+              disabled={submitting || depForm.predecessor_wbs_ids.length === 0}
               icon={Link2}
             >
               {submitting ? 'Menyambungkan...' : 'Hubungkan Predecessor'}

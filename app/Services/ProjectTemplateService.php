@@ -331,14 +331,22 @@ class ProjectTemplateService
                     );
 
                     if ($previousTaskId) {
+                        $group = \App\Models\TaskDependencyGroup::firstOrCreate(
+                            [
+                                'successor_wbs_id' => $wbsId,
+                                'dependency_type' => 'FS',
+                                'lag_days' => 2,
+                            ],
+                        );
                         \App\Models\TaskDependency::updateOrCreate(
                             [
                                 'predecessor_wbs_id' => $previousTaskId,
-                                'successor_wbs_id'   => $wbsId,
+                                'successor_wbs_id' => $wbsId,
                             ],
                             [
-                                'dependency_type'    => 'FS',
-                                'lag_days'           => 2,
+                                'dependency_group_id' => $group->id,
+                                'dependency_type' => 'FS',
+                                'lag_days' => 2,
                             ]
                         );
                     }

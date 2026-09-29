@@ -7,6 +7,7 @@ use App\Models\SubWbs;
 use App\Models\MainWbs;
 use App\Models\Project;
 use App\Models\TaskDependency;
+use App\Models\TaskDependencyGroup;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -97,7 +98,7 @@ class DependencyScheduler
     public function recalculateTaskDates(Wbs $task): bool
     {
         $predecessorDeps = TaskDependency::where('successor_wbs_id', $task->id)
-            ->with('predecessor')
+            ->with(['predecessor', 'group'])
             ->get();
 
         // Also check legacy predecessor field if no TaskDependency rows exist
@@ -106,17 +107,21 @@ class DependencyScheduler
             if ($predTask) {
                 $lag = (int)($task->lag ?? 0) - (int)($task->lead ?? 0);
                 $depType = $task->dep_type ?: 'FS';
-                // Auto create the TaskDependency record for future use
-                TaskDependency::firstOrCreate([
-                    'predecessor_wbs_id' => $predTask->id,
-                    'successor_wbs_id'   => $task->id,
-                ], [
+                $group = TaskDependencyGroup::create([
+                    'successor_wbs_id' => $task->id,
                     'dependency_type'    => $depType,
                     'lag_days'           => $lag,
                 ]);
+                TaskDependency::create([
+                    'predecessor_wbs_id' => $predTask->id,
+                    'successor_wbs_id' => $task->id,
+                    'dependency_group_id' => $group->id,
+                    'dependency_type' => $depType,
+                    'lag_days' => $lag,
+                ]);
 
                 $predecessorDeps = TaskDependency::where('successor_wbs_id', $task->id)
-                    ->with('predecessor')
+                    ->with(['predecessor', 'group'])
                     ->get();
             }
         }
@@ -145,9 +150,9 @@ class DependencyScheduler
 
             $predStart = Carbon::parse($pred->start);
             $predEnd   = Carbon::parse($pred->end);
-            $lag       = (int)$dep->lag_days;
+            $lag       = $dep->effectiveLagDays();
 
-            switch ($dep->dependency_type) {
+            switch ($dep->effectiveDependencyType()) {
                 case 'FS':
                     // Finish-to-Start: Successor start must be after Predecessor end + 1 + lag
                     $reqStart = $predEnd->copy()->addDays(1 + $lag);
@@ -165,28 +170,24 @@ class DependencyScheduler
                     break;
 
                 case 'FF':
-                    // Finish-to-Finish: Successor end must be on or after Predecessor end + lag
-                    $reqEnd = $predEnd->copy()->addDays($lag);
-                    if ($reqEnd->gt($newEnd)) {
-                        $newEnd = $reqEnd->copy();
+                    // Preserve task duration while enforcing the finish-date constraint.
+                    $reqStart = $predEnd->copy()->addDays($lag - $durationDays);
+                    if ($reqStart->gt($newStart)) {
+                        $newStart = $reqStart->copy();
                     }
                     break;
 
                 case 'SF':
-                    // Start-to-Finish: Successor end must be on or after Predecessor start + 1 + lag
-                    $reqEnd = $predStart->copy()->addDays(1 + $lag);
-                    if ($reqEnd->gt($newEnd)) {
-                        $newEnd = $reqEnd->copy();
+                    // Preserve task duration while enforcing the finish-date constraint.
+                    $reqStart = $predStart->copy()->addDays(1 + $lag - $durationDays);
+                    if ($reqStart->gt($newStart)) {
+                        $newStart = $reqStart->copy();
                     }
                     break;
             }
         }
 
-        // Ensure end date respects duration and is strictly greater than start date
-        $calculatedEndFromStart = $newStart->copy()->addDays($durationDays);
-        if ($calculatedEndFromStart->gt($newEnd)) {
-            $newEnd = $calculatedEndFromStart;
-        }
+        $newEnd = $newStart->copy()->addDays($durationDays);
 
         // Guarantee end is strictly after start (at least 1 day)
         if ($newEnd->lte($newStart)) {
@@ -216,18 +217,20 @@ class DependencyScheduler
     public function validateCanStart(Wbs $task): ?string
     {
         $deps = TaskDependency::where('successor_wbs_id', $task->id)
-            ->with('predecessor')
+            ->with(['predecessor', 'group'])
             ->get();
 
         foreach ($deps as $dep) {
             $pred = $dep->predecessor;
             if (!$pred) continue;
 
-            if ($dep->dependency_type === 'FS') {
+            $dependencyType = $dep->effectiveDependencyType();
+
+            if ($dependencyType === 'FS') {
                 if (!$pred->is_completed && ($pred->progress ?? 0) < 100) {
                     return "Cannot start task '{$task->name}'. Predecessor task '{$pred->name}' must be 100% completed first (FS Dependency).";
                 }
-            } elseif ($dep->dependency_type === 'SS') {
+            } elseif ($dependencyType === 'SS') {
                 if (($pred->progress ?? 0) <= 0) {
                     return "Cannot start task '{$task->name}'. Predecessor task '{$pred->name}' must be started first (SS Dependency).";
                 }
@@ -237,10 +240,13 @@ class DependencyScheduler
         // Fallback for single predecessor column
         if ($deps->isEmpty() && !empty($task->predecessor) && $task->predecessor !== '-') {
             $pred = Wbs::find($task->predecessor);
-            if ($pred && ($task->dep_type === 'FS' || empty($task->dep_type))) {
+            $dependencyType = $task->dep_type ?: 'FS';
+            if ($pred && $dependencyType === 'FS') {
                 if (!$pred->is_completed && ($pred->progress ?? 0) < 100) {
                     return "Cannot start task '{$task->name}'. Predecessor task '{$pred->name}' must be 100% completed first.";
                 }
+            } elseif ($pred && $dependencyType === 'SS' && ($pred->progress ?? 0) <= 0) {
+                return "Cannot start task '{$task->name}'. Predecessor task '{$pred->name}' must be started first.";
             }
         }
 
@@ -254,21 +260,35 @@ class DependencyScheduler
     public function validateCanComplete(Wbs $task): ?string
     {
         $deps = TaskDependency::where('successor_wbs_id', $task->id)
-            ->with('predecessor')
+            ->with(['predecessor', 'group'])
             ->get();
 
         foreach ($deps as $dep) {
             $pred = $dep->predecessor;
             if (!$pred) continue;
 
-            if ($dep->dependency_type === 'FF') {
+            $dependencyType = $dep->effectiveDependencyType();
+
+            if ($dependencyType === 'FF') {
                 if (!$pred->is_completed && ($pred->progress ?? 0) < 100) {
                     return "Cannot complete task '{$task->name}'. Predecessor task '{$pred->name}' must be 100% completed first (FF Dependency).";
                 }
-            } elseif ($dep->dependency_type === 'SF') {
+            } elseif ($dependencyType === 'SF') {
                 if (($pred->progress ?? 0) <= 0) {
                     return "Cannot complete task '{$task->name}'. Predecessor task '{$pred->name}' must have started first (SF Dependency).";
                 }
+            }
+        }
+
+        if ($deps->isEmpty() && !empty($task->predecessor) && $task->predecessor !== '-') {
+            $pred = Wbs::find($task->predecessor);
+            $dependencyType = $task->dep_type ?: 'FS';
+
+            if ($pred && $dependencyType === 'FF' && !$pred->is_completed && ($pred->progress ?? 0) < 100) {
+                return "Cannot complete task '{$task->name}'. Predecessor task '{$pred->name}' must be 100% completed first.";
+            }
+            if ($pred && $dependencyType === 'SF' && ($pred->progress ?? 0) <= 0) {
+                return "Cannot complete task '{$task->name}'. Predecessor task '{$pred->name}' must have started first.";
             }
         }
 

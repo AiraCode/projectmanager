@@ -12,13 +12,30 @@ class TaskDependency extends Model
     protected $fillable = [
         'predecessor_wbs_id',
         'successor_wbs_id',
+        'dependency_group_id',
         'dependency_type',
         'lag_days',
     ];
 
     protected $casts = [
+        'dependency_group_id' => 'integer',
         'lag_days' => 'integer',
     ];
+
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(TaskDependencyGroup::class, 'dependency_group_id');
+    }
+
+    public function effectiveDependencyType(): string
+    {
+        return $this->group?->dependency_type ?? $this->dependency_type;
+    }
+
+    public function effectiveLagDays(): int
+    {
+        return (int) ($this->group?->lag_days ?? $this->lag_days);
+    }
 
     /**
      * The task that must happen first / drives the relationship.

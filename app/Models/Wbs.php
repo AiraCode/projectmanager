@@ -63,6 +63,11 @@ class Wbs extends Model
         return $this->hasMany(TaskDependency::class, 'successor_wbs_id');
     }
 
+    public function dependencyGroups()
+    {
+        return $this->hasMany(TaskDependencyGroup::class, 'successor_wbs_id');
+    }
+
     public function successorDependencies()
     {
         return $this->hasMany(TaskDependency::class, 'predecessor_wbs_id');

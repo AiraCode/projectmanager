@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, EvidenceItem } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
+import { canStartTask } from '@/utils/taskDependencies';
 import { recalculateProgress } from '@/utils/progressEngine';
 import { StatusBadge, PageHeader, Card, Button, Modal, Toast, formatDateDisplay, formatDivisionName } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
@@ -589,21 +590,7 @@ export default function TodayTasksPage() {
             const authorized = isAuthorizedToCheck(st.division || parentSmj.pic);
             const isChecked = st.checked || st.progress >= 100;
 
-            let predCompleted = true;
-            if (st.predecessor && (!st.depType || st.depType === 'FS')) {
-              let foundPred = false;
-              for (const m of projectData.mainJobs) {
-                for (const s of (m.subMainJobs || [])) {
-                  const pTask = s.subtasks?.find(t => t.id === st.predecessor || t.code === st.predecessor);
-                  if (pTask) {
-                    if (pTask.progress < 100) predCompleted = false;
-                    foundPred = true;
-                    break;
-                  }
-                }
-                if (foundPred) break;
-              }
-            }
+            const predCompleted = canStartTask(st, projectData.mainJobs);
 
             const lockedByPred = authorized && !predCompleted;
             const canCheck = authorized && predCompleted;
