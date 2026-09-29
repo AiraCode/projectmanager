@@ -111,11 +111,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects/{id}/today-tasks', [ProjectController::class, 'todayTasks'])->name('projects.today-tasks');
 
     // ── Task Dependencies API ──
+    Route::get('/projects/{id}/predecessors', [ProjectController::class, 'predecessorsView'])->name('projects.predecessors');
     Route::get('/projects/{id}/tasks/{taskId}/dependencies', [ProjectController::class, 'getTaskDependencies'])->name('projects.tasks.dependencies.index');
     Route::post('/projects/{id}/tasks/{taskId}/dependencies', [ProjectController::class, 'addTaskDependency'])->name('projects.tasks.dependencies.store');
     Route::delete('/projects/{id}/tasks/{taskId}/dependencies/{depId}', [ProjectController::class, 'removeTaskDependency'])->name('projects.tasks.dependencies.destroy');
 
     // Main Tasks (Main WBS)
+    Route::delete('/projects/{id}/clear-wbs', [ProjectController::class, 'clearWbs'])->name('projects.wbs.clear');
     Route::post('/projects/{id}/main-wbs', [ProjectController::class, 'addMainWbs'])->name('projects.mainwbs.store');
     Route::put('/projects/{id}/main-wbs/{mainWbsId}', [ProjectController::class, 'updateMainWbs'])->name('projects.mainwbs.update');
     Route::delete('/projects/{id}/main-wbs/{mainWbsId}', [ProjectController::class, 'deleteMainWbs'])->name('projects.mainwbs.destroy');

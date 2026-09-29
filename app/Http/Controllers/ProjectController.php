@@ -42,11 +42,7 @@ class ProjectController extends Controller
             $projectsQuery = Project::where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->with(['manager', 'company']);
             $projects = $projectsQuery->get();
             if ($projects->count() === 0) {
-                abort(403, 'Anda belum diberikan akses ke proyek manapun. Silakan hubungi Administrator.');
-            }
-
-            if ($projects->count() === 1) {
-                return redirect()->route('tasks.index', ['project_id' => $projects->first()->id]);
+                return back()->withErrors(['message' => 'Anda belum diberikan akses ke proyek manapun. Silakan hubungi Administrator.']);
             }
 
             $mappedProjects = $projects->map(function ($p) {
@@ -80,21 +76,15 @@ class ProjectController extends Controller
             $picProjectsQuery = Project::query();
             if ($user->companies_id) {
                 $picProjectsQuery->where(function ($q) use ($user) {
-                    $q->where('companies_id', $user->companies_id)
-                      ->orWhere('project_manager', $user->id);
+                    $q->where(function ($sub) use ($user) {
+                        $sub->where('companies_id', $user->companies_id)
+                            ->where('is_private', false);
+                    })->orWhere('project_manager', $user->id);
                 });
             } else {
                 $picProjectsQuery->where('project_manager', $user->id);
             }
             $picProjects = $picProjectsQuery->with(['manager', 'company'])->get();
-
-            if (!$hasMultiple && $picProjects->count() > 0) {
-                $pFirst = $picProjects->first();
-                if (($pFirst->setup_status ?? 'active') === 'pending_setup') {
-                    return redirect()->route('projects.setup', $pFirst->id);
-                }
-                return redirect()->route('projects.show', $pFirst->id);
-            }
 
             $companies = Company::select('id', 'name')->get();
             $mappedProjects = $picProjects->map(function ($p) {
@@ -115,7 +105,7 @@ class ProjectController extends Controller
 
             return Inertia::render('ProjectListPage', [
                 'projects'  => $mappedProjects,
-                'canCreate' => $hasMultiple || $picProjects->count() === 0,
+                'canCreate' => $hasMultiple,
                 'companies' => $companies,
                 'userRole'  => $role,
                 'hasPrivateFeature' => $hasPrivate,
@@ -444,7 +434,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         if ($role !== 'pic') {
-            abort(403, 'Access Denied: Only PICs can create new projects. Admins are not permitted to create projects.');
+            return back()->withErrors(['message' => 'Access Denied: Only PICs can create new projects. Admins are not permitted to create projects.']);
         }
 
         // Check if PIC is allowed to create multiple projects
@@ -530,8 +520,8 @@ class ProjectController extends Controller
             },
         ])->findOrFail($id);
 
-        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can configure it.');
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can configure it.']);
         }
 
         $divisions = Division::select('id', 'divisi')->get();
@@ -610,6 +600,112 @@ class ProjectController extends Controller
         ]);
     }
 
+    public function predecessorsView(Request $request, int|string $id)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::with([
+            'company',
+            'manager',
+            'mainWbs' => function ($q) {
+                $q->orderBy('id', 'asc');
+            },
+            'mainWbs.listName',
+            'mainWbs.subWbs' => function ($q) {
+                $q->orderBy('id', 'asc');
+            },
+            'mainWbs.subWbs.listName',
+            'mainWbs.subWbs.wbsTasks' => function ($q) {
+                $q->with([
+                    'division',
+                    'predecessorDependencies.predecessor',
+                    'predecessorDependencies.group',
+                    'successorDependencies.successor',
+                ])->orderBy('id', 'asc');
+            },
+        ])->findOrFail($id);
+
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can configure it.']);
+        }
+
+        $divisions = Division::select('id', 'divisi')->get();
+
+        $allTasks = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($project) {
+            $q->where('projects_id', $project->id);
+        })->select('id', 'name', 'start', 'end')->orderBy('start', 'asc')->get();
+
+        return Inertia::render('PredecessorManagerPage', [
+            'project' => [
+                'id'           => $project->id,
+                'title'        => $project->title,
+                'name'         => $project->title,
+                'status'       => $project->status,
+                'setup_status' => $project->setup_status ?? 'pending_setup',
+                'start'        => $project->start ? $project->start->format('Y-m-d') : null,
+                'end'          => $project->end ? $project->end->format('Y-m-d') : null,
+                'company'      => $project->company?->name ?? '—',
+                'manager'      => $project->manager?->username ?? $project->manager?->name ?? '—',
+                'mainWbs'      => $project->mainWbs->values()->map(function ($mw, $mwIdx) {
+                    return [
+                        'id'                     => $mw->id,
+                        'code'                   => (string) ($mwIdx + 1),
+                        'list_main_wbs_names_id' => $mw->list_main_wbs_names_id,
+                        'name'                   => $mw->name ?: ($mw->listName?->name ?? 'Main Task'),
+                        'weight'                 => (float) $mw->percentage,
+                        'start'                  => $mw->start ? $mw->start->format('Y-m-d') : '',
+                        'end'                    => $mw->end ? $mw->end->format('Y-m-d') : '',
+                        'subWbs'                 => $mw->subWbs->values()->map(function ($sw, $swIdx) use ($mwIdx) {
+                            $subCode = ($mwIdx + 1) . '.' . ($swIdx + 1);
+                            return [
+                                'id'                    => $sw->id,
+                                'code'                  => $subCode,
+                                'main_wbs_id'           => $sw->sub_wbs_id,
+                                'name'                  => $sw->name ?: ($sw->listName?->name ?? 'Sub Task'),
+                                'weight'                => (float) $sw->weight,
+                                'start'                 => $sw->start ? $sw->start->format('Y-m-d') : '',
+                                'end'                   => $sw->end ? $sw->end->format('Y-m-d') : '',
+                                'wbsTasks'              => $sw->wbsTasks->values()->map(function ($t, $tIdx) use ($subCode) {
+                                    return [
+                                        'id'            => $t->id,
+                                        'code'          => $subCode . '.' . ($tIdx + 1),
+                                        'sub_wbs_id'    => $t->sub_wbs_id,
+                                        'name'          => $t->name,
+                                        'division_id'   => $t->divisions_id,
+                                        'division_name' => $t->division?->divisi ?? 'General',
+                                        'vendor'        => $t->vendor ?? 'INTERNAL',
+                                        'start'         => $t->start ? $t->start->format('Y-m-d') : '',
+                                        'end'           => $t->end ? $t->end->format('Y-m-d') : '',
+                                        'duration_days' => $t->duration_days ?? 1,
+                                        'predecessor'   => $t->predecessor ?? '',
+                                        'dep_type'      => $t->dep_type ?: 'FS',
+                                        'lag'           => (int) ($t->lag ?? 0),
+                                        'lead'          => (int) ($t->lead ?? 0),
+                                        'requires_evidence' => (bool) $t->requires_evidence,
+                                        'dependencies'  => $t->predecessorDependencies->map(function ($d) {
+                                            return [
+                                                'id'                 => $d->id,
+                                                'dependency_group_id' => $d->dependency_group_id,
+                                                'predecessor_wbs_id' => $d->predecessor_wbs_id,
+                                                'predecessor_name'   => $d->predecessor?->name ?? $d->predecessor_wbs_id,
+                                                'dependency_type'    => $d->dependency_type,
+                                                'lag_days'           => (int) $d->lag_days,
+                                            ];
+                                        })->values()->toArray(),
+                                    ];
+                                }),
+                            ];
+                        }),
+                    ];
+                }),
+            ],
+            'divisions' => $divisions,
+            'allTasks'  => $allTasks,
+            'userRole'  => $role,
+        ]);
+    }
+
     /**
      * Mark project setup as complete, activate project and cascade schedules.
      */
@@ -619,7 +715,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
         $project = Project::findOrFail($id);
 
-        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
             abort(403);
         }
 
@@ -711,8 +807,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
         $project = Project::findOrFail($projectId);
 
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only PIC can manage dependencies.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only PIC can manage dependencies.']);
         }
 
         if (!$request->has('predecessor_wbs_ids') && $request->filled('predecessor_wbs_id')) {
@@ -812,14 +908,14 @@ class ProjectController extends Controller
     /**
      * Remove a task dependency.
      */
-    public function removeTaskDependency(Request $request, int|string $projectId, string $depId)
+    public function removeTaskDependency(Request $request, int|string $projectId, string $taskId, string $depId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
         $project = Project::findOrFail($projectId);
 
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only PIC can manage dependencies.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only PIC can manage dependencies.']);
         }
 
         $dep = TaskDependency::whereHas('successor.parentSubWbs.mainWbs', function ($query) use ($projectId) {
@@ -871,8 +967,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can add a Main Task.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can add a Main Task.']);
         }
 
         $validated = $request->validate([
@@ -917,8 +1013,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can modify Main Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can modify Main Tasks.']);
         }
 
         $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
@@ -956,6 +1052,32 @@ class ProjectController extends Controller
     }
 
     /**
+     * Clear all WBS Tasks (Main, Sub, Tasks) in the project safely.
+     */
+    public function clearWbs(Request $request, int|string $projectId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can clear tasks.']);
+        }
+
+        DB::transaction(function () use ($project) {
+            foreach ($project->mainWbs as $mainWbs) {
+                foreach ($mainWbs->subWbs as $subWbs) {
+                    $subWbs->wbsTasks()->forceDelete();
+                }
+                $mainWbs->subWbs()->forceDelete();
+            }
+            $project->mainWbs()->forceDelete();
+        });
+
+        return back()->with('message', 'Semua task berhasil dihapus secara permanen.');
+    }
+
+    /**
      * Delete Main Task (Main WBS) and its descendants.
      * PIC only!
      */
@@ -965,8 +1087,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can delete Main Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can delete Main Tasks.']);
         }
 
         $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
@@ -993,8 +1115,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can add a Sub Task.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can add a Sub Task.']);
         }
 
         if ($request->has('main_wbs_id')) {
@@ -1050,8 +1172,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can modify Sub Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can modify Sub Tasks.']);
         }
 
         $subWbs = SubWbs::whereHas('mainWbs', function ($q) use ($projectId) {
@@ -1096,8 +1218,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can delete Sub Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can delete Sub Tasks.']);
         }
 
         $subWbs = SubWbs::whereHas('mainWbs', function ($q) use ($projectId) {
@@ -1128,8 +1250,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can add Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can add Tasks.']);
         }
 
         if ($request->has('sub_wbs_id')) {
@@ -1216,8 +1338,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can modify Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can modify Tasks.']);
         }
 
         $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($projectId) {
@@ -1387,8 +1509,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can delete Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can delete Tasks.']);
         }
 
         $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($projectId) {
@@ -1619,7 +1741,7 @@ class ProjectController extends Controller
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
                 if (!$this->isPicAuthorizedForProject($user, $project)) {
-                    abort(403, 'Access Denied: PICs cannot access projects belonging to another company.');
+                    return back()->withErrors(['message' => 'Access Denied: PICs cannot access projects belonging to another company.']);
                 }
 
                 return $project;
@@ -1641,12 +1763,12 @@ class ProjectController extends Controller
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
                 if ($project->companies_id != $user->companies_id) {
-                    abort(403, 'Access Denied: Workers can only access projects belonging to their assigned company.');
+                    return back()->withErrors(['message' => 'Access Denied: Workers can only access projects belonging to their assigned company.']);
                 }
                 
                 $projectAccess = $user->permission_matrix['project_access'] ?? [];
                 if (empty($projectAccess[$id]['view_project'])) {
-                    abort(403, 'Access Denied: You do not have permission to view this project.');
+                    return back()->withErrors(['message' => 'Access Denied: You do not have permission to view this project.']);
                 }
                 
                 return $project;
@@ -1845,11 +1967,11 @@ class ProjectController extends Controller
         $project = Project::findOrFail($projectId);
 
         if ($role === 'worker' || $role === 'admin_progres') {
-            abort(403, 'Access Denied: You are not authorized to add budget realization entries.');
+            return back()->withErrors(['message' => 'Access Denied: You are not authorized to add budget realization entries.']);
         }
 
-        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: You are not the PIC of this project.');
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: You are not the PIC of this project.']);
         }
 
         if (($project->setup_status ?? 'active') === 'pending_setup') {
@@ -1906,11 +2028,11 @@ class ProjectController extends Controller
         $project = Project::findOrFail($projectId);
 
         if ($role === 'worker' || $role === 'admin_progres') {
-            abort(403, 'Access Denied: You are not authorized to delete budget realization entries.');
+            return back()->withErrors(['message' => 'Access Denied: You are not authorized to delete budget realization entries.']);
         }
 
-        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: You are not the PIC of this project.');
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: You are not the PIC of this project.']);
         }
 
         if (($project->setup_status ?? 'active') === 'pending_setup') {
@@ -1935,11 +2057,11 @@ class ProjectController extends Controller
         $project = Project::findOrFail($projectId);
 
         if ($role === 'worker' || $role === 'admin_progres') {
-            abort(403, 'Access Denied: You are not authorized to update weekly progress.');
+            return back()->withErrors(['message' => 'Access Denied: You are not authorized to update weekly progress.']);
         }
 
-        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: You are not the PIC of this project.');
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: You are not the PIC of this project.']);
         }
 
         if (($project->setup_status ?? 'active') === 'pending_setup') {

@@ -62,6 +62,13 @@ export default function SuperAdminUserManagementPage({
   const [isGlobalMatrixOpen, setIsGlobalMatrixOpen] = useState(false);
   const [isProjectAccessOpen, setIsProjectAccessOpen] = useState(false);
   
+  useEffect(() => {
+    if (toast) {
+      const t = setTimeout(() => setToast(null), 10000);
+      return () => clearTimeout(t);
+    }
+  }, [toast]);
+  
   const [viewMode, setViewMode] = useState<'manage' | 'create'>('manage');
   const [filterRole, setFilterRole] = useState('');
   const [filterCompany, setFilterCompany] = useState('');
@@ -132,12 +139,22 @@ export default function SuperAdminUserManagementPage({
     e.preventDefault();
     if (editUser) {
       put(`/admin/users/${editUser.id}`, {
-        onSuccess: () => { setModalOpen(false); setToast({ msg: 'User updated.', type: 'success' }); },
+        onSuccess: () => { 
+          if (viewMode !== 'create') setModalOpen(false); 
+          setToast({ msg: `User ${data.username} updated.`, type: 'success' }); 
+        },
         onError:   () => setToast({ msg: 'Error updating user.', type: 'error' }),
       });
     } else {
       post('/admin/users', {
-        onSuccess: () => { setModalOpen(false); setToast({ msg: 'User created.', type: 'success' }); },
+        onSuccess: () => { 
+          setToast({ msg: `User ${data.username} created.`, type: 'success' });
+          if (viewMode === 'create') {
+            openCreate();
+          } else {
+            setModalOpen(false);
+          }
+        },
         onError:   () => setToast({ msg: 'Error creating user.', type: 'error' }),
       });
     }

@@ -28,17 +28,11 @@ class AuthController extends Controller
             $role = $user->role->name ?? '';
             
             if ($role === 'worker') {
-                return redirect()->intended('/tasks');
+                return redirect()->intended('/projectlistpage');
             }
 
             if ($role === 'pic') {
-                $features = $user->permission_matrix['features']['projects'] ?? [];
-                $hasMultipleProjects = in_array('Multiple Projects', $features);
-                if ($hasMultipleProjects) {
-                    return redirect()->intended('/projectlistpage');
-                }
-                // PIC without multiple projects goes to dashboard (single project)
-                return redirect()->intended('/dashboard');
+                return redirect()->intended('/projectlistpage');
             }
 
             return redirect()->intended('/projectlistpage');

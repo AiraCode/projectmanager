@@ -154,7 +154,11 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   const pageProps = usePage().props as any;
   const activeProjectId = pageProps?.project?.id;
   const activeProject = pageProps?.project;
-  const isProjectInSetup = (activeProject?.setup_status ?? '') === 'pending_setup';
+  
+  const storedSetupStatus = typeof window !== 'undefined' ? localStorage.getItem('provis_project_setup_status') : '';
+  const currentSetupStatus = activeProject ? (activeProject.setup_status ?? '') : storedSetupStatus;
+  const isProjectInSetup = currentSetupStatus === 'pending_setup';
+  
   const projectHeaderTitle = activeProject
     ? (activeProject.company && activeProject.name
         ? `${activeProject.company} — ${activeProject.name}`
@@ -176,8 +180,9 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     if (activeProjectId && typeof window !== 'undefined') {
       localStorage.setItem('provis_last_project_id', String(activeProjectId));
       localStorage.setItem('jeker_last_project_id', String(activeProjectId));
+      localStorage.setItem('provis_project_setup_status', activeProject?.setup_status || '');
     }
-  }, [activeProjectId]);
+  }, [activeProjectId, activeProject]);
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
