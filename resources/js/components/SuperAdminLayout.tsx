@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import {
-  LayoutDashboard, Users, ScrollText, LogOut, Menu, X, ChevronLeft, Shield, Building2, FolderOpen, Key
+  LayoutDashboard, Users, ScrollText, LogOut, Menu, X, ChevronLeft, Shield, Building2, FolderOpen, Key, Layers
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button } from '@/components/ui';
@@ -11,6 +11,7 @@ const ADMIN_NAV = [
   { to: '/admin',              icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/admin/users',        icon: Users,           label: 'User Management' },
   { to: '/admin/companies',    icon: Building2,       label: 'Companies' },
+  { to: '/admin/divisions',    icon: Layers,          label: 'Divisions' },
   { to: '/admin/projects',     icon: FolderOpen,      label: 'All Projects' },
   { to: '/admin/audit-log',    icon: ScrollText,      label: 'Audit Log' },
 ];

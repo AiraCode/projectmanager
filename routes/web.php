@@ -70,6 +70,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/audit-log',     [SuperAdminController::class, 'auditLog'])->name('admin.audit-log');
         Route::get('/users',         [SuperAdminController::class, 'userManagement'])->name('admin.users');
         Route::get('/companies',     [SuperAdminController::class, 'companiesPage'])->name('admin.companies');
+        Route::get('/divisions',     [SuperAdminController::class, 'divisionsPage'])->name('admin.divisions');
         Route::get('/projects',      [SuperAdminController::class, 'allProjectsPage'])->name('admin.projects');
 
         // User CRUD scoped under SuperAdmin prefix
@@ -81,6 +82,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/companies',        [\App\Http\Controllers\CompanyController::class, 'store'])->name('admin.companies.store');
         Route::put('/companies/{id}',    [\App\Http\Controllers\CompanyController::class, 'update'])->name('admin.companies.update');
         Route::delete('/companies/{id}', [\App\Http\Controllers\CompanyController::class, 'destroy'])->name('admin.companies.destroy');
+
+        // Divisions CRUD (SuperAdmin only)
+        Route::post('/divisions',        [\App\Http\Controllers\DivisionController::class, 'store'])->name('admin.divisions.store');
+        Route::put('/divisions/{id}',    [\App\Http\Controllers\DivisionController::class, 'update'])->name('admin.divisions.update');
+        Route::delete('/divisions/{id}', [\App\Http\Controllers\DivisionController::class, 'destroy'])->name('admin.divisions.destroy');
 
         // Project delete (SuperAdmin only)
         Route::delete('/projects/{id}',  [\App\Http\Controllers\ProjectController::class, 'superAdminDestroy'])->name('admin.projects.destroy');
