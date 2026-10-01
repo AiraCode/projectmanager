@@ -4,10 +4,11 @@ import {
   LayoutDashboard, FolderOpen, CheckSquare, GitBranch,
   BarChart2, TrendingUp, DollarSign, Menu, X, LogOut,
   ChevronRight, ChevronLeft, Shield, User, Users, Clock, CalendarDays,
-  Lock, Layers
+  Lock, Layers, Key
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button } from '@/components/ui';
+import ChangePasswordModal from './ChangePasswordModal';
 
 const NAV_ITEMS = [
   { to: '/projectlistpage',   icon: LayoutDashboard, label: 'Dashboard' },
@@ -35,6 +36,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   });
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showLockedModal, setShowLockedModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   // Real-time 24-hour clock (jam: menit: detik, format 24 jam tanpa am/pm)
   const [currentTime, setCurrentTime] = useState<string>(() => {
@@ -42,6 +44,12 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   });
+
+  useEffect(() => {
+    if (user && user.must_change_password) {
+      setShowPasswordModal(true);
+    }
+  }, [user]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -477,6 +485,16 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                   </div>
                 </div>
                 <button
+                  onClick={() => {
+                    setProfileOpen(false);
+                    setShowPasswordModal(true);
+                  }}
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-100 transition-colors"
+                >
+                  <Key size={14} />
+                  Ganti Password
+                </button>
+                <button
                   onClick={handleLogout}
                   className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[13px] font-medium text-danger hover:bg-danger-light transition-colors"
                 >
@@ -564,6 +582,11 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
           </div>
         </div>
       </Modal>
+
+      <ChangePasswordModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+      />
     </div>
   );
 }

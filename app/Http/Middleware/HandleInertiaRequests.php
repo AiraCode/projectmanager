@@ -84,6 +84,7 @@ class HandleInertiaRequests extends Middleware
                     'canCreateProject' => $user->canCreateProject(),
                     'permission_matrix'=> $permissionMatrix,
                     'isSuperAdmin'     => ($user->role?->name ?? '') === 'SuperAdmin',
+                    'must_change_password' => $user->must_change_password ?? false,
                 ] : null,
             ],
         ];

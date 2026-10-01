@@ -84,4 +84,19 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
         return redirect('/login');
     }
+
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => ['required', 'current_password'],
+            'password' => ['required', 'min:8', 'confirmed'],
+        ]);
+
+        $user = Auth::user();
+        $user->password = \Illuminate\Support\Facades\Hash::make($request->password);
+        $user->must_change_password = false;
+        $user->save();
+
+        return back()->with('success', 'Password berhasil diubah.');
+    }
 }

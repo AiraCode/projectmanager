@@ -91,6 +91,7 @@ class UserManagementController extends Controller
         }
 
         $data['created_by'] = $user->id;
+        $data['must_change_password'] = true;
         $newUser = User::create($data);
 
         \App\Models\AuditLog::create([

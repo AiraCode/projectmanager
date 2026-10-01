@@ -21,6 +21,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Protected Routes
 Route::middleware('auth')->group(function () {
+    Route::put('/profile/password', [AuthController::class, 'changePassword'])->name('profile.password.update');
 
     // Root redirect based on role and permissions
     Route::get('/', function () {

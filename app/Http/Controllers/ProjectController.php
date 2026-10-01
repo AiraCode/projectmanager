@@ -12,6 +12,7 @@ use App\Models\MainWbs;
 use App\Models\ListSubWbsName;
 use App\Models\SubWbs;
 use App\Models\Wbs;
+use App\Models\ProjectActivityLog;
 use App\Models\BudgetEntry;
 use App\Models\WeeklyProgress;
 use App\Models\TaskDependency;
@@ -1640,6 +1641,14 @@ class ProjectController extends Controller
 
             $task->is_completed = ($task->progress == 100);
             $task->status = $task->is_completed ? 'Completed' : ($task->progress > 0 ? 'On Track' : 'Open');
+            
+            if ($task->is_completed && !$task->completed_by) {
+                $task->completed_by = Auth::id();
+                $task->completed_at = now();
+            } elseif (!$task->is_completed) {
+                $task->completed_by = null;
+                $task->completed_at = null;
+            }
         } else {
             if (!$task->is_completed && !$hasFiles && !$hasExistingEvidence) {
                 if ($task->requires_evidence) {
@@ -1650,6 +1659,14 @@ class ProjectController extends Controller
             $task->is_completed = !$task->is_completed;
             $task->progress = $task->is_completed ? 100 : 0;
             $task->status = $task->is_completed ? 'Completed' : 'Open';
+            
+            if ($task->is_completed) {
+                $task->completed_by = Auth::id();
+                $task->completed_at = now();
+            } else {
+                $task->completed_by = null;
+                $task->completed_at = null;
+            }
         }
 
         if ($hasFiles) {
@@ -1677,6 +1694,17 @@ class ProjectController extends Controller
         }
 
         $task->save();
+
+        // Log the activity
+        ProjectActivityLog::create([
+            'project_id' => $projectId,
+            'wbs_id' => $task->id,
+            'user_id' => Auth::id(),
+            'action' => $task->is_completed ? 'task_completed' : 'task_updated',
+            'description' => $task->is_completed 
+                ? "Task '{$task->name}' ditandai selesai (100%)."
+                : "Task '{$task->name}' diupdate progressnya menjadi {$task->progress}%.",
+        ]);
 
         app(ProgressService::class)->recalculateProjectProgress($projectId);
 
@@ -1732,6 +1760,7 @@ class ProjectController extends Controller
             'mainWbs.subWbs.wbsTasks.division',
             'mainWbs.subWbs.wbsTasks.predecessorDependencies.predecessor',
             'mainWbs.subWbs.wbsTasks.predecessorDependencies.group',
+            'mainWbs.subWbs.wbsTasks.completedBy',
             'budgetEntries',
             'weeklyProgress',
         ]);
@@ -1865,6 +1894,8 @@ class ProjectController extends Controller
                                 ]];
                             }
                         })() : [],
+                        'completedByName' => $st->completedBy ? ($st->completedBy->username ?? $st->completedBy->name) : null,
+                        'completedAt'     => $st->completed_at ? $st->completed_at->format('d M Y H:i') : null,
                     ];
                 })->values()->toArray();
 
@@ -1936,6 +1967,21 @@ class ProjectController extends Controller
             return [(int) $wp->week_number => (float) $wp->actual_progress];
         })->toArray();
 
+        $activityLogs = ProjectActivityLog::with('user', 'wbs')
+            ->where('project_id', $p->id)
+            ->latest()
+            ->get()
+            ->map(function ($log) {
+                return [
+                    'id'          => $log->id,
+                    'action'      => $log->action,
+                    'description' => $log->description,
+                    'user'        => $log->user?->username ?? $log->user?->name ?? 'System',
+                    'wbs_name'    => $log->wbs?->name ?? '-',
+                    'created_at'  => $log->created_at?->format('Y-m-d H:i:s'),
+                ];
+            })->toArray();
+
         return [
             'id'                  => (string) $p->id,
             'name'                => $p->title,
@@ -1953,6 +1999,7 @@ class ProjectController extends Controller
             'savedWeeklyActuals'  => $savedWeeklyActuals,
             'budgetEntries'       => $budgetEntries,
             'mainJobs'            => $mainJobs->values()->toArray(),
+            'activityLogs'        => $activityLogs,
         ];
     }
 

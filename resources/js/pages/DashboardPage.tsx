@@ -360,6 +360,41 @@ export default function DashboardPage() {
           </div>
         </Card>
       )}
+
+      {/* Task Activity Logs / Audit Log */}
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-neutral-100">
+          <Clock size={16} className="text-brand" />
+          <span className="text-[13px] font-bold text-neutral-800 tracking-tight">Recent Task Activities (Audit Log)</span>
+        </div>
+        
+        {p.activityLogs && p.activityLogs.length > 0 ? (
+          <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin pr-2">
+            {p.activityLogs.map((log: any) => (
+              <div key={log.id} className="p-3 bg-neutral-50 rounded-lg border border-neutral-100 text-[12px]">
+                <div className="flex justify-between items-start mb-1">
+                  <div className="font-semibold text-neutral-800 flex items-center gap-1.5">
+                    <div className="w-6 h-6 rounded-full bg-brand/10 text-brand flex items-center justify-center uppercase text-[10px]">
+                      {log.user.slice(0, 2)}
+                    </div>
+                    {log.user}
+                  </div>
+                  <div className="text-[10px] text-neutral-400 font-medium">
+                    {log.created_at}
+                  </div>
+                </div>
+                <div className="text-neutral-600 ml-7.5">
+                  <span className="font-medium text-neutral-700">[{log.wbs_name}]</span> - {log.description}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="py-6 text-center text-neutral-400 text-[12px] font-medium border border-dashed border-neutral-200 rounded-lg">
+            No recent task activities found.
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
