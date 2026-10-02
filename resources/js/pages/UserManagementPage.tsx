@@ -241,6 +241,15 @@ export default function UserManagementPage({
 
   const selectedRoleName = roles.find(r => r.id.toString() === data.roles_id)?.name;
   
+  // PIC cannot create or assign admin_utama, admin_progres, pic, or SuperAdmin roles
+  const assignableRoles = isPIC
+    ? roles.filter(r => !['admin_utama', 'admin_progres', 'pic', 'SuperAdmin'].includes(r.name))
+    : roles;
+
+  const filterRoles = isPIC
+    ? roles.filter(r => !['admin_utama', 'admin_progres', 'SuperAdmin'].includes(r.name))
+    : roles;
+  
   // Set default permissions for worker to prevent "broken worker" on login (403)
   useEffect(() => {
     if (selectedRoleName === 'worker' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
@@ -431,10 +440,11 @@ export default function UserManagementPage({
             <label className="block text-[12px] font-bold text-neutral-700 mb-1">Role</label>
             <select value={data.roles_id} onChange={e => setData('roles_id', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
               <option value="">Select Role</option>
-              {roles.map(r => (
+              {assignableRoles.map(r => (
                 <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </select>
+            {errors.roles_id && <p className="text-danger text-[11px] mt-1">{errors.roles_id}</p>}
           </div>
           {showGlobalMatrix && (
             <div>
@@ -704,7 +714,7 @@ export default function UserManagementPage({
                 <label className="block text-[11px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Filter by Role</label>
                 <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className="w-full border border-neutral-200 rounded-md px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
                   <option value="">All Roles</option>
-                  {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                  {filterRoles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
               </div>
               <div className="flex-1 min-w-[200px]">

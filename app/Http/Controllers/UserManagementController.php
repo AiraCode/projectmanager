@@ -87,6 +87,12 @@ class UserManagementController extends Controller
             if (!in_array('create', $usersFeatures)) {
                 abort(403, 'Access Denied: You do not have permission to create users.');
             }
+
+            $targetRole = Role::find($request->roles_id);
+            if (!$targetRole || in_array($targetRole->name, ['admin_utama', 'admin_progres', 'pic', 'SuperAdmin'])) {
+                abort(403, 'Access Denied: PIC tidak diizinkan membuat user dengan role ' . ($targetRole?->name ?? 'tersebut') . '.');
+            }
+
             $data['companies_id'] = $user->companies_id; // Force PIC's company
         }
 
@@ -112,6 +118,10 @@ class UserManagementController extends Controller
         if ($user->role?->name === 'pic') {
             if ($targetUser->companies_id !== $user->companies_id) {
                 abort(403, 'Unauthorized to edit this user.');
+            }
+
+            if (in_array($targetUser->role?->name, ['admin_utama', 'admin_progres', 'pic', 'SuperAdmin'])) {
+                abort(403, 'Access Denied: PIC tidak diizinkan mengubah user dengan role ' . $targetUser->role?->name . '.');
             }
             
             $usersFeatures = $user->permission_matrix['features']['users'] ?? [];
@@ -183,6 +193,12 @@ class UserManagementController extends Controller
         }
 
         if ($user->role?->name === 'pic') {
+            if ($request->filled('roles_id')) {
+                $targetRole = Role::find($request->roles_id);
+                if (!$targetRole || in_array($targetRole->name, ['admin_utama', 'admin_progres', 'pic', 'SuperAdmin'])) {
+                    abort(403, 'Access Denied: PIC tidak diizinkan menetapkan role ' . ($targetRole?->name ?? 'tersebut') . '.');
+                }
+            }
             $data['companies_id'] = $user->companies_id; // Enforce
         }
 
