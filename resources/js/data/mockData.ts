@@ -41,6 +41,8 @@ export interface SubSubtask {
   weight: number;
   checked: boolean;
   requiresEvidence?: boolean;
+  completedByName?: string | null;
+  completedAt?: string | null;
 }
 
 export interface SubMainJob {

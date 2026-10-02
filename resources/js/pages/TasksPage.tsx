@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
-import { usePage, router } from '@inertiajs/react';
+import { usePage, router, Link } from '@inertiajs/react';
 import {
   Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square,
   Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties,
@@ -750,15 +750,23 @@ export default function TasksPage() {
             )}
 
             {isPIC && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setShowMainJobModal({ mode: 'create' })}
-                icon={Plus}
-                className="text-[12px] h-[34px] flex-shrink-0"
-              >
-                Add Main Task
-              </Button>
+              <>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowMainJobModal({ mode: 'create' })}
+                  icon={Plus}
+                  className="text-[12px] h-[34px] flex-shrink-0"
+                >
+                  Add Main Task
+                </Button>
+                <Link
+                  href={`/projects/${projectData.id}/predecessors`}
+                  className="inline-flex items-center justify-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors h-[34px] flex-shrink-0"
+                >
+                  <Link2 size={14} /> Atur Predecessor
+                </Link>
+              </>
             )}
             
             <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200 flex-shrink-0">
@@ -1017,7 +1025,12 @@ export default function TasksPage() {
                             >
                               <td className="px-4 py-2 pl-12 font-mono text-[12px] text-neutral-500 font-semibold">{st.code}</td>
                               <td className="px-4 py-2 text-neutral-800 font-medium">
-                                <span className={isDone ? 'text-neutral-400 font-medium' : 'text-neutral-900 font-medium'}>{st.name}</span>
+                                <div className={isDone ? 'text-neutral-400 font-medium' : 'text-neutral-900 font-medium'}>{st.name}</div>
+                                {st.completedByName && (
+                                  <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium mt-1">
+                                    <CheckCircle2 size={10} /> Diselesaikan oleh: {st.completedByName} pada {st.completedAt}
+                                  </div>
+                                )}
                               </td>
                               <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">{st.weight ?? 100}%</td>
                               <td className="px-4 py-2 text-neutral-600 text-[11.5px]">{formatDivisionName(st.division || smj.pic)}</td>
@@ -1441,6 +1454,11 @@ function TodayTaskCard({
             )
           )}
         </div>
+        {st.completedByName && (
+          <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium pt-1 mt-1 border-t border-emerald-100">
+            <CheckCircle2 size={10} /> Diselesaikan oleh: {st.completedByName} pada {st.completedAt}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1681,6 +1699,13 @@ function SubtaskRow({
                   <span>Upload Bukti</span>
                 </button>
               )
+            )}
+            
+            {st.completedByName && (
+              <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <CheckCircle2 size={12} className="text-emerald-500" />
+                Diselesaikan oleh {st.completedByName} pada {st.completedAt}
+              </span>
             )}
           </div>
         </div>
@@ -2686,6 +2711,7 @@ function ManageDependenciesModal({
             >
               {allSubtasks
                 .filter(t => t.id !== task.id)
+                .filter(t => !task.dependencies?.some(dep => String(dep.predecessor_wbs_id) === String(t.id)))
                 .map(t => (
                   <option key={t.id} value={t.id}>
                     {t.code} - {t.name} ({t.startDate ? formatDateDisplay(t.startDate) : ''} - {t.finishDate ? formatDateDisplay(t.finishDate) : ''})

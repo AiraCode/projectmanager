@@ -24,6 +24,7 @@ class User extends Authenticatable
         'is_standalone',
         'created_by',
         'last_modified_by',
+        'must_change_password',
     ];
 
     /**
@@ -48,6 +49,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'permission_matrix' => 'array',
             'is_standalone' => 'boolean',
+            'must_change_password' => 'boolean',
         ];
     }
 

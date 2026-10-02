@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import {
-  LayoutDashboard, Users, ScrollText, LogOut, Menu, X, ChevronLeft, Shield, Building2, FolderOpen,
+  LayoutDashboard, Users, ScrollText, LogOut, Menu, X, ChevronLeft, Shield, Building2, FolderOpen, Key, Layers
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button } from '@/components/ui';
+import ChangePasswordModal from './ChangePasswordModal';
 
 const ADMIN_NAV = [
   { to: '/admin',              icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/admin/users',        icon: Users,           label: 'User Management' },
   { to: '/admin/companies',    icon: Building2,       label: 'Companies' },
+  { to: '/admin/divisions',    icon: Layers,          label: 'Divisions' },
   { to: '/admin/projects',     icon: FolderOpen,      label: 'All Projects' },
   { to: '/admin/audit-log',    icon: ScrollText,      label: 'Audit Log' },
 ];
@@ -20,12 +22,19 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
 
   const [sidebarOpen, setSidebarOpen]       = useState(false);
   const [profileOpen, setProfileOpen]       = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('provis_sa_sidebar_collapsed') === 'true' || localStorage.getItem('jeker_sa_sidebar_collapsed') === 'true';
     }
     return false;
   });
+
+  useEffect(() => {
+    if (user && user.must_change_password) {
+      setShowPasswordModal(true);
+    }
+  }, [user]);
 
   const mainRef = useRef<HTMLElement>(null);
 
@@ -233,6 +242,16 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
                   </div>
                 </div>
                 <button
+                  onClick={() => {
+                    setProfileOpen(false);
+                    setShowPasswordModal(true);
+                  }}
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-100 transition-colors"
+                >
+                  <Key size={14} />
+                  Ganti Password
+                </button>
+                <button
                   onClick={handleLogout}
                   className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[13px] font-medium text-red-600 hover:bg-red-50 transition-colors"
                 >
@@ -249,6 +268,11 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
           {children}
         </main>
       </div>
+
+      <ChangePasswordModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+      />
     </div>
   );
 }

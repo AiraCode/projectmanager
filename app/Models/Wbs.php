@@ -37,6 +37,8 @@ class Wbs extends Model
         'evidence_path',
         'evidence_name',
         'requires_evidence',
+        'completed_by',
+        'completed_at',
     ];
 
     protected $casts = [
@@ -46,11 +48,17 @@ class Wbs extends Model
         'requires_evidence' => 'boolean',
         'duration_days' => 'integer',
         'constraint_date' => 'date',
+        'completed_at' => 'datetime',
     ];
 
     public function parentSubWbs()
     {
         return $this->belongsTo(SubWbs::class, 'sub_wbs_id');
+    }
+
+    public function completedBy()
+    {
+        return $this->belongsTo(User::class, 'completed_by');
     }
 
     public function division()

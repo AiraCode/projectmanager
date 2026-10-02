@@ -4,8 +4,9 @@ import {
   FolderOpen, Plus, Calendar, Layers, ChevronDown, ChevronRight,
   Edit2, Trash2, Link2, CheckCircle2, AlertTriangle, ArrowLeft,
   Sparkles, Shield, Clock, HelpCircle, Save, Check, X, Search,
-  BarChart2, CheckSquare, Lock, Info
+  BarChart2, CheckSquare, Lock, Info, Network, Trash
 } from 'lucide-react';
+import mermaid from 'mermaid';
 import { PageHeader, Card, Button, Modal, formatDateDisplay } from '@/components/ui';
 
 interface DependencyItem {
@@ -100,6 +101,7 @@ export default function ProjectSetupPage() {
   const [depModal, setDepModal] = useState<{ isOpen: boolean; task?: WbsTask }>({ isOpen: false });
   const [confirmCompleteModal, setConfirmCompleteModal] = useState(false);
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; type: 'main' | 'sub' | 'task'; id: any; name: string } | null>(null);
+  const [deleteDepModal, setDeleteDepModal] = useState<{ isOpen: boolean; id: number } | null>(null);
 
   // Form States - Main Task
   const [mainForm, setMainForm] = useState({ name: '', weight: 5.0, start: proj.start || '', end: proj.end || '' });
@@ -127,6 +129,61 @@ export default function ProjectSetupPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [chartModal, setChartModal] = useState(false);
+  
+  useEffect(() => {
+    if (depModal.isOpen && depModal.task) {
+      let foundTask = undefined;
+      for (const m of (proj.mainWbs || [])) {
+        for (const s of (m.subWbs || [])) {
+          const t = s.wbsTasks?.find(t => t.id === depModal.task?.id);
+          if (t) { foundTask = t; break; }
+        }
+        if (foundTask) break;
+      }
+      if (foundTask) setDepModal(prev => ({ ...prev, task: foundTask }));
+    }
+  }, [proj]);
+
+  const handleClearAllTasks = () => {
+    if (!confirm('Apakah Anda yakin ingin menghapus SEMUA task? Tindakan ini tidak dapat dibatalkan.')) return;
+    setSubmitting(true);
+    router.delete(`/projects/${proj.id}/clear-wbs`, {
+      preserveScroll: true,
+      onFinish: () => setSubmitting(false),
+    });
+  };
+
+  const getMermaidGraph = () => {
+    let graph = 'graph LR\n';
+    const allTasksLocal: WbsTask[] = [];
+    (proj.mainWbs || []).forEach(m => {
+      (m.subWbs || []).forEach(s => {
+        (s.wbsTasks || []).forEach(t => allTasksLocal.push(t));
+      });
+    });
+    allTasksLocal.forEach(t => {
+      if(!t.dependencies) return;
+      t.dependencies.forEach(dep => {
+        const pred = allTasksLocal.find(w => w.id === dep.predecessor_wbs_id || w.code === dep.predecessor_wbs_id);
+        if(pred) {
+           const pName = pred.name.replace(/"/g, "'");
+           const tName = t.name.replace(/"/g, "'");
+           graph += `  Task${pred.id}["${pName}"] -->|${dep.dependency_type}| Task${t.id}["${tName}"]\n`;
+        }
+      });
+    });
+    if (graph === 'graph LR\n') graph += '  A["Belum ada relasi predecessor"]';
+    return graph;
+  };
+
+  useEffect(() => {
+    if (chartModal) {
+      mermaid.initialize({ startOnLoad: true, theme: 'default' });
+      setTimeout(() => mermaid.contentLoaded(), 100);
+    }
+  }, [chartModal, proj]);
+
   const dependencyGroups = useMemo(() => {
     const groups = new Map<number | string, DependencyItem[]>();
     for (const dependency of depModal.task?.dependencies ?? []) {
@@ -486,9 +543,17 @@ export default function ProjectSetupPage() {
   };
 
   const handleRemoveDependency = (depId: number) => {
-    if (!confirm('Hapus ketergantungan ini?')) return;
-    router.delete(`/projects/${proj.id}/tasks/${depModal.task?.id}/dependencies/${depId}`, {
+    setDeleteDepModal({ isOpen: true, id: depId });
+  };
+
+  const executeRemoveDependency = () => {
+    if (!deleteDepModal) return;
+    setSubmitting(true);
+    router.delete(`/projects/${proj.id}/tasks/${depModal.task?.id}/dependencies/${deleteDepModal.id}`, {
       preserveScroll: true,
+      onSuccess: () => setDeleteDepModal(null),
+      onError: (errs) => setActionError(Object.values(errs)[0] as string || 'Gagal menghapus ketergantungan'),
+      onFinish: () => setSubmitting(false),
     });
   };
 
@@ -581,6 +646,24 @@ export default function ProjectSetupPage() {
           subtitle={`Perusahaan: ${proj.company} • PIC: ${proj.manager} • Periode Proyek: ${proj.start ? formatDateDisplay(proj.start) : 'N/A'} – ${proj.end ? formatDateDisplay(proj.end) : 'N/A'}`}
           actions={
             <div className="flex flex-wrap items-center gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                icon={Network}
+                onClick={() => window.open(`/projects/${project.id}/predecessors`, '_blank')}
+                className="text-blue-600 border-blue-200 hover:bg-blue-50"
+              >
+                Lihat Predecessor
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={Trash}
+                onClick={handleClearAllTasks}
+                className="text-red-600 border-red-200 hover:bg-red-50"
+              >
+                Hapus Semua Task
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -978,6 +1061,24 @@ export default function ProjectSetupPage() {
           <Button
             variant="outline"
             size="sm"
+            icon={Network}
+            onClick={() => window.open(`/projects/${project.id}/predecessors`, '_blank')}
+            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+          >
+            Lihat Predecessor
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={Trash}
+            onClick={handleClearAllTasks}
+            className="text-red-600 border-red-200 hover:bg-red-50"
+          >
+            Hapus Semua Task
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             icon={Plus}
             onClick={openAddMain}
           >
@@ -995,7 +1096,18 @@ export default function ProjectSetupPage() {
         </div>
       </div>
 
-      {/* Modal Add / Edit Main Task */}
+              {/* Predecessor Chart Modal */}
+        {chartModal && (
+          <Modal title="Visualisasi Predecessor" onClose={() => setChartModal(false)} size="xl">
+            <div className="p-4 overflow-auto bg-white rounded-lg" style={{ minHeight: '400px' }}>
+              <div className="mermaid">
+                {getMermaidGraph()}
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Modal Add / Edit Main Task */}
       {mainModal.isOpen && (
         <Modal
           title={mainModal.mode === 'add' ? 'Tambah Main Task Baru' : 'Edit Main Task'}
@@ -1588,6 +1700,34 @@ export default function ProjectSetupPage() {
                 variant="danger"
                 size="sm"
                 onClick={handleDeleteExecute}
+                disabled={submitting}
+              >
+                {submitting ? 'Menghapus...' : 'Ya, Hapus'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Confirmation Modal: Delete Dependency */}
+      {deleteDepModal && (
+        <Modal
+          title="Hapus Ketergantungan Predecessor"
+          onClose={() => setDeleteDepModal(null)}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-[13px] text-neutral-600">
+              Apakah Anda yakin ingin menghapus relasi predecessor ini?
+            </p>
+            <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+              <Button variant="outline" size="sm" onClick={() => setDeleteDepModal(null)}>
+                Batal
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={executeRemoveDependency}
                 disabled={submitting}
               >
                 {submitting ? 'Menghapus...' : 'Ya, Hapus'}

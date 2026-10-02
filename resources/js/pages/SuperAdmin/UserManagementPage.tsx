@@ -62,6 +62,13 @@ export default function SuperAdminUserManagementPage({
   const [isGlobalMatrixOpen, setIsGlobalMatrixOpen] = useState(false);
   const [isProjectAccessOpen, setIsProjectAccessOpen] = useState(false);
   
+  useEffect(() => {
+    if (toast) {
+      const t = setTimeout(() => setToast(null), 10000);
+      return () => clearTimeout(t);
+    }
+  }, [toast]);
+  
   const [viewMode, setViewMode] = useState<'manage' | 'create'>('manage');
   const [filterRole, setFilterRole] = useState('');
   const [filterCompany, setFilterCompany] = useState('');
@@ -132,12 +139,22 @@ export default function SuperAdminUserManagementPage({
     e.preventDefault();
     if (editUser) {
       put(`/admin/users/${editUser.id}`, {
-        onSuccess: () => { setModalOpen(false); setToast({ msg: 'User updated.', type: 'success' }); },
+        onSuccess: () => { 
+          if (viewMode !== 'create') setModalOpen(false); 
+          setToast({ msg: `User ${data.username} updated.`, type: 'success' }); 
+        },
         onError:   () => setToast({ msg: 'Error updating user.', type: 'error' }),
       });
     } else {
       post('/admin/users', {
-        onSuccess: () => { setModalOpen(false); setToast({ msg: 'User created.', type: 'success' }); },
+        onSuccess: () => { 
+          setToast({ msg: `User ${data.username} created.`, type: 'success' });
+          if (viewMode === 'create') {
+            openCreate();
+          } else {
+            setModalOpen(false);
+          }
+        },
         onError:   () => setToast({ msg: 'Error creating user.', type: 'error' }),
       });
     }
@@ -411,7 +428,10 @@ export default function SuperAdminUserManagementPage({
                 </div>
                 {showCompany && (
                   <div>
-                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">Company</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[12px] font-bold text-neutral-700">Company</label>
+                      <a href="/admin/companies" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Companies &rarr;</a>
+                    </div>
                     <select value={data.companies_id} onChange={e => setData('companies_id', e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
                       <option value="">No Company (Standalone)</option>
                       {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -420,7 +440,10 @@ export default function SuperAdminUserManagementPage({
                 )}
                 {showDivision && (
                   <div>
-                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">Division</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[12px] font-bold text-neutral-700">Division</label>
+                      <a href="/admin/divisions" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Divisions &rarr;</a>
+                    </div>
                     <select value={data.divisions_id} onChange={e => setData('divisions_id', e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
                       <option value="">No Division</option>
                       {divisions.map(d => <option key={d.id} value={d.id}>{d.divisi}</option>)}

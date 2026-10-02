@@ -22,6 +22,7 @@ export interface User {
     [key: string]: any;
   } | null;
   ownedProject?: any;
+  must_change_password?: boolean;
 }
 
 export type Role = 'Admin Utama' | 'Admin Progres' | 'PIC' | 'Worker';
@@ -70,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     pic:      authUser.division ?? authUser.company ?? 'PM',
     canCreateProject: isPIC && (authUser.canCreateProject ?? true),
     permission_matrix: authUser.permission_matrix ?? null,
+    must_change_password: authUser.must_change_password ?? false,
   } : null;
 
   const login        = async () => ({ success: true });
