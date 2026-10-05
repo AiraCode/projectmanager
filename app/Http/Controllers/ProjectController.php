@@ -1273,6 +1273,11 @@ class ProjectController extends Controller
             'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
             'lag'          => 'nullable|integer',
             'lead'         => 'nullable|integer',
+            'predecessors' => 'nullable|array',
+            'predecessors.*.predecessor' => 'required|string|max:50',
+            'predecessors.*.dep_type' => 'nullable|string|in:FS,SS,FF,SF',
+            'predecessors.*.lag' => 'nullable|integer',
+            'predecessors.*.lead' => 'nullable|integer',
             'requires_evidence' => 'nullable|boolean',
         ]);
 
@@ -1289,6 +1294,26 @@ class ProjectController extends Controller
 
         $divisionId = $validated['divisions_id'] ?? $user->divisions_id ?? Division::first()?->id;
 
+        $primaryPredecessor = null;
+        $primaryDepType = 'FS';
+        $primaryLag = 0;
+        $primaryLead = 0;
+
+        if (!empty($validated['predecessors']) && count($validated['predecessors']) > 0) {
+            $first = $validated['predecessors'][0];
+            if (!empty($first['predecessor']) && $first['predecessor'] !== '-') {
+                $primaryPredecessor = $first['predecessor'];
+                $primaryDepType = $first['dep_type'] ?? 'FS';
+                $primaryLag = $first['lag'] ?? 0;
+                $primaryLead = $first['lead'] ?? 0;
+            }
+        } else {
+            $primaryPredecessor = $validated['predecessor'] ?? null;
+            $primaryDepType = $validated['dep_type'] ?? 'FS';
+            $primaryLag = $validated['lag'] ?? 0;
+            $primaryLead = $validated['lead'] ?? 0;
+        }
+
         $taskObj = Wbs::create([
             'id'           => 'st-' . uniqid(),
             'sub_wbs_id'   => $subWbs->id,
@@ -1301,16 +1326,33 @@ class ProjectController extends Controller
             'duration_days'=> max(1, $startDate->diffInDays($endDate)),
             'is_completed' => false,
             'status'       => 'Open',
-            'predecessor'  => $validated['predecessor'] ?? null,
-            'dep_type'     => $validated['dep_type'] ?? 'FS',
-            'lag'          => $validated['lag'] ?? 0,
-            'lead'         => $validated['lead'] ?? 0,
+            'predecessor'  => $primaryPredecessor,
+            'dep_type'     => $primaryDepType,
+            'lag'          => $primaryLag,
+            'lead'         => $primaryLead,
             'requires_evidence' => $validated['requires_evidence'] ?? false,
         ]);
         
-        if (!empty($validated['predecessor']) && $validated['predecessor'] !== '-') {
+        $scheduler = app(DependencyScheduler::class);
+        $hasDependencies = false;
+
+        if (!empty($validated['predecessors']) && count($validated['predecessors']) > 0) {
+            foreach ($validated['predecessors'] as $dep) {
+                $predId = $dep['predecessor'] ?? null;
+                if ($predId && $predId !== '-') {
+                    if (!$scheduler->wouldCauseCycle($predId, $taskObj->id)) {
+                        $this->storeSingleTaskDependency(
+                            $taskObj,
+                            $predId,
+                            $dep['dep_type'] ?? 'FS',
+                            ((int) ($dep['lag'] ?? 0)) - ((int) ($dep['lead'] ?? 0))
+                        );
+                        $hasDependencies = true;
+                    }
+                }
+            }
+        } elseif (!empty($validated['predecessor']) && $validated['predecessor'] !== '-') {
             $predId = $validated['predecessor'];
-            $scheduler = app(DependencyScheduler::class);
             if (!$scheduler->wouldCauseCycle($predId, $taskObj->id)) {
                 $this->storeSingleTaskDependency(
                     $taskObj,
@@ -1318,8 +1360,12 @@ class ProjectController extends Controller
                     $validated['dep_type'] ?? 'FS',
                     ((int) ($validated['lag'] ?? 0)) - ((int) ($validated['lead'] ?? 0))
                 );
-                $scheduler->recalculateTaskDates($taskObj);
+                $hasDependencies = true;
             }
+        }
+
+        if ($hasDependencies) {
+            $scheduler->recalculateTaskDates($taskObj);
         }
 
         $this->cascadeTaskDates($taskObj->id);

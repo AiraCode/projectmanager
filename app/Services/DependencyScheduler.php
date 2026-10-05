@@ -139,8 +139,7 @@ class DependencyScheduler
             $durationDays = max(1, $currentStart->diffInDays($currentEnd));
         }
 
-        $newStart = $currentStart->copy();
-        $newEnd   = $currentEnd->copy();
+        $newStart = null;
 
         foreach ($predecessorDeps as $dep) {
             $pred = $dep->predecessor;
@@ -152,39 +151,35 @@ class DependencyScheduler
             $predEnd   = Carbon::parse($pred->end);
             $lag       = $dep->effectiveLagDays();
 
+            $reqStart = null;
             switch ($dep->effectiveDependencyType()) {
                 case 'FS':
                     // Finish-to-Start: Successor start must be after Predecessor end - lag
                     $reqStart = $predEnd->copy()->subDays($lag);
-                    if ($reqStart->gt($newStart)) {
-                        $newStart = $reqStart->copy();
-                    }
                     break;
-
                 case 'SS':
                     // Start-to-Start: Successor start must be on or after Predecessor start - lag
                     $reqStart = $predStart->copy()->subDays($lag);
-                    if ($reqStart->gt($newStart)) {
-                        $newStart = $reqStart->copy();
-                    }
                     break;
-
                 case 'FF':
                     // Preserve task duration while enforcing the finish-date constraint.
                     $reqStart = $predEnd->copy()->subDays($lag + $durationDays);
-                    if ($reqStart->gt($newStart)) {
-                        $newStart = $reqStart->copy();
-                    }
                     break;
-
                 case 'SF':
                     // Preserve task duration while enforcing the finish-date constraint.
                     $reqStart = $predStart->copy()->subDays($lag + $durationDays);
-                    if ($reqStart->gt($newStart)) {
-                        $newStart = $reqStart->copy();
-                    }
                     break;
             }
+
+            if ($reqStart) {
+                if ($newStart === null || $reqStart->gt($newStart)) {
+                    $newStart = $reqStart->copy();
+                }
+            }
+        }
+
+        if ($newStart === null) {
+            $newStart = $currentStart->copy();
         }
 
         $newEnd = $newStart->copy()->addDays($durationDays);

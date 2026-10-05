@@ -1,7 +1,54 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
 import { PageHeader, Card, Button, Modal, Toast } from '@/components/ui';
 import { Plus, Edit2, Trash2, Shield, FolderOpen, ChevronDown, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
+
+const CustomDropdown = ({ value, onChange, options, placeholder, error }: any) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o: any) => String(o.value) === String(value));
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full border ${error ? 'border-red-300 ring-1 ring-red-100' : 'border-neutral-300 hover:border-brand'} rounded-lg px-3 py-2 text-[13px] bg-white cursor-pointer flex justify-between items-center transition-all ${isOpen ? 'ring-2 ring-brand/20 border-brand' : ''}`}
+      >
+        <span className={selectedOption ? 'text-neutral-900 font-medium' : 'text-neutral-400'}>
+          {selectedOption ? selectedOption.label : placeholder}
+        </span>
+        <ChevronDown size={14} className={`text-neutral-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto py-1">
+          {options.map((opt: any) => (
+            <div 
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setIsOpen(false); }}
+              className={`px-3 py-2 text-[13px] cursor-pointer transition-colors ${String(value) === String(opt.value) ? 'bg-brand/10 text-brand font-bold' : 'text-neutral-700 hover:bg-neutral-50 hover:text-brand'}`}
+            >
+              {opt.label}
+            </div>
+          ))}
+          {options.length === 0 && (
+            <div className="px-3 py-2 text-[13px] text-neutral-400 italic">No options available</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface Role { id: number; name: string; }
 interface Company { id: number; name: string; }
@@ -438,30 +485,35 @@ export default function UserManagementPage({
           </div>
           <div>
             <label className="block text-[12px] font-bold text-neutral-700 mb-1">Role</label>
-            <select value={data.roles_id} onChange={e => setData('roles_id', e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
-              <option value="">Select Role</option>
-              {assignableRoles.map(r => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
+            <CustomDropdown 
+              value={data.roles_id} 
+              onChange={(val: any) => setData('roles_id', val)}
+              options={assignableRoles.map(r => ({ value: r.id, label: r.name }))}
+              placeholder="Select Role"
+              error={!!errors.roles_id}
+            />
             {errors.roles_id && <p className="text-danger text-[11px] mt-1">{errors.roles_id}</p>}
           </div>
           {showGlobalMatrix && (
             <div>
               <label className="block text-[12px] font-bold text-neutral-700 mb-1">Company</label>
-              <select value={data.companies_id} onChange={e => setData('companies_id', e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
-                <option value="">No Company</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <CustomDropdown 
+                value={data.companies_id} 
+                onChange={(val: any) => setData('companies_id', val)}
+                options={[{ value: '', label: 'No Company' }, ...companies.map(c => ({ value: c.id, label: c.name }))]}
+                placeholder="Select Company"
+              />
             </div>
           )}
           {showGlobalMatrix && showDivision && (
             <div>
               <label className="block text-[12px] font-bold text-neutral-700 mb-1">Division</label>
-              <select value={data.divisions_id} onChange={e => setData('divisions_id', e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand">
-                <option value="">No Division</option>
-                {divisions.map(d => <option key={d.id} value={d.id}>{d.divisi}</option>)}
-              </select>
+              <CustomDropdown 
+                value={data.divisions_id} 
+                onChange={(val: any) => setData('divisions_id', val)}
+                options={[{ value: '', label: 'No Division' }, ...divisions.map(d => ({ value: d.id, label: d.divisi }))]}
+                placeholder="Select Division"
+              />
             </div>
           )}
         </div>

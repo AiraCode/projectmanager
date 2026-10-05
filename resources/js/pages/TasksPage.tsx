@@ -79,9 +79,11 @@ export default function TasksPage() {
   // - Admin (Utama / Progres): strictly read-only, NO modification allowed
   const authUser = pageProps?.auth?.user || user;
   const rawRole = (pageProps?.userRole || authUser?.role || authUser?.rawRole || '').toString().toLowerCase();
-  const isPIC    = authUser?.isPIC === true || rawRole === 'pic';
+  const isSuperAdmin = rawRole === 'super_admin' || rawRole === 'superadministrator' || rawRole === 'superadmin';
+  const isPIC    = authUser?.isPIC === true || rawRole === 'pic' || isSuperAdmin;
   const isWorker = authUser?.isWorker === true || rawRole === 'worker';
   const isAdmin  = authUser?.isAdminUtama === true || authUser?.isAdminProgres === true || rawRole === 'admin_utama' || rawRole === 'admin_progres' || rawRole === 'admin';
+
   
   const [projectData, setProjectData] = useState<Project>(() => {
     if (!project || !project.mainJobs) {
@@ -391,6 +393,7 @@ export default function TasksPage() {
       dep_type: taskData.depType || 'FS',
       lag: taskData.lag || 0,
       lead: taskData.lead || 0,
+      predecessors: taskData.predecessors || [],
       requires_evidence: taskData.requiresEvidence || false,
       weight: taskData.weight !== undefined ? taskData.weight : 100,
     };
@@ -473,9 +476,14 @@ export default function TasksPage() {
   };
 
   const handleRemoveDependency = (depId: number) => {
-    if (!confirm('Hapus relasi ketergantungan ini?')) return;
-    router.delete(`/projects/${projectData.id}/tasks/${depModal.task?.id}/dependencies/${depId}`, {
-      preserveScroll: true,
+    setDeleteConfirm({
+      title: 'Hapus Ketergantungan',
+      message: 'Apakah Anda yakin ingin menghapus relasi ketergantungan ini?',
+      onConfirm: () => {
+        router.delete(`/projects/${projectData.id}/tasks/${depModal.task?.id}/dependencies/${depId}`, {
+          preserveScroll: true,
+        });
+      }
     });
   };
 
@@ -1241,54 +1249,6 @@ export default function TasksPage() {
       )}
 
       {/* Action Toast Feedback */}
-      {deleteConfirm && (
-        <Modal
-          title={deleteConfirm.title}
-          onClose={() => setDeleteConfirm(null)}
-          size="sm"
-        >
-          <div className="space-y-4">
-            <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-900">
-              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 text-danger shadow-2xs">
-                <Trash2 size={20} />
-              </div>
-              <div className="text-[12.5px] leading-relaxed pt-0.5">
-                <p className="font-semibold text-neutral-800">
-                  {deleteConfirm.message}
-                </p>
-                <p className="text-[11.5px] text-neutral-500 mt-1">
-                  This action cannot be undone and will permanently remove associated data.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setDeleteConfirm(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                icon={Trash2}
-                onClick={() => {
-                  const action = deleteConfirm.onConfirm;
-                  setDeleteConfirm(null);
-                  action();
-                }}
-              >
-                Yes, Delete
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
       {/* Uncheck Confirmation Modal (Requirement 3) */}
       {uncheckConfirm && (
         <UncheckConfirmModal
@@ -1329,6 +1289,55 @@ export default function TasksPage() {
         submitting={submitting}
         actionError={actionError}
       />
+
+      {/* Delete Confirmation Modal (Moved to end for z-index priority) */}
+      {deleteConfirm && (
+        <Modal
+          title={deleteConfirm.title}
+          onClose={() => setDeleteConfirm(null)}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-900">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 text-danger shadow-2xs">
+                <Trash2 size={20} />
+              </div>
+              <div className="text-[12.5px] leading-relaxed pt-0.5">
+                <p className="font-semibold text-neutral-800">
+                  {deleteConfirm.message}
+                </p>
+                <p className="text-[11.5px] text-neutral-500 mt-1">
+                  Tindakan ini tidak dapat dibatalkan dan akan menghapus data secara permanen.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                icon={Trash2}
+                onClick={() => {
+                  const action = deleteConfirm.onConfirm;
+                  setDeleteConfirm(null);
+                  action();
+                }}
+              >
+                Ya, Hapus
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Action Toast Feedback */}
       {toastMsg && (
@@ -2031,6 +2040,8 @@ function SearchablePredecessorSelect({
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -2042,6 +2053,24 @@ function SearchablePredecessorSelect({
   }, []);
 
   const query = search.trim().toLowerCase();
+
+  useEffect(() => {
+    if (query) {
+      const newExpanded = { ...expandedGroups };
+      availableSubMainJobs.forEach(smj => {
+        const matchingTasks = (smj.subtasks || []).filter(st => {
+          if (st.id === currentTaskId || st.code === currentTaskCode) return false;
+          return st.name.toLowerCase().includes(query) ||
+                 st.code.toLowerCase().includes(query) ||
+                 (st.division && st.division.toLowerCase().includes(query));
+        });
+        if (matchingTasks.length > 0) {
+          newExpanded[smj.id] = true;
+        }
+      });
+      setExpandedGroups(newExpanded);
+    }
+  }, [query, availableSubMainJobs]);
 
   // Find currently selected label
   let selectedLabel = value ? `Unknown Predecessor (${value})` : 'None (No Predecessor)';
@@ -2133,41 +2162,49 @@ function SearchablePredecessorSelect({
                 No matching tasks found for "{search}"
               </div>
             ) : (
-              filteredGroups.map(({ smj, matchingTasks }) => (
-                <div key={smj.id || smj.code} className="pt-1.5 pb-1">
-                  <div className="px-3 py-1 text-[11px] font-black text-neutral-400 uppercase tracking-wider">
-                    {smj.code} · {smj.name}
-                  </div>
-                  {/* Sub-Task label (Unclickable) */}
-                  <div className="w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg flex items-center justify-between text-neutral-800 bg-neutral-100/50 mb-1">
-                    <span className="truncate font-medium">
-                      <strong>{smj.code}</strong> - {smj.name}
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-neutral-200/80 text-neutral-500 uppercase">
-                      Sub-Task Group
-                    </span>
-                  </div>
-
-                  {/* Specific Task items */}
-                  {matchingTasks.map(st => (
-                    <button
-                      key={st.id || st.code}
-                      type="button"
-                      onClick={() => {
-                        onChange(st.id);
-                        setIsOpen(false);
-                      }}
-                      className={`w-full text-left pl-6 pr-3 py-1.5 text-[12px] rounded-lg transition-colors flex items-center justify-between ${
-                        value === st.id ? 'bg-brand text-white font-bold' : 'text-neutral-700 hover:bg-neutral-50'
-                      }`}
+              filteredGroups.map(({ smj, matchingTasks }) => {
+                const isExpanded = expandedGroups[smj.id] || false;
+                
+                return (
+                  <div key={smj.id || smj.code} className="pt-1.5 pb-1">
+                    <div className="px-3 py-1 text-[11px] font-black text-neutral-400 uppercase tracking-wider">
+                      {smj.code} · {smj.name}
+                    </div>
+                    {/* Sub-Task label (Clickable to expand/collapse) */}
+                    <div 
+                      onClick={() => setExpandedGroups(prev => ({ ...prev, [smj.id]: !prev[smj.id] }))}
+                      className="w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg flex items-center justify-between text-neutral-800 bg-neutral-100/50 mb-1 cursor-pointer hover:bg-neutral-200/50 transition-colors"
                     >
-                      <span className="truncate">
-                        <strong>{st.code}</strong> - {st.name}
+                      <span className="truncate font-medium flex items-center gap-1.5">
+                        <ChevronRight size={14} className={`text-neutral-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        <strong>{smj.code}</strong> - {smj.name}
                       </span>
-                    </button>
-                  ))}
-                </div>
-              ))
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-neutral-200/80 text-neutral-500 uppercase flex-shrink-0 ml-2">
+                        Sub-Task Group
+                      </span>
+                    </div>
+
+                    {/* Specific Task items */}
+                    {isExpanded && matchingTasks.map(st => (
+                      <button
+                        key={st.id || st.code}
+                        type="button"
+                        onClick={() => {
+                          onChange(st.id);
+                          setIsOpen(false);
+                        }}
+                        className={`w-full text-left pl-8 pr-3 py-1.5 text-[12px] rounded-lg transition-colors flex items-center justify-between ${
+                          value === st.id ? 'bg-brand text-white font-bold' : 'text-neutral-700 hover:bg-neutral-50'
+                        }`}
+                      >
+                        <span className="truncate">
+                          <strong>{st.code}</strong> - {st.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -2366,10 +2403,20 @@ function AddSubtaskModal({
       ? (divisions.find((d: any) => d.divisi?.toLowerCase() === initialData.division?.toLowerCase())?.id?.toString() || divisions[0]?.id?.toString() || '')
       : (divisions[0]?.id?.toString() || '')
   );
-  const [predecessor, setPredecessor] = useState(initialData?.predecessor || '');
-  const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
-  const [lag, setLag] = useState(initialData?.lag ? initialData.lag.toString() : '0');
-  const [lead, setLead] = useState(initialData?.lead ? initialData.lead.toString() : '0');
+  
+  const [dependencies, setDependencies] = useState<Array<{
+    id: string;
+    predecessor: string;
+    depType: DependencyType;
+    lag: string;
+    lead: string;
+  }>>(isEdit ? [] : [{
+    id: 'dep-1',
+    predecessor: initialData?.predecessor || '',
+    depType: initialData?.depType || 'FS',
+    lag: initialData?.lag ? initialData.lag.toString() : '0',
+    lead: initialData?.lead ? initialData.lead.toString() : '0'
+  }]);
   const [requiresEvidence, setRequiresEvidence] = useState(initialData?.requiresEvidence ?? false);
 
   // Available SubMainJobs across the project
@@ -2381,49 +2428,115 @@ function AddSubtaskModal({
 
   // Find predecessor task to calculate automatic start date
   useEffect(() => {
-    if (!predecessor) return;
-    
-    let predTask = null;
-    for (const mj of mainJobs) {
-      for (const smj of (mj.subMainJobs || [])) {
-        const found = smj.subtasks?.find(st => st.id === predecessor || st.code === predecessor);
-        if (found) {
-          predTask = found;
-          break;
+    let maxStart: Date | null = null;
+    let hasValidDep = false;
+
+    dependencies.forEach(dep => {
+      if (!dep.predecessor || dep.predecessor === '-') return;
+      
+      let predTask = null;
+      for (const mj of mainJobs) {
+        for (const smj of (mj.subMainJobs || [])) {
+          const found = smj.subtasks?.find(st => st.id === dep.predecessor || st.code === dep.predecessor);
+          if (found) {
+            predTask = found;
+            break;
+          }
+        }
+        if (predTask) break;
+      }
+      
+      if (predTask) {
+        hasValidDep = true;
+        const pStart = new Date(predTask.startDate);
+        const pEnd = new Date(predTask.finishDate);
+        const lagDays = parseInt(dep.lag) || 0;
+        const leadDays = parseInt(dep.lead) || 0;
+        const offset = leadDays - lagDays;
+        
+        let newStart = new Date();
+        if (dep.depType === 'FS') {
+          newStart = new Date(pEnd);
+          newStart.setDate(newStart.getDate() + offset);
+        } else if (dep.depType === 'SS') {
+          newStart = new Date(pStart);
+          newStart.setDate(newStart.getDate() + offset);
+        } else if (dep.depType === 'FF') {
+          const newEnd = new Date(pEnd);
+          newEnd.setDate(newEnd.getDate() + offset);
+          newStart = new Date(newEnd);
+          newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
+        } else if (dep.depType === 'SF') {
+          const newEnd = new Date(pStart);
+          newEnd.setDate(newEnd.getDate() + offset);
+          newStart = new Date(newEnd);
+          newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
+        }
+        
+        if (!maxStart || newStart > maxStart) {
+          maxStart = newStart;
         }
       }
-      if (predTask) break;
+    });
+
+    if (hasValidDep && maxStart) {
+      setStartDate(maxStart.toISOString().slice(0, 10));
     }
+  }, [dependencies, duration, mainJobs]);
+
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setStartDate(val);
     
-    if (predTask) {
+    setDependencies(prevDeps => prevDeps.map(dep => {
+      if (!dep.predecessor || dep.predecessor === '-') return dep;
+
+      let predTask = null;
+      for (const mj of mainJobs) {
+        for (const smj of (mj.subMainJobs || [])) {
+          const found = smj.subtasks?.find(st => st.id === dep.predecessor || st.code === dep.predecessor);
+          if (found) {
+            predTask = found;
+            break;
+          }
+        }
+        if (predTask) break;
+      }
+
+      if (!predTask) return dep;
+
       const pStart = new Date(predTask.startDate);
       const pEnd = new Date(predTask.finishDate);
-      const lagDays = parseInt(lag) || 0;
-      const leadDays = parseInt(lead) || 0;
-      const offset = leadDays - lagDays;
+      const d = new Date(val);
+
+      pStart.setHours(0,0,0,0);
+      pEnd.setHours(0,0,0,0);
+      d.setHours(0,0,0,0);
+
+      const diffDays = (d1: Date, d2: Date) => Math.round((d1.getTime() - d2.getTime()) / (1000 * 3600 * 24));
       
-      let newStart = new Date();
-      if (depType === 'FS') {
-        newStart = new Date(pEnd);
-        newStart.setDate(newStart.getDate() + offset);
-      } else if (depType === 'SS') {
-        newStart = new Date(pStart);
-        newStart.setDate(newStart.getDate() + offset);
-      } else if (depType === 'FF') {
-        const newEnd = new Date(pEnd);
-        newEnd.setDate(newEnd.getDate() + offset);
-        newStart = new Date(newEnd);
-        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
-      } else if (depType === 'SF') {
-        const newEnd = new Date(pStart);
-        newEnd.setDate(newEnd.getDate() + offset);
-        newStart = new Date(newEnd);
-        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
+      let offset = 0;
+      if (dep.depType === 'FS') {
+        offset = diffDays(d, pEnd);
+      } else if (dep.depType === 'SS') {
+        offset = diffDays(d, pStart);
+      } else if (dep.depType === 'FF') {
+        const dEnd = new Date(d);
+        dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
+        offset = diffDays(dEnd, pEnd);
+      } else if (dep.depType === 'SF') {
+        const dEnd = new Date(d);
+        dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
+        offset = diffDays(dEnd, pStart);
       }
-      
-      setStartDate(newStart.toISOString().slice(0, 10));
-    }
-  }, [predecessor, depType, lag, lead, duration, mainJobs]);
+
+      return {
+        ...dep,
+        lead: offset > 0 ? offset.toString() : '0',
+        lag: offset < 0 ? Math.abs(offset).toString() : '0'
+      };
+    }));
+  };
 
   // Calculate finish date preview - strictly after start date (min. +1 day: e.g. start 28 -> end 29)
   const finishDatePreview = useMemo(() => {
@@ -2450,10 +2563,16 @@ function AddSubtaskModal({
       startDate,
       finishDate: finishDatePreview,
       duration: parseInt(duration) || 1,
-      predecessor: predecessor || undefined,
-      depType,
-      lag: parseInt(lag) || 0,
-      lead: parseInt(lead) || 0,
+      predecessor: undefined,
+      depType: 'FS',
+      lag: 0,
+      lead: 0,
+      predecessors: dependencies.filter(d => d.predecessor && d.predecessor !== '-').map(d => ({
+        predecessor: d.predecessor,
+        dep_type: d.depType,
+        lag: parseInt(d.lag) || 0,
+        lead: parseInt(d.lead) || 0,
+      })),
       requiresEvidence,
     });
   };
@@ -2466,7 +2585,7 @@ function AddSubtaskModal({
       size="md"
     >
       <form onSubmit={handleSubmit} className="flex flex-col">
-        <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+        <div className="space-y-4 pr-1">
           {/* Task Name */}
         <div>
           <label className="block text-[12px] font-bold text-neutral-700 mb-1">
@@ -2522,79 +2641,104 @@ function AddSubtaskModal({
               type="date"
               required
               value={startDate}
-              onChange={e => setStartDate(e.target.value)}
+              onChange={handleStartDateChange}
               className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
             />
           </div>
         </div>
 
-        {/* Predecessor (Full Width) */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Predecessor (WBS Task / Sub-sub Task)
-          </label>
-          <select
-            value={predecessor}
-            onChange={e => setPredecessor(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-          >
-            <option value="">None (No Predecessor)</option>
-            {allTasks
-              .filter(t => t.id !== initialData?.id)
-              .map(t => (
-                <option key={t.id} value={t.code || t.id}>
-                  [{t.code}] {t.name}
-                </option>
-              ))}
-          </select>
-        </div>
+        {/* Predecessors (Only shown if NOT edit mode, or if they want to manage them) */}
+        {!isEdit && (
+          <div className="space-y-3 pt-2 border-t border-neutral-100">
+            <div className="flex items-center justify-between">
+              <label className="block text-[12px] font-bold text-neutral-700">
+                Predecessors (WBS Task)
+              </label>
+              <button
+                type="button"
+                onClick={() => setDependencies(d => [...d, { id: `dep-${Date.now()}`, predecessor: '', depType: 'FS', lag: '0', lead: '0' }])}
+                className="text-[11px] font-bold text-brand hover:text-brand-dark px-2 py-1 bg-brand/5 rounded-lg transition-colors flex items-center gap-1"
+              >
+                <Plus size={12} /> Add Predecessor
+              </button>
+            </div>
 
-        {/* Dependency Type (Full Width) */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Dependency Type
-          </label>
-          <select
-            value={depType}
-            onChange={e => setDepType(e.target.value as 'FS' | 'SS' | 'FF' | 'SF')}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
-          >
-            <option value="FS">Finish-to-Start (FS)</option>
-            <option value="SS">Start-to-Start (SS)</option>
-            <option value="FF">Finish-to-Finish (FF)</option>
-            <option value="SF">Start-to-Finish (SF)</option>
-          </select>
-        </div>
+            {dependencies.length === 0 ? (
+              <div className="text-[12px] text-neutral-500 italic p-3 bg-neutral-50 rounded-lg text-center border border-neutral-200">
+                No predecessors added. Task will start according to its own schedule.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {dependencies.map((dep, index) => (
+                  <div key={dep.id} className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 relative group">
+                    <button
+                      type="button"
+                      onClick={() => setDependencies(d => d.filter(x => x.id !== dep.id))}
+                      className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity border border-red-200 hover:bg-red-200 z-10"
+                      title="Remove Dependency"
+                    >
+                      <X size={12} />
+                    </button>
+                    
+                    <div className="space-y-2">
+                      <SearchablePredecessorSelect
+                        value={dep.predecessor}
+                        onChange={v => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, predecessor: v } : x))}
+                        availableSubMainJobs={availableSubMainJobs}
+                        currentTaskId={initialData?.id}
+                        currentTaskCode={initialData?.code}
+                      />
 
-        {/* Lag and Lead */}
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-100">
-          <div>
-            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Lag (Days)
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={lag}
-              onChange={e => setLag(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
-              placeholder="0"
-            />
+                      <div className="grid grid-cols-[2fr_1fr_1fr] gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">Type</label>
+                          <select
+                            value={dep.depType}
+                            onChange={e => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, depType: e.target.value as any } : x))}
+                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] outline-none focus:border-brand bg-white font-medium"
+                          >
+                            <option value="FS">Finish-to-Start</option>
+                            <option value="SS">Start-to-Start</option>
+                            <option value="FF">Finish-to-Finish</option>
+                            <option value="SF">Start-to-Finish</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">Lag</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={dep.lag}
+                            onChange={e => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, lag: e.target.value } : x))}
+                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">Lead</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={dep.lead}
+                            onChange={e => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, lead: e.target.value } : x))}
+                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div>
-            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Lead (Days)
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={lead}
-              onChange={e => setLead(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
-              placeholder="0"
-            />
+        )}
+        {isEdit && (
+          <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-start gap-2.5">
+            <Info size={14} className="text-blue-500 mt-0.5 flex-shrink-0" />
+            <p className="text-[11.5px] text-blue-800 font-medium leading-relaxed">
+              To add or manage task dependencies for this existing task, use the <strong className="text-blue-900">"Kelola Ketergantungan"</strong> button on the task row.
+            </p>
           </div>
-        </div>
+        )}
 
         {/* Evidence Requirement */}
         <div className="pt-2 border-t border-neutral-100">
@@ -2656,6 +2800,9 @@ function ManageDependenciesModal({
   submitting: boolean;
   actionError: string;
 }) {
+  const [searchDep, setSearchDep] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
   if (!isOpen || !task) return null;
 
   const dependencyGroups = (task.dependencies ?? []).reduce((groups, dependency) => {
@@ -2665,6 +2812,22 @@ function ManageDependenciesModal({
     groups.set(key, group);
     return groups;
   }, new Map<number | string, NonNullable<typeof task.dependencies>>());
+
+  const availableTasks = allSubtasks
+    .filter(t => t.id !== task.id)
+    .filter(t => !task.dependencies?.some(dep => String(dep.predecessor_wbs_id) === String(t.id)));
+
+  const filteredTasks = availableTasks.filter(t => 
+    (t.code + ' ' + t.name).toLowerCase().includes(searchDep.toLowerCase())
+  );
+
+  const groupedAvailableTasks = filteredTasks.reduce((acc, t) => {
+    const parts = t.code.split('.');
+    const prefix = parts.length > 1 ? parts.slice(0, parts.length - 1).join('.') : t.code;
+    if (!acc[prefix]) acc[prefix] = [];
+    acc[prefix].push(t);
+    return acc;
+  }, {} as Record<string, SubSubtask[]>);
 
   return (
     <Modal
@@ -2766,27 +2929,72 @@ function ManageDependenciesModal({
             <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
               Pilih Task Predecessor (bisa lebih dari satu) <span className="text-red-500">*</span>
             </label>
-            <select
-              multiple
-              size={6}
-              value={depForm.predecessor_wbs_ids}
-              onChange={e => setDepForm({
-                ...depForm,
-                predecessor_wbs_ids: Array.from(e.currentTarget.selectedOptions, option => option.value),
-              })}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-              required
-            >
-              {allSubtasks
-                .filter(t => t.id !== task.id)
-                .filter(t => !task.dependencies?.some(dep => String(dep.predecessor_wbs_id) === String(t.id)))
-                .map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.code} - {t.name} ({t.startDate ? formatDateDisplay(t.startDate) : ''} - {t.finishDate ? formatDateDisplay(t.finishDate) : ''})
-                  </option>
-                ))}
-            </select>
-            <p className="mt-1 text-[11px] text-neutral-500">Gunakan Ctrl (Windows) atau Command (Mac) untuk memilih beberapa tugas sekaligus.</p>
+            
+            {/* Search Input */}
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={14} />
+              <input
+                type="text"
+                placeholder="Cari berdasarkan kode atau nama task..."
+                value={searchDep}
+                onChange={e => setSearchDep(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-white border border-neutral-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand"
+              />
+            </div>
+
+            <div className="max-h-[220px] overflow-y-auto border border-neutral-200 rounded-lg bg-white p-2 space-y-1 custom-scrollbar">
+              {Object.keys(groupedAvailableTasks).length === 0 ? (
+                <div className="text-[11.5px] text-neutral-500 italic text-center py-4">
+                  Tidak ada task yang tersedia atau cocok dengan pencarian.
+                </div>
+              ) : (
+                Object.entries(groupedAvailableTasks).map(([prefix, tasks]) => {
+                  const isExpanded = expandedGroups[prefix] ?? true; // expanded by default
+                  
+                  return (
+                    <div key={prefix} className="mb-2 last:mb-0">
+                      {/* Group Header */}
+                      <div 
+                        onClick={() => setExpandedGroups(prev => ({ ...prev, [prefix]: !isExpanded }))}
+                        className="flex items-center gap-2 px-2 py-1.5 bg-neutral-100 rounded-lg cursor-pointer hover:bg-neutral-200/60 transition-colors mb-1"
+                      >
+                        <ChevronRight size={14} className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        <span className="text-[11px] font-black text-neutral-700 uppercase tracking-wider">
+                          WBS Group: {prefix} ({tasks.length})
+                        </span>
+                      </div>
+                      
+                      {/* Group Items */}
+                      {isExpanded && (
+                        <div className="space-y-1 pl-1">
+                          {tasks.map(t => (
+                            <label key={t.id} className={`flex items-start gap-2.5 px-2.5 py-2 hover:bg-neutral-50 rounded-lg cursor-pointer transition-colors border ${depForm.predecessor_wbs_ids.includes(t.id) ? 'border-brand/30 bg-brand/5' : 'border-transparent'}`}>
+                              <input 
+                                type="checkbox"
+                                checked={depForm.predecessor_wbs_ids.includes(t.id)}
+                                onChange={(e) => {
+                                  const newIds = e.target.checked 
+                                    ? [...depForm.predecessor_wbs_ids, t.id]
+                                    : depForm.predecessor_wbs_ids.filter(id => id !== t.id);
+                                  setDepForm({ ...depForm, predecessor_wbs_ids: newIds });
+                                }}
+                                className="mt-0.5 text-brand focus:ring-brand rounded border-neutral-300 cursor-pointer"
+                              />
+                              <div className="flex flex-col flex-1 min-w-0">
+                                <span className="text-[12px] font-bold text-neutral-800 line-clamp-1">{t.code} - {t.name}</span>
+                                <span className="text-[10.5px] text-neutral-500">
+                                  {t.startDate ? formatDateDisplay(t.startDate) : '-'} s/d {t.finishDate ? formatDateDisplay(t.finishDate) : '-'}
+                                </span>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
