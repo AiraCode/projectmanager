@@ -2377,6 +2377,8 @@ function AddSubtaskModal({
     ? mainJobs.flatMap(mj => mj.subMainJobs || [])
     : (parentSmj ? [parentSmj] : []);
 
+  const allTasks = mainJobs?.flatMap(mj => mj.subMainJobs?.flatMap(smj => smj.subtasks || []) || []) || [];
+
   // Find predecessor task to calculate automatic start date
   useEffect(() => {
     if (!predecessor) return;
@@ -2398,12 +2400,12 @@ function AddSubtaskModal({
       const pEnd = new Date(predTask.finishDate);
       const lagDays = parseInt(lag) || 0;
       const leadDays = parseInt(lead) || 0;
-      const offset = lagDays - leadDays;
+      const offset = leadDays - lagDays;
       
       let newStart = new Date();
       if (depType === 'FS') {
         newStart = new Date(pEnd);
-        newStart.setDate(newStart.getDate() + 1 + offset);
+        newStart.setDate(newStart.getDate() + offset);
       } else if (depType === 'SS') {
         newStart = new Date(pStart);
         newStart.setDate(newStart.getDate() + offset);
@@ -2411,12 +2413,12 @@ function AddSubtaskModal({
         const newEnd = new Date(pEnd);
         newEnd.setDate(newEnd.getDate() + offset);
         newStart = new Date(newEnd);
-        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1) + 1);
+        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
       } else if (depType === 'SF') {
         const newEnd = new Date(pStart);
-        newEnd.setDate(newEnd.getDate() + 1 + offset);
+        newEnd.setDate(newEnd.getDate() + offset);
         newStart = new Date(newEnd);
-        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1) + 1);
+        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
       }
       
       setStartDate(newStart.toISOString().slice(0, 10));
@@ -2526,7 +2528,73 @@ function AddSubtaskModal({
           </div>
         </div>
 
+        {/* Predecessor (Full Width) */}
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Predecessor (WBS Task / Sub-sub Task)
+          </label>
+          <select
+            value={predecessor}
+            onChange={e => setPredecessor(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+          >
+            <option value="">None (No Predecessor)</option>
+            {allTasks
+              .filter(t => t.id !== initialData?.id)
+              .map(t => (
+                <option key={t.id} value={t.code || t.id}>
+                  [{t.code}] {t.name}
+                </option>
+              ))}
+          </select>
+        </div>
 
+        {/* Dependency Type (Full Width) */}
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Dependency Type
+          </label>
+          <select
+            value={depType}
+            onChange={e => setDepType(e.target.value as 'FS' | 'SS' | 'FF' | 'SF')}
+            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
+          >
+            <option value="FS">Finish-to-Start (FS)</option>
+            <option value="SS">Start-to-Start (SS)</option>
+            <option value="FF">Finish-to-Finish (FF)</option>
+            <option value="SF">Start-to-Finish (SF)</option>
+          </select>
+        </div>
+
+        {/* Lag and Lead */}
+        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-100">
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+              Lag (Days)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={lag}
+              onChange={e => setLag(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+              placeholder="0"
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+              Lead (Days)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={lead}
+              onChange={e => setLead(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+              placeholder="0"
+            />
+          </div>
+        </div>
 
         {/* Evidence Requirement */}
         <div className="pt-2 border-t border-neutral-100">

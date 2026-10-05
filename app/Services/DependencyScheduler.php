@@ -154,16 +154,16 @@ class DependencyScheduler
 
             switch ($dep->effectiveDependencyType()) {
                 case 'FS':
-                    // Finish-to-Start: Successor start must be after Predecessor end + 1 + lag
-                    $reqStart = $predEnd->copy()->addDays(1 + $lag);
+                    // Finish-to-Start: Successor start must be after Predecessor end - lag
+                    $reqStart = $predEnd->copy()->subDays($lag);
                     if ($reqStart->gt($newStart)) {
                         $newStart = $reqStart->copy();
                     }
                     break;
 
                 case 'SS':
-                    // Start-to-Start: Successor start must be on or after Predecessor start + lag
-                    $reqStart = $predStart->copy()->addDays($lag);
+                    // Start-to-Start: Successor start must be on or after Predecessor start - lag
+                    $reqStart = $predStart->copy()->subDays($lag);
                     if ($reqStart->gt($newStart)) {
                         $newStart = $reqStart->copy();
                     }
@@ -171,7 +171,7 @@ class DependencyScheduler
 
                 case 'FF':
                     // Preserve task duration while enforcing the finish-date constraint.
-                    $reqStart = $predEnd->copy()->addDays($lag - $durationDays);
+                    $reqStart = $predEnd->copy()->subDays($lag + $durationDays);
                     if ($reqStart->gt($newStart)) {
                         $newStart = $reqStart->copy();
                     }
@@ -179,7 +179,7 @@ class DependencyScheduler
 
                 case 'SF':
                     // Preserve task duration while enforcing the finish-date constraint.
-                    $reqStart = $predStart->copy()->addDays(1 + $lag - $durationDays);
+                    $reqStart = $predStart->copy()->subDays($lag + $durationDays);
                     if ($reqStart->gt($newStart)) {
                         $newStart = $reqStart->copy();
                     }

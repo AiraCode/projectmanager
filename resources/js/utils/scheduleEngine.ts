@@ -50,7 +50,7 @@ export function recalculateSchedule(project: Project): Project {
               ? [{
                   predecessor_wbs_id: st.predecessor,
                   dependency_type: st.depType || 'FS',
-                  lag_days: (st.lag || 0) - (st.lead || 0),
+                  lag_days: (st.lead || 0) - (st.lag || 0),
                 }]
               : [];
 
@@ -64,7 +64,7 @@ export function recalculateSchedule(project: Project): Project {
 
               const lag = 'lag_days' in dependency
                 ? dependency.lag_days
-                : (st.lag || 0) - (st.lead || 0);
+                : (st.lead || 0) - (st.lag || 0);
               let requiredDate: string | null = null;
 
               switch (dependency.dependency_type) {
@@ -75,10 +75,10 @@ export function recalculateSchedule(project: Project): Project {
                   requiredDate = addDays(pred.startDate, lag);
                   break;
                 case 'FF':
-                  requiredDate = addDays(pred.finishDate, lag - (duration - 1));
+                  requiredDate = addDays(pred.finishDate, lag - duration);
                   break;
                 case 'SF':
-                  requiredDate = addDays(pred.startDate, lag - (duration - 1));
+                  requiredDate = addDays(pred.startDate, lag - duration);
                   break;
               }
 
@@ -88,12 +88,12 @@ export function recalculateSchedule(project: Project): Project {
             }
 
             newStart = requiredStart;
-            newFinish = addDays(newStart, duration - 1);
+            newFinish = addDays(newStart, duration);
           } else {
             // No predecessor: Start date remains as user-entered.
             // Just ensure finish date is consistent with duration.
             const duration = st.duration || 1;
-            newFinish = addDays(st.startDate, duration - 1);
+            newFinish = addDays(st.startDate, duration);
           }
 
           if (newStart !== st.startDate || newFinish !== st.finishDate) {

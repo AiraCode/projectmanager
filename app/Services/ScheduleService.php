@@ -42,7 +42,7 @@ class ScheduleService
                     // Duration in days based on current start/end, default 1 if empty
                     $duration = 1;
                     if ($newStart && $newEnd) {
-                        $duration = $newStart->diffInDays($newEnd) + 1;
+                        $duration = $newStart->diffInDays($newEnd);
                     }
 
                     if ($st->predecessor && isset($taskMap[$st->predecessor])) {
@@ -55,17 +55,17 @@ class ScheduleService
                             $predEnd = Carbon::parse($pred->end);
 
                             if ($depType === 'FS') {
-                                $newStart = $predEnd->copy()->addDays($lag);
-                                $newEnd = $newStart->copy()->addDays($duration - 1);
+                                $newStart = $predEnd->copy()->subDays($lag);
+                                $newEnd = $newStart->copy()->addDays($duration);
                             } elseif ($depType === 'SS') {
-                                $newStart = $predStart->copy()->addDays($lag);
-                                $newEnd = $newStart->copy()->addDays($duration - 1);
+                                $newStart = $predStart->copy()->subDays($lag);
+                                $newEnd = $newStart->copy()->addDays($duration);
                             } elseif ($depType === 'FF') {
-                                $newEnd = $predEnd->copy()->addDays($lag);
-                                $newStart = $newEnd->copy()->subDays($duration - 1);
+                                $newEnd = $predEnd->copy()->subDays($lag);
+                                $newStart = $newEnd->copy()->subDays($duration);
                             } elseif ($depType === 'SF') {
-                                $newEnd = $predStart->copy()->addDays($lag);
-                                $newStart = $newEnd->copy()->subDays($duration - 1);
+                                $newEnd = $predStart->copy()->subDays($lag);
+                                $newStart = $newEnd->copy()->subDays($duration);
                             }
                         }
                     }

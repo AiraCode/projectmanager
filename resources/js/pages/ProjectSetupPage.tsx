@@ -388,14 +388,14 @@ export default function ProjectSetupPage() {
 
     if (!pred.start || !pred.end) return taskForm.start;
 
-    // FS: this task starts after predecessor finishes (+lag)
-    if (depType === 'FS') return addDays(pred.end, 1 + lag);
-    // SS: this task starts when predecessor starts (+lag)
-    if (depType === 'SS') return addDays(pred.start, lag);
-    // FF: this task should finish when predecessor finishes → start = predEnd - duration + lag
-    if (depType === 'FF') return addDays(pred.end, lag - duration + 1);
-    // SF: this task finishes when predecessor starts → start = predStart - duration + lag
-    if (depType === 'SF') return addDays(pred.start, lag - duration + 1);
+    // FS: this task starts after predecessor finishes (-lag)
+    if (depType === 'FS') return addDays(pred.end, -lag);
+    // SS: this task starts when predecessor starts (-lag)
+    if (depType === 'SS') return addDays(pred.start, -lag);
+    // FF: this task should finish when predecessor finishes → start = predEnd - duration - lag
+    if (depType === 'FF') return addDays(pred.end, -lag - duration);
+    // SF: this task finishes when predecessor starts → start = predStart - duration - lag
+    if (depType === 'SF') return addDays(pred.start, -lag - duration);
     return taskForm.start;
   };
 
@@ -403,7 +403,7 @@ export default function ProjectSetupPage() {
   const calcEndDate = (start: string, duration: number): string => {
     if (!start) return '';
     const d = new Date(start);
-    d.setDate(d.getDate() + Math.max(1, duration) - 1);
+    d.setDate(d.getDate() + Math.max(1, duration));
     return d.toISOString().slice(0, 10);
   };
 
