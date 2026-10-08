@@ -102,6 +102,11 @@ export default function ProjectSetupPage() {
   const [confirmCompleteModal, setConfirmCompleteModal] = useState(false);
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; type: 'main' | 'sub' | 'task'; id: any; name: string } | null>(null);
   const [deleteDepModal, setDeleteDepModal] = useState<{ isOpen: boolean; id: number } | null>(null);
+  const [confirmClearModal, setConfirmClearModal] = useState(false);
+
+  // Search & Group states for predecessor dropdowns
+  const [searchDep, setSearchDep] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   // Form States - Main Task
   const [mainForm, setMainForm] = useState({ name: '', weight: 5.0, start: proj.start || '', end: proj.end || '' });
@@ -146,10 +151,10 @@ export default function ProjectSetupPage() {
   }, [proj]);
 
   const handleClearAllTasks = () => {
-    if (!confirm('Apakah Anda yakin ingin menghapus SEMUA task? Tindakan ini tidak dapat dibatalkan.')) return;
     setSubmitting(true);
     router.delete(`/projects/${proj.id}/clear-wbs`, {
       preserveScroll: true,
+      onSuccess: () => setConfirmClearModal(false),
       onFinish: () => setSubmitting(false),
     });
   };
@@ -424,6 +429,7 @@ export default function ProjectSetupPage() {
   // Leaf Task Add / Edit Handlers
   const openAddTask = (subId: number) => {
     const startDate = proj.start || new Date().toISOString().slice(0, 10);
+    setSearchDep('');
     setTaskForm({
       name: '',
       divisions_id: divisions[0]?.id || 1,
@@ -512,6 +518,7 @@ export default function ProjectSetupPage() {
 
   // Dependency Management Handlers
   const openManageDependencies = (task: WbsTask) => {
+    setSearchDep('');
     setDepForm({
       predecessor_wbs_ids: [],
       dependency_type: 'FS',
@@ -659,7 +666,7 @@ export default function ProjectSetupPage() {
                 variant="outline"
                 size="sm"
                 icon={Trash}
-                onClick={handleClearAllTasks}
+                onClick={() => setConfirmClearModal(true)}
                 className="text-red-600 border-red-200 hover:bg-red-50"
               >
                 Hapus Semua Task
@@ -1071,7 +1078,7 @@ export default function ProjectSetupPage() {
             variant="outline"
             size="sm"
             icon={Trash}
-            onClick={handleClearAllTasks}
+            onClick={() => setConfirmClearModal(true)}
             className="text-red-600 border-red-200 hover:bg-red-50"
           >
             Hapus Semua Task
@@ -1102,6 +1109,42 @@ export default function ProjectSetupPage() {
             <div className="p-4 overflow-auto bg-white rounded-lg" style={{ minHeight: '400px' }}>
               <div className="mermaid">
                 {getMermaidGraph()}
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Modal Confirm Clear All Tasks */}
+        {confirmClearModal && (
+          <Modal
+            title="Konfirmasi Hapus Semua Task"
+            onClose={() => setConfirmClearModal(false)}
+            size="md"
+          >
+            <div className="p-2 space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                <AlertTriangle size={24} className="flex-shrink-0" />
+                <p className="text-[13px] font-medium">
+                  Apakah Anda yakin ingin menghapus <strong>SEMUA</strong> task? Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="md"
+                  onClick={() => setConfirmClearModal(false)}
+                >
+                  Batal
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={handleClearAllTasks}
+                  disabled={submitting}
+                  className="bg-red-600 hover:bg-red-700 text-white border-transparent"
+                >
+                  {submitting ? 'Menghapus...' : 'Ya, Hapus Semua'}
+                </Button>
               </div>
             </div>
           </Modal>
@@ -1389,20 +1432,95 @@ export default function ProjectSetupPage() {
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                   Predecessor (WBS Task / Sub-sub Task)
                 </label>
-                <select
-                  value={taskForm.predecessor_wbs_id}
-                  onChange={e => setTaskForm({ ...taskForm, predecessor_wbs_id: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-                >
-                  <option value="">None (No Predecessor)</option>
-                  {allLeafTasks
-                    .filter(t => t.id !== taskModal.item?.id)
-                    .map(t => (
-                      <option key={t.id} value={t.id}>
-                        [{t.code}] {t.name}
-                      </option>
-                    ))}
-                </select>
+                
+                {/* Search Input */}
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Cari berdasarkan kode atau nama task..."
+                    value={searchDep}
+                    onChange={e => setSearchDep(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-neutral-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand"
+                  />
+                </div>
+
+                <div className="max-h-[160px] overflow-y-auto border border-neutral-200 rounded-lg bg-white p-2 space-y-1 custom-scrollbar">
+                  {(() => {
+                    const availableTasks = allLeafTasks.filter(t => t.id !== taskModal.item?.id);
+                    const filteredTasks = availableTasks.filter(t => 
+                      (t.code + ' ' + t.name).toLowerCase().includes(searchDep.toLowerCase())
+                    );
+                    const groupedTasks = filteredTasks.reduce((acc, t) => {
+                      const parts = t.code.split('.');
+                      const prefix = parts.length > 1 ? parts.slice(0, parts.length - 1).join('.') : t.code;
+                      if (!acc[prefix]) acc[prefix] = [];
+                      acc[prefix].push(t);
+                      return acc;
+                    }, {} as Record<string, WbsTask[]>);
+
+                    return (
+                      <>
+                        <label className={`flex items-start gap-2.5 px-2.5 py-2 hover:bg-neutral-50 rounded-lg cursor-pointer transition-colors border ${taskForm.predecessor_wbs_id === '' ? 'border-brand/30 bg-brand/5' : 'border-transparent'}`}>
+                          <input 
+                            type="radio"
+                            name="predecessor"
+                            checked={taskForm.predecessor_wbs_id === ''}
+                            onChange={() => setTaskForm({ ...taskForm, predecessor_wbs_id: '' })}
+                            className="mt-0.5 text-brand focus:ring-brand rounded-full border-neutral-300 cursor-pointer"
+                          />
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <span className="text-[12px] font-bold text-neutral-800">None (No Predecessor)</span>
+                          </div>
+                        </label>
+                        
+                        {Object.keys(groupedTasks).length === 0 && searchDep !== '' && (
+                          <div className="text-[11.5px] text-neutral-500 italic text-center py-4">
+                            Tidak ada task yang cocok dengan pencarian.
+                          </div>
+                        )}
+                        
+                        {Object.entries(groupedTasks).map(([prefix, tasks]) => {
+                          const isExpanded = expandedGroups[prefix] ?? true;
+                          return (
+                            <div key={prefix} className="mb-2 last:mb-0">
+                              <div 
+                                onClick={() => setExpandedGroups(prev => ({ ...prev, [prefix]: !isExpanded }))}
+                                className="flex items-center gap-2 px-2 py-1.5 bg-neutral-100 rounded-lg cursor-pointer hover:bg-neutral-200/60 transition-colors mb-1"
+                              >
+                                <ChevronRight size={14} className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                <span className="text-[11px] font-black text-neutral-700 uppercase tracking-wider">
+                                  WBS Group: {prefix} ({tasks.length})
+                                </span>
+                              </div>
+                              {isExpanded && (
+                                <div className="space-y-1 pl-1 mt-1">
+                                  {tasks.map(t => (
+                                    <label key={t.id} className={`flex items-start gap-2.5 px-2.5 py-2 hover:bg-neutral-50 rounded-lg cursor-pointer transition-colors border ${taskForm.predecessor_wbs_id === String(t.id) ? 'border-brand/30 bg-brand/5' : 'border-transparent'}`}>
+                                      <input 
+                                        type="radio"
+                                        name="predecessor"
+                                        checked={taskForm.predecessor_wbs_id === String(t.id)}
+                                        onChange={() => setTaskForm({ ...taskForm, predecessor_wbs_id: String(t.id) })}
+                                        className="mt-0.5 text-brand focus:ring-brand rounded-full border-neutral-300 cursor-pointer"
+                                      />
+                                      <div className="flex flex-col flex-1 min-w-0">
+                                        <span className="text-[12px] font-bold text-neutral-800 line-clamp-1">{t.code} - {t.name}</span>
+                                        <span className="text-[10.5px] text-neutral-500">
+                                          {t.start ? formatDateDisplay(t.start) : '-'} s/d {t.end ? formatDateDisplay(t.end) : '-'}
+                                        </span>
+                                      </div>
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
 
               {/* Dependency Type (Full Width) */}
@@ -1431,11 +1549,12 @@ export default function ProjectSetupPage() {
                   <input
                     type="number"
                     min="0"
-                    value={taskForm.lag}
-                    onChange={e => setTaskForm({ ...taskForm, lag: parseInt(e.target.value) || 0 })}
+                    value={taskForm.lag > 0 ? taskForm.lag : ''}
+                    onChange={e => setTaskForm({ ...taskForm, lag: Math.abs(parseInt(e.target.value) || 0) })}
                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
                     placeholder="0"
                   />
+                  <span className="text-[10px] text-neutral-500 mt-0.5 block">Waktu tunggu (delay).</span>
                 </div>
                 <div>
                   <label className="block text-[12px] font-bold text-neutral-700 mb-1">
@@ -1444,11 +1563,12 @@ export default function ProjectSetupPage() {
                   <input
                     type="number"
                     min="0"
-                    value={0}
-                    onChange={() => {}}
+                    value={taskForm.lag < 0 ? Math.abs(taskForm.lag) : ''}
+                    onChange={e => setTaskForm({ ...taskForm, lag: -Math.abs(parseInt(e.target.value) || 0) })}
                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
                     placeholder="0"
                   />
+                  <span className="text-[10px] text-neutral-500 mt-0.5 block">Mulai lebih awal (percepatan).</span>
                 </div>
               </div>
 
@@ -1590,26 +1710,87 @@ export default function ProjectSetupPage() {
                 <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
                   Pilih Task Predecessor (bisa lebih dari satu) <span className="text-red-500">*</span>
                 </label>
-                <select
-                  multiple
-                  size={6}
-                  value={depForm.predecessor_wbs_ids}
-                  onChange={e => setDepForm({
-                    ...depForm,
-                    predecessor_wbs_ids: Array.from(e.currentTarget.selectedOptions, option => option.value),
-                  })}
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-                  required
-                >
-                  {(allTasks || [])
-                    .filter((t: any) => t.id !== depModal.task?.id)
-                    .map((t: any) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} ({t.start ? formatDateDisplay(t.start) : ''} - {t.end ? formatDateDisplay(t.end) : ''})
-                      </option>
-                    ))}
-                </select>
-                <p className="mt-1 text-[11px] text-neutral-500">Gunakan Ctrl (Windows) atau Command (Mac) untuk memilih beberapa tugas sekaligus.</p>
+                
+                {/* Search Input */}
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Cari berdasarkan kode atau nama task..."
+                    value={searchDep}
+                    onChange={e => setSearchDep(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-neutral-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand"
+                  />
+                </div>
+
+                <div className="max-h-[220px] overflow-y-auto border border-neutral-200 rounded-lg bg-white p-2 space-y-1 custom-scrollbar">
+                  {(() => {
+                    const availableTasks = allLeafTasks
+                      .filter(t => t.id !== depModal.task?.id)
+                      .filter(t => !depModal.task?.dependencies?.some(dep => String(dep.predecessor_wbs_id) === String(t.id)));
+                    const filteredTasks = availableTasks.filter(t => 
+                      (t.code + ' ' + t.name).toLowerCase().includes(searchDep.toLowerCase())
+                    );
+                    const groupedTasks = filteredTasks.reduce((acc, t) => {
+                      const parts = t.code.split('.');
+                      const prefix = parts.length > 1 ? parts.slice(0, parts.length - 1).join('.') : t.code;
+                      if (!acc[prefix]) acc[prefix] = [];
+                      acc[prefix].push(t);
+                      return acc;
+                    }, {} as Record<string, WbsTask[]>);
+
+                    if (Object.keys(groupedTasks).length === 0) {
+                      return (
+                        <div className="text-[11.5px] text-neutral-500 italic text-center py-4">
+                          Tidak ada task yang tersedia atau cocok dengan pencarian.
+                        </div>
+                      );
+                    }
+
+                    return Object.entries(groupedTasks).map(([prefix, tasks]) => {
+                      const isExpanded = expandedGroups[prefix] ?? true;
+                      return (
+                        <div key={prefix} className="mb-2 last:mb-0">
+                          <div 
+                            onClick={() => setExpandedGroups(prev => ({ ...prev, [prefix]: !isExpanded }))}
+                            className="flex items-center gap-2 px-2 py-1.5 bg-neutral-100 rounded-lg cursor-pointer hover:bg-neutral-200/60 transition-colors mb-1"
+                          >
+                            <ChevronRight size={14} className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            <span className="text-[11px] font-black text-neutral-700 uppercase tracking-wider">
+                              WBS Group: {prefix} ({tasks.length})
+                            </span>
+                          </div>
+                          {isExpanded && (
+                            <div className="space-y-1 pl-1 mt-1">
+                              {tasks.map(t => (
+                                <label key={t.id} className={`flex items-start gap-2.5 px-2.5 py-2 hover:bg-neutral-50 rounded-lg cursor-pointer transition-colors border ${depForm.predecessor_wbs_ids.includes(String(t.id)) ? 'border-brand/30 bg-brand/5' : 'border-transparent'}`}>
+                                  <input 
+                                    type="checkbox"
+                                    checked={depForm.predecessor_wbs_ids.includes(String(t.id))}
+                                    onChange={(e) => {
+                                      const strId = String(t.id);
+                                      const newIds = e.target.checked 
+                                        ? [...depForm.predecessor_wbs_ids, strId]
+                                        : depForm.predecessor_wbs_ids.filter(id => id !== strId);
+                                      setDepForm({ ...depForm, predecessor_wbs_ids: newIds });
+                                    }}
+                                    className="mt-0.5 text-brand focus:ring-brand rounded border-neutral-300 cursor-pointer"
+                                  />
+                                  <div className="flex flex-col flex-1 min-w-0">
+                                    <span className="text-[12px] font-bold text-neutral-800 line-clamp-1">{t.code} - {t.name}</span>
+                                    <span className="text-[10.5px] text-neutral-500">
+                                      {t.start ? formatDateDisplay(t.start) : '-'} s/d {t.end ? formatDateDisplay(t.end) : '-'}
+                                    </span>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
