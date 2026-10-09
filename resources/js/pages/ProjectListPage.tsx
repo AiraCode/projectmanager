@@ -543,20 +543,16 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
               <stop offset="100%" stopColor="#F97316" />
             </linearGradient>
 
-            {/* Radial Gradient for 100% Completion Shining Aura */}
+            {/* Radial Gradient for 100% Completion Shining Aura (Pure soft green light) */}
             <radialGradient id={shineGradId} cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#34D399" stopOpacity="0.8" />
-              <stop offset="50%" stopColor="#16A34A" stopOpacity="0.3" />
+              <stop offset="0%" stopColor="#22C55E" stopOpacity="0.5" />
+              <stop offset="50%" stopColor="#16A34A" stopOpacity="0.2" />
               <stop offset="100%" stopColor="#16A34A" stopOpacity="0" />
             </radialGradient>
 
-            {/* Glowing light filter for completion */}
-            <filter id={glowFilterId} x="-40%" y="-40%" width="180%" height="180%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
+            {/* Glowing green light filter for completion */}
+            <filter id={glowFilterId} x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#22C55E" floodOpacity="0.8" />
             </filter>
           </defs>
 
@@ -571,7 +567,13 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
 
           {/* Dedicated rounded caps at outer ends only (0% and 100%) so internal segments have clean straight cuts */}
           <circle cx={p0.x} cy={p0.y} r={strokeWidth / 2} fill="#DC2626" />
-          <circle cx={p100.x} cy={p100.y} r={strokeWidth / 2} fill="#16A34A" />
+          <circle
+            cx={p100.x}
+            cy={p100.y}
+            r={strokeWidth / 2}
+            fill="#16A34A"
+            filter={actualTheme.isComplete ? `url(#${glowFilterId})` : undefined}
+          />
 
           {/* Zone 1: Red (0% - 70%) */}
           <path
@@ -724,27 +726,15 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
           <circle cx={cx} cy={cy} r="6.5" fill="#0F172A" />
           <circle cx={cx} cy={cy} r="2.5" fill="#FFFFFF" />
 
-          {/* 100% Completion Shining Light Effect (Clean Glowing Aura without star icons) */}
+          {/* 100% Completion Shining Light Effect (Pure color glowing aura, no icons or overlapping dots) */}
           {actualTheme.isComplete && (
-            <g className="transition-opacity duration-500 pointer-events-none">
-              {/* Soft pulsing halo */}
-              <circle
-                cx={p100.x}
-                cy={p100.y}
-                r="14"
-                fill={`url(#${shineGradId})`}
-                className="animate-pulse"
-              />
-              {/* Subtle shining light beacon */}
-              <circle
-                cx={p100.x}
-                cy={p100.y}
-                r="4.5"
-                fill="#4ADE80"
-                opacity="0.85"
-                filter={`url(#${glowFilterId})`}
-              />
-            </g>
+            <circle
+              cx={p100.x}
+              cy={p100.y}
+              r="18"
+              fill={`url(#${shineGradId})`}
+              className="pointer-events-none animate-pulse"
+            />
           )}
         </svg>
       </div>
