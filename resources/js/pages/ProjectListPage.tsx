@@ -1,6 +1,6 @@
 import { useState, useId } from 'react';
 import { usePage, Link, router } from '@inertiajs/react';
-import { Calendar, FolderOpen, Plus, ShieldAlert, Sparkles, Settings } from 'lucide-react';
+import { Calendar, FolderOpen, Plus, ShieldAlert, Settings } from 'lucide-react';
 import { PageHeader, Button, Modal, formatDateDisplay } from '@/components/ui';
 
 interface Project {
@@ -435,6 +435,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
   const uniqueId = useId().replace(/:/g, '');
   const redGradId = `gauge-red-${uniqueId}`;
   const shineGradId = `gauge-shine-${uniqueId}`;
+  const glowFilterId = `gauge-glow-${uniqueId}`;
 
   const planVal = Math.max(0, Math.min(100, Math.round(plan)));
   const actualVal = Math.max(0, Math.min(100, Math.round(actual)));
@@ -498,10 +499,19 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
 
             {/* Radial Gradient for 100% Completion Shining Aura */}
             <radialGradient id={shineGradId} cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#34D399" stopOpacity="0.85" />
-              <stop offset="45%" stopColor="#16A34A" stopOpacity="0.35" />
+              <stop offset="0%" stopColor="#34D399" stopOpacity="0.8" />
+              <stop offset="50%" stopColor="#16A34A" stopOpacity="0.3" />
               <stop offset="100%" stopColor="#16A34A" stopOpacity="0" />
             </radialGradient>
+
+            {/* Glowing light filter for completion */}
+            <filter id={glowFilterId} x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
 
           {/* Base Gauge Track */}
@@ -542,6 +552,8 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             stroke="#16A34A"
             strokeWidth={strokeWidth}
             strokeLinecap="butt"
+            filter={actualTheme.isComplete ? `url(#${glowFilterId})` : undefined}
+            className="transition-all duration-300"
           />
 
           {/* Boundary Divider Ticks at 30%, 50%, 70%, 90% */}
@@ -651,6 +663,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             strokeWidth="3.2"
             strokeLinecap="round"
             className="transition-colors duration-300"
+            filter={actualTheme.isComplete ? `url(#${glowFilterId})` : undefined}
           />
           <circle
             cx={actualTip.x}
@@ -658,46 +671,33 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             r="4"
             fill={actualTheme.color}
             className="transition-colors duration-300"
+            filter={actualTheme.isComplete ? `url(#${glowFilterId})` : undefined}
           />
 
           {/* Pivot Center */}
           <circle cx={cx} cy={cy} r="6.5" fill="#0F172A" />
           <circle cx={cx} cy={cy} r="2.5" fill="#FFFFFF" />
 
-          {/* 100% Completion Shining Light Effect (Subtle and Eye-catching) */}
+          {/* 100% Completion Shining Light Effect (Clean Glowing Aura without star icons) */}
           {actualTheme.isComplete && (
             <g className="transition-opacity duration-500 pointer-events-none">
               {/* Soft pulsing halo */}
               <circle
                 cx={p100.x}
                 cy={p100.y}
-                r="16"
+                r="14"
                 fill={`url(#${shineGradId})`}
                 className="animate-pulse"
               />
-
-              {/* Delicate 4-point star gleam flare */}
-              <path
-                d={`M ${p100.x} ${p100.y - 7}
-                    Q ${p100.x} ${p100.y} ${p100.x + 7} ${p100.y}
-                    Q ${p100.x} ${p100.y} ${p100.x} ${p100.y + 7}
-                    Q ${p100.x} ${p100.y} ${p100.x - 7} ${p100.y}
-                    Z`}
-                fill="#FFFFFF"
-                opacity="0.95"
-              />
-
-              {/* Diagonal micro-flares */}
-              <path
-                d={`M ${p100.x - 3.5} ${p100.y - 3.5} L ${p100.x + 3.5} ${p100.y + 3.5} M ${p100.x - 3.5} ${p100.y + 3.5} L ${p100.x + 3.5} ${p100.y - 3.5}`}
-                stroke="#ECFDF5"
-                strokeWidth="1"
-                strokeLinecap="round"
+              {/* Subtle shining light beacon */}
+              <circle
+                cx={p100.x}
+                cy={p100.y}
+                r="4.5"
+                fill="#4ADE80"
                 opacity="0.85"
+                filter={`url(#${glowFilterId})`}
               />
-
-              {/* Bright center spark */}
-              <circle cx={p100.x} cy={p100.y} r="2" fill="#FFFFFF" />
             </g>
           )}
         </svg>
@@ -723,16 +723,13 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
           <span className="flex items-center gap-1">
             Actual:{' '}
             <span
-              className="font-black transition-colors duration-300 inline-flex items-center gap-1"
+              className="font-black transition-colors duration-300 inline-flex items-center"
               style={{
                 color: actualTheme.color,
-                textShadow: actualTheme.isComplete ? '0 0 8px rgba(22, 163, 74, 0.35)' : undefined,
+                textShadow: actualTheme.isComplete ? '0 0 10px rgba(22, 163, 74, 0.5)' : undefined,
               }}
             >
               {actualVal}%
-              {actualTheme.isComplete && (
-                <Sparkles size={13} className="text-emerald-500 animate-pulse flex-shrink-0" />
-              )}
             </span>
           </span>
         </div>
