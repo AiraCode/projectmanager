@@ -481,7 +481,6 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
   const uniqueId = useId().replace(/:/g, '');
   const redGradId = `gauge-red-${uniqueId}`;
   const shineGradId = `gauge-shine-${uniqueId}`;
-  const glowFilterId = `gauge-glow-${uniqueId}`;
 
   const planVal = Math.max(0, Math.min(100, Math.round(plan)));
   const actualVal = Math.max(0, Math.min(100, Math.round(actual)));
@@ -545,16 +544,33 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
 
             {/* Radial Gradient for 100% Completion Shining Aura (Pure soft green light) */}
             <radialGradient id={shineGradId} cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#22C55E" stopOpacity="0.5" />
-              <stop offset="50%" stopColor="#16A34A" stopOpacity="0.2" />
+              <stop offset="0%" stopColor="#22C55E" stopOpacity="0.45" />
+              <stop offset="60%" stopColor="#16A34A" stopOpacity="0.12" />
               <stop offset="100%" stopColor="#16A34A" stopOpacity="0" />
             </radialGradient>
-
-            {/* Glowing green light filter for completion */}
-            <filter id={glowFilterId} x="-50%" y="-50%" width="200%" height="200%">
-              <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#22C55E" floodOpacity="0.8" />
-            </filter>
           </defs>
+
+          {/* 100% Completion Ambient Glow Underlay behind Track (Soft green halo) */}
+          {actualTheme.isComplete && (
+            <>
+              <path
+                d={describeArc(88, 100)}
+                fill="none"
+                stroke="#22C55E"
+                strokeWidth={strokeWidth + 8}
+                strokeLinecap="round"
+                opacity="0.35"
+                className="animate-pulse pointer-events-none"
+              />
+              <circle
+                cx={p100.x}
+                cy={p100.y}
+                r="18"
+                fill={`url(#${shineGradId})`}
+                className="pointer-events-none animate-pulse"
+              />
+            </>
+          )}
 
           {/* Base Gauge Track */}
           <path
@@ -567,13 +583,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
 
           {/* Dedicated rounded caps at outer ends only (0% and 100%) so internal segments have clean straight cuts */}
           <circle cx={p0.x} cy={p0.y} r={strokeWidth / 2} fill="#DC2626" />
-          <circle
-            cx={p100.x}
-            cy={p100.y}
-            r={strokeWidth / 2}
-            fill="#16A34A"
-            filter={actualTheme.isComplete ? `url(#${glowFilterId})` : undefined}
-          />
+          <circle cx={p100.x} cy={p100.y} r={strokeWidth / 2} fill="#16A34A" />
 
           {/* Zone 1: Red (0% - 70%) */}
           <path
@@ -593,14 +603,13 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             strokeLinecap="butt"
           />
 
-          {/* Zone 3: Green (90% - 100%) */}
+          {/* Zone 3: Green (90% - 100%) - Always crisp, perfectly continuous with Zone 2 */}
           <path
             d={describeArc(90, 100)}
             fill="none"
             stroke="#16A34A"
             strokeWidth={strokeWidth}
             strokeLinecap="butt"
-            filter={actualTheme.isComplete ? `url(#${glowFilterId})` : undefined}
             className="transition-all duration-300"
           />
 
@@ -681,7 +690,7 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             fontWeight="700"
             className={`transition-all duration-300 ${
               actualTheme.isComplete
-                ? 'fill-emerald-600 font-black filter drop-shadow-[0_0_5px_rgba(22,163,74,0.65)]'
+                ? 'fill-emerald-600 font-black'
                 : 'fill-emerald-600 font-bold'
             }`}
           >
@@ -701,7 +710,32 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
           />
           <circle cx={planTip.x} cy={planTip.y} r="3" fill="#1E3A8A" />
 
-          {/* Actual Pointer (Dynamic Color with Tip Circle) */}
+          {/* Actual Pointer Glow Underlay when 100% (Soft green halo behind needle) */}
+          {actualTheme.isComplete && (
+            <>
+              <line
+                x1={cx}
+                y1={cy}
+                x2={actualTip.x}
+                y2={actualTip.y}
+                stroke="#22C55E"
+                strokeWidth="7"
+                strokeLinecap="round"
+                opacity="0.45"
+                className="animate-pulse pointer-events-none"
+              />
+              <circle
+                cx={actualTip.x}
+                cy={actualTip.y}
+                r="7"
+                fill="#22C55E"
+                opacity="0.4"
+                className="animate-pulse pointer-events-none"
+              />
+            </>
+          )}
+
+          {/* Actual Pointer (Main Needle - Sharp, Solid, Always Visible) */}
           <line
             x1={cx}
             y1={cy}
@@ -711,7 +745,6 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             strokeWidth="3.2"
             strokeLinecap="round"
             className="transition-colors duration-300"
-            filter={actualTheme.isComplete ? `url(#${glowFilterId})` : undefined}
           />
           <circle
             cx={actualTip.x}
@@ -719,23 +752,11 @@ function SpeedometerGauge({ plan = 0, actual = 0 }: { plan?: number; actual?: nu
             r="4"
             fill={actualTheme.color}
             className="transition-colors duration-300"
-            filter={actualTheme.isComplete ? `url(#${glowFilterId})` : undefined}
           />
 
           {/* Pivot Center */}
           <circle cx={cx} cy={cy} r="6.5" fill="#0F172A" />
           <circle cx={cx} cy={cy} r="2.5" fill="#FFFFFF" />
-
-          {/* 100% Completion Shining Light Effect (Pure color glowing aura, no icons or overlapping dots) */}
-          {actualTheme.isComplete && (
-            <circle
-              cx={p100.x}
-              cy={p100.y}
-              r="18"
-              fill={`url(#${shineGradId})`}
-              className="pointer-events-none animate-pulse"
-            />
-          )}
         </svg>
       </div>
 
