@@ -44,29 +44,56 @@ export function recalculateSchedule(project: Project): Project {
           let newStart = st.startDate;
           let newFinish = st.finishDate;
           
-          if (st.predecessor && taskMap.has(st.predecessor)) {
-            const pred = taskMap.get(st.predecessor)!;
-            const lag = st.lag || 0;
-            const duration = st.duration || 1;
+          const dependencies = st.dependencies?.length
+            ? st.dependencies
+            : st.predecessor
+              ? [{
+                  predecessor_wbs_id: st.predecessor,
+                  dependency_type: st.depType || 'FS',
+                  lag_days: (st.lead || 0) - (st.lag || 0),
+                }]
+              : [];
 
-            if (st.depType === 'FS' || !st.depType) {
-              newStart = addDays(pred.finishDate, lag);
-              newFinish = addDays(newStart, duration - 1);
-            } else if (st.depType === 'SS') {
-              newStart = addDays(pred.startDate, lag);
-              newFinish = addDays(newStart, duration - 1);
-            } else if (st.depType === 'FF') {
-              newFinish = addDays(pred.finishDate, lag);
-              newStart = addDays(newFinish, -(duration - 1));
-            } else if (st.depType === 'SF') {
-              newFinish = addDays(pred.startDate, lag);
-              newStart = addDays(newFinish, -(duration - 1));
+          if (dependencies.length > 0) {
+            const duration = Math.max(1, st.duration || 1);
+            let requiredStart = st.startDate;
+
+            for (const dependency of dependencies) {
+              const pred = taskMap.get(dependency.predecessor_wbs_id);
+              if (!pred) continue;
+
+              const lag = 'lag_days' in dependency
+                ? dependency.lag_days
+                : (st.lead || 0) - (st.lag || 0);
+              let requiredDate: string | null = null;
+
+              switch (dependency.dependency_type) {
+                case 'FS':
+                  requiredDate = addDays(pred.finishDate, lag);
+                  break;
+                case 'SS':
+                  requiredDate = addDays(pred.startDate, lag);
+                  break;
+                case 'FF':
+                  requiredDate = addDays(pred.finishDate, lag - duration);
+                  break;
+                case 'SF':
+                  requiredDate = addDays(pred.startDate, lag - duration);
+                  break;
+              }
+
+              if (requiredDate && requiredDate > requiredStart) {
+                requiredStart = requiredDate;
+              }
             }
+
+            newStart = requiredStart;
+            newFinish = addDays(newStart, duration);
           } else {
             // No predecessor: Start date remains as user-entered.
             // Just ensure finish date is consistent with duration.
             const duration = st.duration || 1;
-            newFinish = addDays(st.startDate, duration - 1);
+            newFinish = addDays(st.startDate, duration);
           }
 
           if (newStart !== st.startDate || newFinish !== st.finishDate) {

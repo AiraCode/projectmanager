@@ -21,6 +21,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Protected Routes
 Route::middleware('auth')->group(function () {
+    Route::put('/profile/password', [AuthController::class, 'changePassword'])->name('profile.password.update');
 
     // Root redirect based on role and permissions
     Route::get('/', function () {
@@ -69,6 +70,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/audit-log',     [SuperAdminController::class, 'auditLog'])->name('admin.audit-log');
         Route::get('/users',         [SuperAdminController::class, 'userManagement'])->name('admin.users');
         Route::get('/companies',     [SuperAdminController::class, 'companiesPage'])->name('admin.companies');
+        Route::get('/divisions',     [SuperAdminController::class, 'divisionsPage'])->name('admin.divisions');
         Route::get('/projects',      [SuperAdminController::class, 'allProjectsPage'])->name('admin.projects');
 
         // User CRUD scoped under SuperAdmin prefix
@@ -80,6 +82,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/companies',        [\App\Http\Controllers\CompanyController::class, 'store'])->name('admin.companies.store');
         Route::put('/companies/{id}',    [\App\Http\Controllers\CompanyController::class, 'update'])->name('admin.companies.update');
         Route::delete('/companies/{id}', [\App\Http\Controllers\CompanyController::class, 'destroy'])->name('admin.companies.destroy');
+
+        // Divisions CRUD (SuperAdmin only)
+        Route::post('/divisions',        [\App\Http\Controllers\DivisionController::class, 'store'])->name('admin.divisions.store');
+        Route::put('/divisions/{id}',    [\App\Http\Controllers\DivisionController::class, 'update'])->name('admin.divisions.update');
+        Route::delete('/divisions/{id}', [\App\Http\Controllers\DivisionController::class, 'destroy'])->name('admin.divisions.destroy');
 
         // Project delete (SuperAdmin only)
         Route::delete('/projects/{id}',  [\App\Http\Controllers\ProjectController::class, 'superAdminDestroy'])->name('admin.projects.destroy');
@@ -98,6 +105,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::put('/projects/{id}/toggle-private', [ProjectController::class, 'togglePrivate'])->name('projects.toggle-private');
 
+    // ── Project Setup Wizard (PIC only) ──
+    Route::get('/projects/{id}/setup', [ProjectController::class, 'setupWizard'])->name('projects.setup');
+    Route::post('/projects/{id}/setup/complete', [ProjectController::class, 'completeSetup'])->name('projects.setup.complete');
+
     // ── Single project dashboard ──
     Route::get('/projects/{id}', [ProjectController::class, 'dashboard'])->middleware('sidebar:Dashboard')->name('projects.show');
 
@@ -106,7 +117,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/today-tasks', [ProjectController::class, 'todayTasks'])->name('today-tasks.index');
     Route::get('/projects/{id}/today-tasks', [ProjectController::class, 'todayTasks'])->name('projects.today-tasks');
 
+    // ── Task Dependencies API ──
+    Route::get('/projects/{id}/predecessors', [ProjectController::class, 'predecessorsView'])->name('projects.predecessors');
+    Route::get('/projects/{id}/tasks/{taskId}/dependencies', [ProjectController::class, 'getTaskDependencies'])->name('projects.tasks.dependencies.index');
+    Route::post('/projects/{id}/tasks/{taskId}/dependencies', [ProjectController::class, 'addTaskDependency'])->name('projects.tasks.dependencies.store');
+    Route::delete('/projects/{id}/tasks/{taskId}/dependencies/{depId}', [ProjectController::class, 'removeTaskDependency'])->name('projects.tasks.dependencies.destroy');
+
     // Main Tasks (Main WBS)
+    Route::delete('/projects/{id}/clear-wbs', [ProjectController::class, 'clearWbs'])->name('projects.wbs.clear');
     Route::post('/projects/{id}/main-wbs', [ProjectController::class, 'addMainWbs'])->name('projects.mainwbs.store');
     Route::put('/projects/{id}/main-wbs/{mainWbsId}', [ProjectController::class, 'updateMainWbs'])->name('projects.mainwbs.update');
     Route::delete('/projects/{id}/main-wbs/{mainWbsId}', [ProjectController::class, 'deleteMainWbs'])->name('projects.mainwbs.destroy');

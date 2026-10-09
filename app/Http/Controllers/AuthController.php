@@ -28,17 +28,11 @@ class AuthController extends Controller
             $role = $user->role->name ?? '';
             
             if ($role === 'worker') {
-                return redirect()->intended('/tasks');
+                return redirect()->intended('/projectlistpage');
             }
 
             if ($role === 'pic') {
-                $features = $user->permission_matrix['features']['projects'] ?? [];
-                $hasMultipleProjects = in_array('Multiple Projects', $features);
-                if ($hasMultipleProjects) {
-                    return redirect()->intended('/projectlistpage');
-                }
-                // PIC without multiple projects goes to dashboard (single project)
-                return redirect()->intended('/dashboard');
+                return redirect()->intended('/projectlistpage');
             }
 
             return redirect()->intended('/projectlistpage');
@@ -89,5 +83,20 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         return redirect('/login');
+    }
+
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => ['required', 'current_password'],
+            'password' => ['required', 'min:8', 'confirmed'],
+        ]);
+
+        $user = Auth::user();
+        $user->password = \Illuminate\Support\Facades\Hash::make($request->password);
+        $user->must_change_password = false;
+        $user->save();
+
+        return back()->with('success', 'Password berhasil diubah.');
     }
 }

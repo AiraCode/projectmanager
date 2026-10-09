@@ -12,11 +12,16 @@ use App\Models\MainWbs;
 use App\Models\ListSubWbsName;
 use App\Models\SubWbs;
 use App\Models\Wbs;
+use App\Models\ProjectActivityLog;
 use App\Models\BudgetEntry;
 use App\Models\WeeklyProgress;
+use App\Models\TaskDependency;
+use App\Models\TaskDependencyGroup;
 use App\Services\ProgressService;
 use App\Services\ProjectTemplateService;
+use App\Services\DependencyScheduler;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class ProjectController extends Controller
@@ -38,11 +43,7 @@ class ProjectController extends Controller
             $projectsQuery = Project::where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->with(['manager', 'company']);
             $projects = $projectsQuery->get();
             if ($projects->count() === 0) {
-                abort(403, 'Anda belum diberikan akses ke proyek manapun. Silakan hubungi Administrator.');
-            }
-
-            if ($projects->count() === 1) {
-                return redirect()->route('tasks.index', ['project_id' => $projects->first()->id]);
+                return back()->withErrors(['message' => 'Anda belum diberikan akses ke proyek manapun. Silakan hubungi Administrator.']);
             }
 
             $mappedProjects = $projects->map(function ($p) {
@@ -56,6 +57,7 @@ class ProjectController extends Controller
                     'planned_progress' => app(\App\Services\WeeklyService::class)->getCurrentPlannedProgress($p->id),
                     'start_date'       => $p->start ? $p->start->format('Y-m-d') : null,
                     'end_date'         => $p->end ? $p->end->format('Y-m-d') : null,
+                    'setup_status'     => $p->setup_status ?? 'active',
                     'is_private'       => (bool) $p->is_private,
                 ];
             });
@@ -75,17 +77,15 @@ class ProjectController extends Controller
             $picProjectsQuery = Project::query();
             if ($user->companies_id) {
                 $picProjectsQuery->where(function ($q) use ($user) {
-                    $q->where('companies_id', $user->companies_id)
-                      ->orWhere('project_manager', $user->id);
+                    $q->where(function ($sub) use ($user) {
+                        $sub->where('companies_id', $user->companies_id)
+                            ->where('is_private', false);
+                    })->orWhere('project_manager', $user->id);
                 });
             } else {
                 $picProjectsQuery->where('project_manager', $user->id);
             }
             $picProjects = $picProjectsQuery->with(['manager', 'company'])->get();
-
-            if (!$hasMultiple && $picProjects->count() > 0) {
-                return redirect()->route('projects.show', $picProjects->first()->id);
-            }
 
             $companies = Company::select('id', 'name')->get();
             $mappedProjects = $picProjects->map(function ($p) {
@@ -99,13 +99,14 @@ class ProjectController extends Controller
                     'planned_progress' => app(\App\Services\WeeklyService::class)->getCurrentPlannedProgress($p->id),
                     'start_date'       => $p->start ? $p->start->format('Y-m-d') : null,
                     'end_date'         => $p->end ? $p->end->format('Y-m-d') : null,
+                    'setup_status'     => $p->setup_status ?? 'active',
                     'is_private'       => (bool) $p->is_private,
                 ];
             });
 
             return Inertia::render('ProjectListPage', [
                 'projects'  => $mappedProjects,
-                'canCreate' => $hasMultiple || $picProjects->count() === 0,
+                'canCreate' => $hasMultiple,
                 'companies' => $companies,
                 'userRole'  => $role,
                 'hasPrivateFeature' => $hasPrivate,
@@ -128,6 +129,7 @@ class ProjectController extends Controller
                 'planned_progress' => app(\App\Services\WeeklyService::class)->getCurrentPlannedProgress($p->id),
                 'start_date'       => $p->start ? $p->start->format('Y-m-d') : null,
                 'end_date'         => $p->end ? $p->end->format('Y-m-d') : null,
+                'setup_status'     => $p->setup_status ?? 'active',
                 'is_private'       => (bool) $p->is_private,
             ];
         });
@@ -166,6 +168,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         return Inertia::render('DashboardPage', [
             'project'  => $this->transformProjectData($project),
             'userRole' => $role,
@@ -189,6 +195,10 @@ class ProjectController extends Controller
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
             return redirect()->route('projectlistpage');
+        }
+
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
         }
 
         return Inertia::render('ProjectDetailPage', [
@@ -226,6 +236,10 @@ class ProjectController extends Controller
             } else {
                 return redirect()->route('projectlistpage');
             }
+        }
+
+        if ($project && ($redirect = $this->guardProjectSetup($project, $role))) {
+            return $redirect;
         }
 
         $divisions = Division::select('id', 'divisi')->get();
@@ -269,6 +283,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         $divisions = Division::select('id', 'divisi')->get();
         $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
 
@@ -310,6 +328,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
 
         return Inertia::render('TimelinePage', [
@@ -337,6 +359,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         return Inertia::render('WeeklyPage', [
             'project'  => $this->transformProjectData($project),
             'userRole' => $role,
@@ -362,6 +388,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         return Inertia::render('BudgetPage', [
             'project'  => $this->transformProjectData($project),
             'userRole' => $role,
@@ -384,6 +414,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
+        }
+
         return Inertia::render('SCurvePage', [
             'project'  => $this->transformProjectData($project),
             'userRole' => $role,
@@ -401,7 +435,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         if ($role !== 'pic') {
-            abort(403, 'Access Denied: Only PICs can create new projects. Admins are not permitted to create projects.');
+            return back()->withErrors(['message' => 'Access Denied: Only PICs can create new projects. Admins are not permitted to create projects.']);
         }
 
         // Check if PIC is allowed to create multiple projects
@@ -417,7 +451,7 @@ class ProjectController extends Controller
             'company_id'   => 'nullable|exists:companies,id',
             'company_name' => 'nullable|string|max:100',
             'start'        => 'required|date',
-            'end'          => 'required|date|after_or_equal:start',
+            'end'          => 'required|date|after:start',
             'is_private'   => 'nullable|boolean',
         ]);
 
@@ -447,13 +481,481 @@ class ProjectController extends Controller
             'actual_end'      => $end,
             'progress'        => 0,
             'status'          => 'Open',
+            'setup_status'    => 'pending_setup',
             'is_private'      => $validated['is_private'] ?? false,
         ]);
 
         // Automatically initialize standard 17 Main Jobs WBS template for new project
         app(ProjectTemplateService::class)->applyTemplateToProject($project);
 
-        return redirect()->route('projects.show', $project->id);
+        // Redirect to setup wizard page so PIC can customize Main, Sub, and Sub-Sub tasks
+        return redirect()->route('projects.setup', $project->id);
+    }
+
+    /**
+     * WBS Template Setup Wizard for newly created project (or editing setup).
+     */
+    public function setupWizard(Request $request, int|string $id)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::with([
+            'company',
+            'manager',
+            'mainWbs' => function ($q) {
+                $q->orderBy('id', 'asc');
+            },
+            'mainWbs.listName',
+            'mainWbs.subWbs' => function ($q) {
+                $q->orderBy('id', 'asc');
+            },
+            'mainWbs.subWbs.listName',
+            'mainWbs.subWbs.wbsTasks' => function ($q) {
+                $q->with([
+                    'division',
+                    'predecessorDependencies.predecessor',
+                    'predecessorDependencies.group',
+                    'successorDependencies.successor',
+                ])->orderBy('id', 'asc');
+            },
+        ])->findOrFail($id);
+
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can configure it.']);
+        }
+
+        $divisions = Division::select('id', 'divisi')->get();
+
+        $allTasks = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($project) {
+            $q->where('projects_id', $project->id);
+        })->select('id', 'name', 'start', 'end')->orderBy('start', 'asc')->get();
+
+        return Inertia::render('ProjectSetupPage', [
+            'project' => [
+                'id'           => $project->id,
+                'title'        => $project->title,
+                'name'         => $project->title,
+                'status'       => $project->status,
+                'setup_status' => $project->setup_status ?? 'pending_setup',
+                'start'        => $project->start ? $project->start->format('Y-m-d') : null,
+                'end'          => $project->end ? $project->end->format('Y-m-d') : null,
+                'company'      => $project->company?->name ?? '—',
+                'manager'      => $project->manager?->username ?? $project->manager?->name ?? '—',
+                'mainWbs'      => $project->mainWbs->values()->map(function ($mw, $mwIdx) {
+                    return [
+                        'id'                     => $mw->id,
+                        'code'                   => (string) ($mwIdx + 1),
+                        'list_main_wbs_names_id' => $mw->list_main_wbs_names_id,
+                        'name'                   => $mw->name ?: ($mw->listName?->name ?? 'Main Task'),
+                        'weight'                 => (float) $mw->percentage,
+                        'start'                  => $mw->start ? $mw->start->format('Y-m-d') : '',
+                        'end'                    => $mw->end ? $mw->end->format('Y-m-d') : '',
+                        'subWbs'                 => $mw->subWbs->values()->map(function ($sw, $swIdx) use ($mwIdx) {
+                            $subCode = ($mwIdx + 1) . '.' . ($swIdx + 1);
+                            return [
+                                'id'                    => $sw->id,
+                                'code'                  => $subCode,
+                                'main_wbs_id'           => $sw->sub_wbs_id,
+                                'name'                  => $sw->name ?: ($sw->listName?->name ?? 'Sub Task'),
+                                'weight'                => (float) $sw->weight,
+                                'start'                 => $sw->start ? $sw->start->format('Y-m-d') : '',
+                                'end'                   => $sw->end ? $sw->end->format('Y-m-d') : '',
+                                'wbsTasks'              => $sw->wbsTasks->values()->map(function ($t, $tIdx) use ($subCode) {
+                                    return [
+                                        'id'            => $t->id,
+                                        'code'          => $subCode . '.' . ($tIdx + 1),
+                                        'sub_wbs_id'    => $t->sub_wbs_id,
+                                        'name'          => $t->name,
+                                        'division_id'   => $t->divisions_id,
+                                        'division_name' => $t->division?->divisi ?? 'General',
+                                        'vendor'        => $t->vendor ?? 'INTERNAL',
+                                        'start'         => $t->start ? $t->start->format('Y-m-d') : '',
+                                        'end'           => $t->end ? $t->end->format('Y-m-d') : '',
+                                        'duration_days' => $t->duration_days ?? 1,
+                                        'predecessor'   => $t->predecessor ?? '',
+                                        'dep_type'      => $t->dep_type ?: 'FS',
+                                        'lag'           => (int) ($t->lag ?? 0),
+                                        'lead'          => (int) ($t->lead ?? 0),
+                                        'requires_evidence' => (bool) $t->requires_evidence,
+                                        'dependencies'  => $t->predecessorDependencies->map(function ($d) {
+                                            return [
+                                                'id'                 => $d->id,
+                                                'dependency_group_id' => $d->dependency_group_id,
+                                                'predecessor_wbs_id' => $d->predecessor_wbs_id,
+                                                'predecessor_name'   => $d->predecessor?->name ?? $d->predecessor_wbs_id,
+                                                'dependency_type'    => $d->dependency_type,
+                                                'lag_days'           => (int) $d->lag_days,
+                                            ];
+                                        })->values()->toArray(),
+                                    ];
+                                }),
+                            ];
+                        }),
+                    ];
+                }),
+            ],
+            'divisions' => $divisions,
+            'allTasks'  => $allTasks,
+            'userRole'  => $role,
+        ]);
+    }
+
+    public function predecessorsView(Request $request, int|string $id)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::with([
+            'company',
+            'manager',
+            'mainWbs' => function ($q) {
+                $q->orderBy('id', 'asc');
+            },
+            'mainWbs.listName',
+            'mainWbs.subWbs' => function ($q) {
+                $q->orderBy('id', 'asc');
+            },
+            'mainWbs.subWbs.listName',
+            'mainWbs.subWbs.wbsTasks' => function ($q) {
+                $q->with([
+                    'division',
+                    'predecessorDependencies.predecessor',
+                    'predecessorDependencies.group',
+                    'successorDependencies.successor',
+                ])->orderBy('id', 'asc');
+            },
+        ])->findOrFail($id);
+
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can configure it.']);
+        }
+
+        $divisions = Division::select('id', 'divisi')->get();
+
+        $allTasks = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($project) {
+            $q->where('projects_id', $project->id);
+        })->select('id', 'name', 'start', 'end')->orderBy('start', 'asc')->get();
+
+        return Inertia::render('PredecessorManagerPage', [
+            'project' => [
+                'id'           => $project->id,
+                'title'        => $project->title,
+                'name'         => $project->title,
+                'status'       => $project->status,
+                'setup_status' => $project->setup_status ?? 'pending_setup',
+                'start'        => $project->start ? $project->start->format('Y-m-d') : null,
+                'end'          => $project->end ? $project->end->format('Y-m-d') : null,
+                'company'      => $project->company?->name ?? '—',
+                'manager'      => $project->manager?->username ?? $project->manager?->name ?? '—',
+                'mainWbs'      => $project->mainWbs->values()->map(function ($mw, $mwIdx) {
+                    return [
+                        'id'                     => $mw->id,
+                        'code'                   => (string) ($mwIdx + 1),
+                        'list_main_wbs_names_id' => $mw->list_main_wbs_names_id,
+                        'name'                   => $mw->name ?: ($mw->listName?->name ?? 'Main Task'),
+                        'weight'                 => (float) $mw->percentage,
+                        'start'                  => $mw->start ? $mw->start->format('Y-m-d') : '',
+                        'end'                    => $mw->end ? $mw->end->format('Y-m-d') : '',
+                        'subWbs'                 => $mw->subWbs->values()->map(function ($sw, $swIdx) use ($mwIdx) {
+                            $subCode = ($mwIdx + 1) . '.' . ($swIdx + 1);
+                            return [
+                                'id'                    => $sw->id,
+                                'code'                  => $subCode,
+                                'main_wbs_id'           => $sw->sub_wbs_id,
+                                'name'                  => $sw->name ?: ($sw->listName?->name ?? 'Sub Task'),
+                                'weight'                => (float) $sw->weight,
+                                'start'                 => $sw->start ? $sw->start->format('Y-m-d') : '',
+                                'end'                   => $sw->end ? $sw->end->format('Y-m-d') : '',
+                                'wbsTasks'              => $sw->wbsTasks->values()->map(function ($t, $tIdx) use ($subCode) {
+                                    return [
+                                        'id'            => $t->id,
+                                        'code'          => $subCode . '.' . ($tIdx + 1),
+                                        'sub_wbs_id'    => $t->sub_wbs_id,
+                                        'name'          => $t->name,
+                                        'division_id'   => $t->divisions_id,
+                                        'division_name' => $t->division?->divisi ?? 'General',
+                                        'vendor'        => $t->vendor ?? 'INTERNAL',
+                                        'start'         => $t->start ? $t->start->format('Y-m-d') : '',
+                                        'end'           => $t->end ? $t->end->format('Y-m-d') : '',
+                                        'duration_days' => $t->duration_days ?? 1,
+                                        'predecessor'   => $t->predecessor ?? '',
+                                        'dep_type'      => $t->dep_type ?: 'FS',
+                                        'lag'           => (int) ($t->lag ?? 0),
+                                        'lead'          => (int) ($t->lead ?? 0),
+                                        'requires_evidence' => (bool) $t->requires_evidence,
+                                        'dependencies'  => $t->predecessorDependencies->map(function ($d) {
+                                            return [
+                                                'id'                 => $d->id,
+                                                'dependency_group_id' => $d->dependency_group_id,
+                                                'predecessor_wbs_id' => $d->predecessor_wbs_id,
+                                                'predecessor_name'   => $d->predecessor?->name ?? $d->predecessor_wbs_id,
+                                                'dependency_type'    => $d->dependency_type,
+                                                'lag_days'           => (int) $d->lag_days,
+                                            ];
+                                        })->values()->toArray(),
+                                    ];
+                                }),
+                            ];
+                        }),
+                    ];
+                }),
+            ],
+            'divisions' => $divisions,
+            'allTasks'  => $allTasks,
+            'userRole'  => $role,
+        ]);
+    }
+
+    /**
+     * Mark project setup as complete, activate project and cascade schedules.
+     */
+    public function completeSetup(Request $request, int|string $id)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+        $project = Project::findOrFail($id);
+
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            abort(403);
+        }
+
+        $mainTasks = MainWbs::where('projects_id', $project->id)->with('subWbs')->get();
+        if ($mainTasks->isEmpty()) {
+            return back()->with('error', 'Proyek harus memiliki minimal 1 Main Task.');
+        }
+
+        foreach ($mainTasks as $mt) {
+            if ($mt->subWbs->isEmpty()) {
+                return back()->with('error', "Main Task '{$mt->name}' harus memiliki minimal 1 Sub Task.");
+            }
+        }
+
+        // Recalculate schedule via DependencyScheduler
+        $scheduler = app(DependencyScheduler::class);
+        $firstTask = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($project) {
+            $q->where('projects_id', $project->id);
+        })->orderBy('start', 'asc')->first();
+
+        if ($firstTask) {
+            $scheduler->propagate($firstTask->id);
+        }
+
+        app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        $project->update([
+            'setup_status' => 'active',
+        ]);
+
+        return redirect()->route('projects.show', $project->id)
+            ->with('success', 'Konfigurasi proyek selesai! Proyek telah aktif dan siap dikerjakan.');
+    }
+
+    /**
+     * Get dependencies for a task.
+     */
+    public function getTaskDependencies(int|string $projectId, string $taskId)
+    {
+        $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($query) use ($projectId) {
+            $query->where('projects_id', $projectId);
+        })->findOrFail($taskId);
+        $predecessors = TaskDependency::where('successor_wbs_id', $taskId)
+            ->with(['predecessor', 'group'])
+            ->get()
+            ->map(function ($d) {
+                return [
+                    'id'                 => $d->id,
+                    'dependency_group_id' => $d->dependency_group_id,
+                    'predecessor_wbs_id' => $d->predecessor_wbs_id,
+                    'predecessor_name'   => $d->predecessor?->name ?? $d->predecessor_wbs_id,
+                    'dependency_type'    => $d->effectiveDependencyType(),
+                    'lag_days'           => $d->effectiveLagDays(),
+                ];
+            });
+
+        $successors = TaskDependency::where('predecessor_wbs_id', $taskId)
+            ->with(['successor', 'group'])
+            ->get()
+            ->map(function ($d) {
+                return [
+                    'id'               => $d->id,
+                    'successor_wbs_id' => $d->successor_wbs_id,
+                    'successor_name'   => $d->successor?->name ?? $d->successor_wbs_id,
+                    'dependency_type'  => $d->effectiveDependencyType(),
+                    'lag_days'         => $d->effectiveLagDays(),
+                ];
+            });
+
+        return response()->json([
+            'task'         => [
+                'id'       => $task->id,
+                'name'     => $task->name,
+                'start'    => $task->start ? $task->start->format('Y-m-d') : null,
+                'end'      => $task->end ? $task->end->format('Y-m-d') : null,
+                'duration' => $task->duration_days ?? 1,
+            ],
+            'predecessors' => $predecessors,
+            'successors'   => $successors,
+        ]);
+    }
+
+    /**
+     * Add a task dependency.
+     */
+    public function addTaskDependency(Request $request, int|string $projectId, string $taskId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+        $project = Project::findOrFail($projectId);
+
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only PIC can manage dependencies.']);
+        }
+
+        if (!$request->has('predecessor_wbs_ids') && $request->filled('predecessor_wbs_id')) {
+            $request->merge(['predecessor_wbs_ids' => [$request->input('predecessor_wbs_id')]]);
+        }
+
+        $validated = $request->validate([
+            'predecessor_wbs_ids'   => 'required|array|min:1',
+            'predecessor_wbs_ids.*' => 'required|string|distinct|exists:wbs,id',
+            'dependency_type'       => 'required|string|in:FS,SS,FF,SF',
+            'lag_days'              => 'nullable|integer',
+        ]);
+
+        $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($query) use ($projectId) {
+            $query->where('projects_id', $projectId);
+        })->whereKey($taskId)->firstOrFail();
+
+        $predecessorIds = array_values($validated['predecessor_wbs_ids']);
+        $predecessors = Wbs::whereIn('id', $predecessorIds)
+            ->whereHas('parentSubWbs.mainWbs', function ($query) use ($projectId) {
+                $query->where('projects_id', $projectId);
+            })
+            ->get();
+
+        if ($predecessors->count() !== count($predecessorIds)) {
+            return back()->withErrors([
+                'predecessor_wbs_ids' => 'Semua predecessor harus berasal dari proyek yang sama.',
+            ]);
+        }
+
+        $scheduler = app(DependencyScheduler::class);
+        foreach ($predecessorIds as $predecessorId) {
+            if ($predecessorId === $taskId) {
+                return back()->withErrors([
+                    'predecessor_wbs_ids' => 'Tugas tidak dapat bergantung pada dirinya sendiri.',
+                ]);
+            }
+
+            if ($scheduler->wouldCauseCycle($predecessorId, $taskId)) {
+                return back()->withErrors([
+                    'predecessor_wbs_ids' => 'Ketergantungan tidak dapat ditambahkan: terdeteksi circular dependency (siklus tak berujung).',
+                ]);
+            }
+        }
+
+        $lagDays = (int) ($validated['lag_days'] ?? 0);
+        DB::transaction(function () use ($task, $predecessorIds, $validated, $lagDays) {
+            $group = TaskDependencyGroup::create([
+                'successor_wbs_id' => $task->id,
+                'dependency_type' => $validated['dependency_type'],
+                'lag_days' => $lagDays,
+            ]);
+
+            $previousGroupIds = [];
+            foreach ($predecessorIds as $predecessorId) {
+                $existing = TaskDependency::where('predecessor_wbs_id', $predecessorId)
+                    ->where('successor_wbs_id', $task->id)
+                    ->first();
+                if ($existing?->dependency_group_id) {
+                    $previousGroupIds[] = $existing->dependency_group_id;
+                }
+
+                TaskDependency::updateOrCreate(
+                    [
+                        'predecessor_wbs_id' => $predecessorId,
+                        'successor_wbs_id' => $task->id,
+                    ],
+                    [
+                        'dependency_group_id' => $group->id,
+                        'dependency_type' => $validated['dependency_type'],
+                        'lag_days' => $lagDays,
+                    ]
+                );
+            }
+
+            foreach (array_unique($previousGroupIds) as $previousGroupId) {
+                if (!TaskDependency::where('dependency_group_id', $previousGroupId)->exists()) {
+                    TaskDependencyGroup::whereKey($previousGroupId)->delete();
+                }
+            }
+
+            $task->update([
+                'predecessor' => $predecessorIds[0],
+                'dep_type' => $validated['dependency_type'],
+                'lag' => $lagDays,
+            ]);
+        });
+
+        $scheduler->recalculateTaskDates($task);
+        $scheduler->propagate($task->id);
+
+        app(ProgressService::class)->recalculateProjectProgress($projectId);
+
+        return back()->with('success', 'Ketergantungan tugas berhasil ditambahkan dan jadwal diperbarui.');
+    }
+
+    /**
+     * Remove a task dependency.
+     */
+    public function removeTaskDependency(Request $request, int|string $projectId, string $taskId, string $depId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+        $project = Project::findOrFail($projectId);
+
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only PIC can manage dependencies.']);
+        }
+
+        $dep = TaskDependency::whereHas('successor.parentSubWbs.mainWbs', function ($query) use ($projectId) {
+            $query->where('projects_id', $projectId);
+        })->findOrFail($depId);
+        $succId = $dep->successor_wbs_id;
+        $groupId = $dep->dependency_group_id;
+        $dep->delete();
+        if ($groupId && !TaskDependency::where('dependency_group_id', $groupId)->exists()) {
+            TaskDependencyGroup::whereKey($groupId)->delete();
+        }
+
+        $task = Wbs::find($succId);
+        if ($task) {
+            $remaining = TaskDependency::where('successor_wbs_id', $succId)
+                ->with('group')
+                ->first();
+            if ($remaining) {
+                $task->update([
+                    'predecessor' => $remaining->predecessor_wbs_id,
+                    'dep_type'    => $remaining->effectiveDependencyType(),
+                    'lag'         => $remaining->effectiveLagDays(),
+                ]);
+            } else {
+                $task->update([
+                    'predecessor' => null,
+                    'dep_type'    => 'FS',
+                    'lag'         => 0,
+                ]);
+            }
+
+            $scheduler = app(DependencyScheduler::class);
+            $scheduler->recalculateTaskDates($task);
+            $scheduler->propagate($task->id);
+        }
+
+        app(ProgressService::class)->recalculateProjectProgress($projectId);
+
+        return back()->with('success', 'Ketergantungan berhasil dihapus.');
     }
 
     /**
@@ -466,8 +968,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can add a Main Task.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can add a Main Task.']);
         }
 
         $validated = $request->validate([
@@ -512,8 +1014,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can modify Main Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can modify Main Tasks.']);
         }
 
         $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
@@ -537,11 +1039,43 @@ class ProjectController extends Controller
             $mainWbs->end = Carbon::parse($validated['end']);
             $mainWbs->actual_end = $mainWbs->end;
         }
+
+        // Strict Date Validation: End must be strictly after start (at least 1 day)
+        if ($mainWbs->start && $mainWbs->end && $mainWbs->end->lte($mainWbs->start)) {
+            $mainWbs->end = $mainWbs->start->copy()->addDays(1);
+            $mainWbs->actual_end = $mainWbs->end;
+        }
         $mainWbs->save();
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
         return back()->with('success', 'Main Task updated successfully.');
+    }
+
+    /**
+     * Clear all WBS Tasks (Main, Sub, Tasks) in the project safely.
+     */
+    public function clearWbs(Request $request, int|string $projectId)
+    {
+        $user = Auth::user();
+        $role = $user->role->name ?? '';
+
+        $project = Project::findOrFail($projectId);
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can clear tasks.']);
+        }
+
+        DB::transaction(function () use ($project) {
+            foreach ($project->mainWbs as $mainWbs) {
+                foreach ($mainWbs->subWbs as $subWbs) {
+                    $subWbs->wbsTasks()->forceDelete();
+                }
+                $mainWbs->subWbs()->forceDelete();
+            }
+            $project->mainWbs()->forceDelete();
+        });
+
+        return back()->with('message', 'Semua task berhasil dihapus secara permanen.');
     }
 
     /**
@@ -554,8 +1088,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can delete Main Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can delete Main Tasks.']);
         }
 
         $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $mainWbsId)->firstOrFail();
@@ -582,8 +1116,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can add a Sub Task.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can add a Sub Task.']);
         }
 
         if ($request->has('main_wbs_id')) {
@@ -639,8 +1173,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can modify Sub Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can modify Sub Tasks.']);
         }
 
         $subWbs = SubWbs::whereHas('mainWbs', function ($q) use ($projectId) {
@@ -662,6 +1196,12 @@ class ProjectController extends Controller
             $subWbs->end = Carbon::parse($validated['end']);
             $subWbs->actual_end = $subWbs->end;
         }
+
+        // Strict Date Validation: End must be strictly after start (at least 1 day)
+        if ($subWbs->start && $subWbs->end && $subWbs->end->lte($subWbs->start)) {
+            $subWbs->end = $subWbs->start->copy()->addDays(1);
+            $subWbs->actual_end = $subWbs->end;
+        }
         $subWbs->save();
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
@@ -679,8 +1219,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can delete Sub Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can delete Sub Tasks.']);
         }
 
         $subWbs = SubWbs::whereHas('mainWbs', function ($q) use ($projectId) {
@@ -702,42 +1242,7 @@ class ProjectController extends Controller
 
     private function cascadeTaskDates($taskId)
     {
-        $task = \App\Models\Wbs::find($taskId);
-        if (!$task) return;
-
-        $dependentTasks = \App\Models\Wbs::where('predecessor', $taskId)->get();
-        foreach ($dependentTasks as $depTask) {
-            $lag = (int)($depTask->lag ?? 0);
-            $lead = (int)($depTask->lead ?? 0);
-            $totalOffset = $lag - $lead; 
-            
-            $duration = max(1, $depTask->start->diffInDays($depTask->end) + 1);
-            
-            $depType = $depTask->dep_type ?: 'FS';
-            if ($depType === 'FS') {
-                $newStart = $task->end->copy()->addDays(1 + $totalOffset);
-                $newEnd = $newStart->copy()->addDays($duration - 1);
-            } elseif ($depType === 'SS') {
-                $newStart = $task->start->copy()->addDays($totalOffset);
-                $newEnd = $newStart->copy()->addDays($duration - 1);
-            } elseif ($depType === 'FF') {
-                $newEnd = $task->end->copy()->addDays($totalOffset);
-                $newStart = $newEnd->copy()->subDays($duration - 1);
-            } elseif ($depType === 'SF') {
-                $newEnd = $task->start->copy()->addDays(1 + $totalOffset);
-                $newStart = $newEnd->copy()->subDays($duration - 1);
-            } else {
-                continue;
-            }
-
-            if (!$depTask->start->equalTo($newStart) || !$depTask->end->equalTo($newEnd)) {
-                $depTask->update([
-                    'start' => $newStart,
-                    'end' => $newEnd,
-                ]);
-                $this->cascadeTaskDates($depTask->id);
-            }
-        }
+        app(DependencyScheduler::class)->propagate($taskId);
     }
 
     public function addTask(Request $request, int|string $projectId)
@@ -746,8 +1251,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can add Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can add Tasks.']);
         }
 
         if ($request->has('sub_wbs_id')) {
@@ -760,23 +1265,54 @@ class ProjectController extends Controller
             'sub_wbs_id'   => 'required|exists:sub_wbs,id',
             'name'         => 'required|string|max:255',
             'divisions_id' => 'nullable|exists:divisions,id',
-            'duration'     => 'nullable|integer|min:0',
+            'duration'     => 'nullable|integer|min:1',
             'start'        => 'nullable|date',
             'end'          => 'nullable|date',
+            'vendor'       => 'nullable|string|max:255',
             'predecessor'  => 'nullable|string|max:50',
             'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
             'lag'          => 'nullable|integer',
             'lead'         => 'nullable|integer',
+            'predecessors' => 'nullable|array',
+            'predecessors.*.predecessor' => 'required|string|max:50',
+            'predecessors.*.dep_type' => 'nullable|string|in:FS,SS,FF,SF',
+            'predecessors.*.lag' => 'nullable|integer',
+            'predecessors.*.lead' => 'nullable|integer',
             'requires_evidence' => 'nullable|boolean',
         ]);
 
         $subWbs = SubWbs::findOrFail($validated['sub_wbs_id']);
 
         $startDate = !empty($validated['start']) ? Carbon::parse($validated['start']) : ($subWbs->start ?? Carbon::now());
-        $duration  = (int) ($validated['duration'] ?? 1);
+        $duration  = max(1, (int) ($validated['duration'] ?? 1));
         $endDate   = !empty($validated['end']) ? Carbon::parse($validated['end']) : $startDate->copy()->addDays($duration);
 
+        // Strict Date Validation: End must be strictly after start (at least 1 day)
+        if ($endDate->lte($startDate)) {
+            $endDate = $startDate->copy()->addDays(max(1, $duration));
+        }
+
         $divisionId = $validated['divisions_id'] ?? $user->divisions_id ?? Division::first()?->id;
+
+        $primaryPredecessor = null;
+        $primaryDepType = 'FS';
+        $primaryLag = 0;
+        $primaryLead = 0;
+
+        if (!empty($validated['predecessors']) && count($validated['predecessors']) > 0) {
+            $first = $validated['predecessors'][0];
+            if (!empty($first['predecessor']) && $first['predecessor'] !== '-') {
+                $primaryPredecessor = $first['predecessor'];
+                $primaryDepType = $first['dep_type'] ?? 'FS';
+                $primaryLag = $first['lag'] ?? 0;
+                $primaryLead = $first['lead'] ?? 0;
+            }
+        } else {
+            $primaryPredecessor = $validated['predecessor'] ?? null;
+            $primaryDepType = $validated['dep_type'] ?? 'FS';
+            $primaryLag = $validated['lag'] ?? 0;
+            $primaryLead = $validated['lead'] ?? 0;
+        }
 
         $taskObj = Wbs::create([
             'id'           => 'st-' . uniqid(),
@@ -784,18 +1320,54 @@ class ProjectController extends Controller
             'divisions_id' => $divisionId,
             'name'         => $validated['name'],
             'weight'       => 0, // Auto-calculated below by ProgressService
-            'vendor'       => 'INTERNAL',
+            'vendor'       => $validated['vendor'] ?? 'INTERNAL',
             'start'        => $startDate,
             'end'          => $endDate,
+            'duration_days'=> max(1, $startDate->diffInDays($endDate)),
             'is_completed' => false,
             'status'       => 'Open',
-            'predecessor'  => $validated['predecessor'] ?? null,
-            'dep_type'     => $validated['dep_type'] ?? 'FS',
-            'lag'          => $validated['lag'] ?? 0,
-            'lead'         => $validated['lead'] ?? 0,
+            'predecessor'  => $primaryPredecessor,
+            'dep_type'     => $primaryDepType,
+            'lag'          => $primaryLag,
+            'lead'         => $primaryLead,
             'requires_evidence' => $validated['requires_evidence'] ?? false,
         ]);
         
+        $scheduler = app(DependencyScheduler::class);
+        $hasDependencies = false;
+
+        if (!empty($validated['predecessors']) && count($validated['predecessors']) > 0) {
+            foreach ($validated['predecessors'] as $dep) {
+                $predId = $dep['predecessor'] ?? null;
+                if ($predId && $predId !== '-') {
+                    if (!$scheduler->wouldCauseCycle($predId, $taskObj->id)) {
+                        $this->storeSingleTaskDependency(
+                            $taskObj,
+                            $predId,
+                            $dep['dep_type'] ?? 'FS',
+                            ((int) ($dep['lag'] ?? 0)) - ((int) ($dep['lead'] ?? 0))
+                        );
+                        $hasDependencies = true;
+                    }
+                }
+            }
+        } elseif (!empty($validated['predecessor']) && $validated['predecessor'] !== '-') {
+            $predId = $validated['predecessor'];
+            if (!$scheduler->wouldCauseCycle($predId, $taskObj->id)) {
+                $this->storeSingleTaskDependency(
+                    $taskObj,
+                    $predId,
+                    $validated['dep_type'] ?? 'FS',
+                    ((int) ($validated['lag'] ?? 0)) - ((int) ($validated['lead'] ?? 0))
+                );
+                $hasDependencies = true;
+            }
+        }
+
+        if ($hasDependencies) {
+            $scheduler->recalculateTaskDates($taskObj);
+        }
+
         $this->cascadeTaskDates($taskObj->id);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
@@ -813,8 +1385,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can modify Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can modify Tasks.']);
         }
 
         $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($projectId) {
@@ -824,9 +1396,10 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'name'         => 'required|string|max:255',
             'divisions_id' => 'nullable|exists:divisions,id',
-            'duration'     => 'nullable|integer|min:0',
+            'duration'     => 'nullable|integer|min:1',
             'start'        => 'nullable|date',
             'end'          => 'nullable|date',
+            'vendor'       => 'nullable|string|max:255',
             'predecessor'  => 'nullable|string|max:50',
             'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
             'lag'          => 'nullable|integer',
@@ -834,6 +1407,9 @@ class ProjectController extends Controller
             'requires_evidence' => 'nullable|boolean',
         ]);
 
+        $oldPredecessorId = $task->predecessor;
+        $oldDependencyType = $task->dep_type ?: 'FS';
+        $oldLagDays = (int) ($task->lag ?? 0) - (int) ($task->lead ?? 0);
         $task->name = $validated['name'];
         if (isset($validated['divisions_id'])) {
             $task->divisions_id = $validated['divisions_id'];
@@ -844,7 +1420,16 @@ class ProjectController extends Controller
         if (!empty($validated['end'])) {
             $task->end = Carbon::parse($validated['end']);
         }
-        if (isset($validated['predecessor'])) {
+
+        // Strict Date Validation: End must be strictly after start (at least 1 day)
+        if ($task->start && $task->end && $task->end->lte($task->start)) {
+            $task->end = $task->start->copy()->addDays(1);
+        }
+        if ($task->start && $task->end) {
+            $task->duration_days = max(1, $task->start->diffInDays($task->end));
+        }
+
+        if (array_key_exists('predecessor', $validated)) {
             $task->predecessor = $validated['predecessor'];
         }
         if (isset($validated['dep_type'])) {
@@ -859,13 +1444,106 @@ class ProjectController extends Controller
         if (isset($validated['requires_evidence'])) {
             $task->requires_evidence = $validated['requires_evidence'];
         }
+        if (isset($validated['vendor'])) {
+            $task->vendor = $validated['vendor'] ?: 'INTERNAL';
+        }
+
+        if (!empty($task->predecessor) && $task->predecessor !== $oldPredecessorId) {
+            if (app(DependencyScheduler::class)->wouldCauseCycle($task->predecessor, $task->id)) {
+                return back()->withErrors([
+                    'predecessor' => 'Ketergantungan tidak dapat diubah: terdeteksi circular dependency.',
+                ]);
+            }
+        }
+
         $task->save();
-        
+
+        if (array_key_exists('predecessor', $validated)) {
+            $newPredecessorId = $task->predecessor;
+            $newDependencyType = $task->dep_type ?: 'FS';
+            $newLagDays = (int) ($task->lag ?? 0) - (int) ($task->lead ?? 0);
+            $oldDependency = $oldPredecessorId
+                ? TaskDependency::where('successor_wbs_id', $task->id)
+                    ->where('predecessor_wbs_id', $oldPredecessorId)
+                    ->with('group')
+                    ->first()
+                : null;
+
+            if (empty($newPredecessorId) || $newPredecessorId === '-') {
+                $this->deleteTaskDependencies($task);
+            } elseif ($newPredecessorId !== $oldPredecessorId) {
+                $this->deleteTaskDependencies($task);
+                $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
+            } elseif ($oldDependency && ($newDependencyType !== $oldDependencyType || $newLagDays !== $oldLagDays)) {
+                $group = $oldDependency->group;
+                if ($group) {
+                    $group->update([
+                        'dependency_type' => $newDependencyType,
+                        'lag_days' => $newLagDays,
+                    ]);
+                    TaskDependency::where('dependency_group_id', $group->id)->update([
+                        'dependency_type' => $newDependencyType,
+                        'lag_days' => $newLagDays,
+                    ]);
+                } else {
+                    $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
+                }
+            } elseif (!$oldDependency) {
+                $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
+            }
+        }
+
+        app(DependencyScheduler::class)->recalculateTaskDates($task);
         $this->cascadeTaskDates($task->id);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
         return back()->with('success', 'Task updated successfully.');
+    }
+
+    private function storeSingleTaskDependency(Wbs $task, string $predecessorId, string $type, int $lagDays): void
+    {
+        $dependency = TaskDependency::where('predecessor_wbs_id', $predecessorId)
+            ->where('successor_wbs_id', $task->id)
+            ->first();
+        $previousGroupId = $dependency?->dependency_group_id;
+
+        $group = TaskDependencyGroup::create([
+            'successor_wbs_id' => $task->id,
+            'dependency_type' => $type,
+            'lag_days' => $lagDays,
+        ]);
+
+        if ($dependency) {
+            $dependency->update([
+                'dependency_group_id' => $group->id,
+                'dependency_type' => $type,
+                'lag_days' => $lagDays,
+            ]);
+        } else {
+            TaskDependency::create([
+                'predecessor_wbs_id' => $predecessorId,
+                'successor_wbs_id' => $task->id,
+                'dependency_group_id' => $group->id,
+                'dependency_type' => $type,
+                'lag_days' => $lagDays,
+            ]);
+        }
+
+        if ($previousGroupId && !TaskDependency::where('dependency_group_id', $previousGroupId)->exists()) {
+            TaskDependencyGroup::whereKey($previousGroupId)->delete();
+        }
+    }
+
+    private function deleteTaskDependencies(Wbs $task): void
+    {
+        $groupIds = TaskDependency::where('successor_wbs_id', $task->id)
+            ->whereNotNull('dependency_group_id')
+            ->pluck('dependency_group_id')
+            ->unique();
+
+        TaskDependency::where('successor_wbs_id', $task->id)->delete();
+        TaskDependencyGroup::whereIn('id', $groupIds)->delete();
     }
 
     /**
@@ -878,8 +1556,8 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         $project = Project::findOrFail($projectId);
-        if ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: Only the PIC of this project can delete Tasks.');
+        if ($role !== 'SuperAdmin' && ($role !== 'pic' || !$this->isPicAuthorizedForProject($user, $project))) {
+            return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can delete Tasks.']);
         }
 
         $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($projectId) {
@@ -917,6 +1595,10 @@ class ProjectController extends Controller
             abort(404, 'Task does not belong to this project.');
         }
 
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
+        }
+
         if ($role === 'worker') {
             if ($project->companies_id != $user->companies_id) {
                 return back()->with('error', 'Access Denied: Workers can only update tasks within their assigned company.');
@@ -933,12 +1615,18 @@ class ProjectController extends Controller
 
         $progress = $request->input('progress');
 
-        // --- ENFORCE PREDECESSOR RULE (FS) ---
-        if ($progress > 0 && $task->predecessor && ($task->dep_type === 'FS' || empty($task->dep_type))) {
-            // Find the predecessor task. The predecessor field stores the task ID.
-            $predTask = Wbs::find($task->predecessor);
-            if ($predTask && !$predTask->is_completed && $predTask->progress < 100) {
-                return back()->with('error', "Cannot start task. Predecessor task '{$predTask->name}' must be 100% completed first.");
+        // --- ENFORCE PREDECESSOR RULES (FS, SS, FF, SF) ---
+        $scheduler = app(DependencyScheduler::class);
+        if ($progress > 0) {
+            $startBlocked = $scheduler->validateCanStart($task);
+            if ($startBlocked) {
+                return back()->with('error', $startBlocked);
+            }
+        }
+        if ($progress >= 100) {
+            $completeBlocked = $scheduler->validateCanComplete($task);
+            if ($completeBlocked) {
+                return back()->with('error', $completeBlocked);
             }
         }
 
@@ -959,6 +1647,35 @@ class ProjectController extends Controller
         $hasFiles = count($uploadedFiles) > 0;
         $hasExistingEvidence = $task->evidence_path && $task->evidence_path !== '[]';
 
+        // --- VALIDATE EVIDENCE FILE TYPES & SIZE LIMITS ---
+        // Allowed: PDF, JPG, JPEG, PNG
+        // Max size: JPG/PNG = 10 MB, PDF = 20 MB
+        $allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png'];
+        $maxImageBytes = 10 * 1024 * 1024; // 10 MB
+        $maxPdfBytes   = 20 * 1024 * 1024; // 20 MB
+
+        foreach ($uploadedFiles as $file) {
+            if (!$file->isValid()) {
+                return back()->with('error', 'Berkas yang diunggah tidak valid atau rusak.');
+            }
+
+            $ext = strtolower($file->getClientOriginalExtension());
+            if (!in_array($ext, $allowedExtensions, true)) {
+                return back()->with('error', "Format berkas '{$file->getClientOriginalName()}' tidak diizinkan. Hanya berkas PDF, JPG, dan PNG yang dapat diunggah.");
+            }
+
+            $size = $file->getSize();
+            if ($ext === 'pdf') {
+                if ($size > $maxPdfBytes) {
+                    return back()->with('error', "Ukuran berkas PDF '{$file->getClientOriginalName()}' melebihi batas maksimal 20 MB.");
+                }
+            } else {
+                if ($size > $maxImageBytes) {
+                    return back()->with('error', "Ukuran berkas gambar '{$file->getClientOriginalName()}' melebihi batas maksimal 10 MB.");
+                }
+            }
+        }
+
         if ($progress !== null) {
             $task->progress = max(0, min(100, (int)$progress));
 
@@ -970,6 +1687,14 @@ class ProjectController extends Controller
 
             $task->is_completed = ($task->progress == 100);
             $task->status = $task->is_completed ? 'Completed' : ($task->progress > 0 ? 'On Track' : 'Open');
+            
+            if ($task->is_completed && !$task->completed_by) {
+                $task->completed_by = Auth::id();
+                $task->completed_at = now();
+            } elseif (!$task->is_completed) {
+                $task->completed_by = null;
+                $task->completed_at = null;
+            }
         } else {
             if (!$task->is_completed && !$hasFiles && !$hasExistingEvidence) {
                 if ($task->requires_evidence) {
@@ -980,6 +1705,14 @@ class ProjectController extends Controller
             $task->is_completed = !$task->is_completed;
             $task->progress = $task->is_completed ? 100 : 0;
             $task->status = $task->is_completed ? 'Completed' : 'Open';
+            
+            if ($task->is_completed) {
+                $task->completed_by = Auth::id();
+                $task->completed_at = now();
+            } else {
+                $task->completed_by = null;
+                $task->completed_at = null;
+            }
         }
 
         if ($hasFiles) {
@@ -1008,6 +1741,17 @@ class ProjectController extends Controller
 
         $task->save();
 
+        // Log the activity
+        ProjectActivityLog::create([
+            'project_id' => $projectId,
+            'wbs_id' => $task->id,
+            'user_id' => Auth::id(),
+            'action' => $task->is_completed ? 'task_completed' : 'task_updated',
+            'description' => $task->is_completed 
+                ? "Task '{$task->name}' ditandai selesai (100%)."
+                : "Task '{$task->name}' diupdate progressnya menjadi {$task->progress}%.",
+        ]);
+
         app(ProgressService::class)->recalculateProjectProgress($projectId);
 
         return back()->with('success', 'Task status updated successfully.');
@@ -1026,6 +1770,26 @@ class ProjectController extends Controller
     }
 
     /**
+     * Redirect to setup wizard if project is still in pending_setup.
+     */
+    private function guardProjectSetup(?Project $project, string $role)
+    {
+        if (!$project) {
+            return null;
+        }
+
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            if (in_array($role, ['pic', 'SuperAdmin', 'admin_utama'])) {
+                return redirect()->route('projects.setup', $project->id);
+            }
+            return redirect()->route('projectlistpage')
+                ->with('error', 'Proyek ini sedang dalam tahap konfigurasi WBS (setup) oleh PIC dan belum dapat diakses.');
+        }
+
+        return null;
+    }
+
+    /**
      * Helper to resolve project for user based on strict multi-tenant and role rules.
      */
     private function resolveProjectForUser(int|string|null $id = null)
@@ -1040,6 +1804,9 @@ class ProjectController extends Controller
             'mainWbs.listName',
             'mainWbs.subWbs.listName',
             'mainWbs.subWbs.wbsTasks.division',
+            'mainWbs.subWbs.wbsTasks.predecessorDependencies.predecessor',
+            'mainWbs.subWbs.wbsTasks.predecessorDependencies.group',
+            'mainWbs.subWbs.wbsTasks.completedBy',
             'budgetEntries',
             'weeklyProgress',
         ]);
@@ -1049,7 +1816,7 @@ class ProjectController extends Controller
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
                 if (!$this->isPicAuthorizedForProject($user, $project)) {
-                    abort(403, 'Access Denied: PICs cannot access projects belonging to another company.');
+                    return back()->withErrors(['message' => 'Access Denied: PICs cannot access projects belonging to another company.']);
                 }
 
                 return $project;
@@ -1071,12 +1838,12 @@ class ProjectController extends Controller
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
                 if ($project->companies_id != $user->companies_id) {
-                    abort(403, 'Access Denied: Workers can only access projects belonging to their assigned company.');
+                    return back()->withErrors(['message' => 'Access Denied: Workers can only access projects belonging to their assigned company.']);
                 }
                 
                 $projectAccess = $user->permission_matrix['project_access'] ?? [];
                 if (empty($projectAccess[$id]['view_project'])) {
-                    abort(403, 'Access Denied: You do not have permission to view this project.');
+                    return back()->withErrors(['message' => 'Access Denied: You do not have permission to view this project.']);
                 }
                 
                 return $project;
@@ -1142,6 +1909,16 @@ class ProjectController extends Controller
                         'depType'     => $st->dep_type ?? 'FS',
                         'lag'         => (int) ($st->lag ?? 0),
                         'lead'        => (int) ($st->lead ?? 0),
+                        'dependencies'=> $st->predecessorDependencies ? $st->predecessorDependencies->map(function ($d) {
+                            return [
+                                'id'                 => $d->id,
+                                'dependency_group_id' => $d->dependency_group_id,
+                                'predecessor_wbs_id' => $d->predecessor_wbs_id,
+                                'predecessor_name'   => $d->predecessor?->name ?? $d->predecessor_wbs_id,
+                                'dependency_type'    => $d->effectiveDependencyType(),
+                                'lag_days'           => $d->effectiveLagDays(),
+                            ];
+                        })->values()->toArray() : [],
                         'weight'      => (float) ($st->weight ?? 0),
                         'checked'     => (bool) $st->is_completed,
                         'requiresEvidence' => (bool) $st->requires_evidence,
@@ -1163,6 +1940,8 @@ class ProjectController extends Controller
                                 ]];
                             }
                         })() : [],
+                        'completedByName' => $st->completedBy ? ($st->completedBy->username ?? $st->completedBy->name) : null,
+                        'completedAt'     => $st->completed_at ? $st->completed_at->format('d M Y H:i') : null,
                     ];
                 })->values()->toArray();
 
@@ -1234,6 +2013,21 @@ class ProjectController extends Controller
             return [(int) $wp->week_number => (float) $wp->actual_progress];
         })->toArray();
 
+        $activityLogs = ProjectActivityLog::with('user', 'wbs')
+            ->where('project_id', $p->id)
+            ->latest()
+            ->get()
+            ->map(function ($log) {
+                return [
+                    'id'          => $log->id,
+                    'action'      => $log->action,
+                    'description' => $log->description,
+                    'user'        => $log->user?->username ?? $log->user?->name ?? 'System',
+                    'wbs_name'    => $log->wbs?->name ?? '-',
+                    'created_at'  => $log->created_at?->format('Y-m-d H:i:s'),
+                ];
+            })->toArray();
+
         return [
             'id'                  => (string) $p->id,
             'name'                => $p->title,
@@ -1251,6 +2045,7 @@ class ProjectController extends Controller
             'savedWeeklyActuals'  => $savedWeeklyActuals,
             'budgetEntries'       => $budgetEntries,
             'mainJobs'            => $mainJobs->values()->toArray(),
+            'activityLogs'        => $activityLogs,
         ];
     }
 
@@ -1265,11 +2060,15 @@ class ProjectController extends Controller
         $project = Project::findOrFail($projectId);
 
         if ($role === 'worker' || $role === 'admin_progres') {
-            abort(403, 'Access Denied: You are not authorized to add budget realization entries.');
+            return back()->withErrors(['message' => 'Access Denied: You are not authorized to add budget realization entries.']);
         }
 
-        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: You are not the PIC of this project.');
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: You are not the PIC of this project.']);
+        }
+
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
         }
 
         $validated = $request->validate([
@@ -1322,11 +2121,15 @@ class ProjectController extends Controller
         $project = Project::findOrFail($projectId);
 
         if ($role === 'worker' || $role === 'admin_progres') {
-            abort(403, 'Access Denied: You are not authorized to delete budget realization entries.');
+            return back()->withErrors(['message' => 'Access Denied: You are not authorized to delete budget realization entries.']);
         }
 
-        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: You are not the PIC of this project.');
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: You are not the PIC of this project.']);
+        }
+
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
         }
 
         $entry = BudgetEntry::where('projects_id', $project->id)->where('id', $entryId)->firstOrFail();
@@ -1347,11 +2150,15 @@ class ProjectController extends Controller
         $project = Project::findOrFail($projectId);
 
         if ($role === 'worker' || $role === 'admin_progres') {
-            abort(403, 'Access Denied: You are not authorized to update weekly progress.');
+            return back()->withErrors(['message' => 'Access Denied: You are not authorized to update weekly progress.']);
         }
 
-        if ($role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
-            abort(403, 'Access Denied: You are not the PIC of this project.');
+        if ($role !== 'SuperAdmin' && $role === 'pic' && !$this->isPicAuthorizedForProject($user, $project)) {
+            return back()->withErrors(['message' => 'Access Denied: You are not the PIC of this project.']);
+        }
+
+        if (($project->setup_status ?? 'active') === 'pending_setup') {
+            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
         }
 
         $validated = $request->validate([
@@ -1391,6 +2198,10 @@ class ProjectController extends Controller
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
             return redirect()->route('projectlistpage');
+        }
+
+        if ($redirect = $this->guardProjectSetup($project, $role)) {
+            return $redirect;
         }
 
         // Retrieve all tasks for this project

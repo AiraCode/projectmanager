@@ -19,6 +19,7 @@ class Project extends Model
         'actual_end',
         'progress',
         'status',
+        'setup_status',
         'is_private',
     ];
 

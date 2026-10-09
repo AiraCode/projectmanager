@@ -52,11 +52,11 @@ class ProjectTemplateService
             ],
             [
                 'code' => '3',
-                'name' => 'SIPIL WORKS',
+                'name' => 'CIVIL WORKS',
                 'weight' => 18.0,
                 'sub_main_jobs' => [
-                    ['code' => '3.1', 'name' => 'SIPIL WORKS DESIGN, SPEC & RAB', 'pic' => 'Engineering', 'weight' => 2.0],
-                    ['code' => '3.2', 'name' => 'SIPIL PROJECT SCHEDULE', 'pic' => 'PM', 'weight' => 1.0],
+                    ['code' => '3.1', 'name' => 'CIVIL WORKS DESIGN, SPEC & RAB', 'pic' => 'Engineering', 'weight' => 2.0],
+                    ['code' => '3.2', 'name' => 'CIVIL PROJECT SCHEDULE', 'pic' => 'PM', 'weight' => 1.0],
                     ['code' => '3.3', 'name' => 'FOUNDATION CONSTRUCTION', 'pic' => 'Engineering', 'weight' => 6.0],
                     ['code' => '3.4', 'name' => 'STEEL STRUCTURE CONSTRUCTION', 'pic' => 'Engineering', 'weight' => 7.0],
                     ['code' => '3.5', 'name' => 'FINISHING WORKS', 'pic' => 'Engineering', 'weight' => 2.0],
@@ -91,7 +91,7 @@ class ProjectTemplateService
                 'name' => 'PURCHASING JOBS',
                 'weight' => 8.0,
                 'sub_main_jobs' => [
-                    ['code' => '6.1', 'name' => 'PURCHASING RELATED TO SIPIL WORKS', 'pic' => 'Purchasing', 'weight' => 2.5],
+                    ['code' => '6.1', 'name' => 'PURCHASING RELATED TO CIVIL WORKS', 'pic' => 'Purchasing', 'weight' => 2.5],
                     ['code' => '6.2', 'name' => 'PURCHASING RELATED TO MACHINE INSTALLATION', 'pic' => 'Purchasing', 'weight' => 3.5],
                     ['code' => '6.3', 'name' => 'PURCHASING RELATED TO UTILITY & FACILITY', 'pic' => 'Purchasing', 'weight' => 2.0],
                 ],
@@ -324,10 +324,32 @@ class ProjectTemplateService
                             'dep_type'     => 'FS',
                             'lag'          => 2, // Simulasi lag 2 hari untuk keperluan testing UI
                             'lead'         => 0,
+                            'duration_days'=> 5,
                             'requires_evidence' => false,
                             'deleted_at'   => null,
                         ]
                     );
+
+                    if ($previousTaskId) {
+                        $group = \App\Models\TaskDependencyGroup::firstOrCreate(
+                            [
+                                'successor_wbs_id' => $wbsId,
+                                'dependency_type' => 'FS',
+                                'lag_days' => 2,
+                            ],
+                        );
+                        \App\Models\TaskDependency::updateOrCreate(
+                            [
+                                'predecessor_wbs_id' => $previousTaskId,
+                                'successor_wbs_id' => $wbsId,
+                            ],
+                            [
+                                'dependency_group_id' => $group->id,
+                                'dependency_type' => 'FS',
+                                'lag_days' => 2,
+                            ]
+                        );
+                    }
 
                     $taskCounter++;
                 }

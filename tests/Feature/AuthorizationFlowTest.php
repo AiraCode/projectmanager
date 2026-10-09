@@ -64,6 +64,79 @@ class AuthorizationFlowTest extends TestCase
         ]);
     }
 
+    public function test_pic_with_create_permission_cannot_create_admin_or_pic_roles()
+    {
+        $pic = User::whereHas('role', function($q) { $q->where('name', 'pic'); })->first();
+        // Give PIC user creation permission
+        $matrix = $pic->permission_matrix ?? [];
+        $matrix['features']['users'] = ['create'];
+        $pic->permission_matrix = $matrix;
+        $pic->save();
+
+        $roleAdminUtama = Role::where('name', 'admin_utama')->first();
+        $roleAdminProgres = Role::where('name', 'admin_progres')->first();
+        $rolePic = Role::where('name', 'pic')->first();
+
+        // 1. Try create admin_utama
+        $response1 = $this->actingAs($pic)->post('/users', [
+            'username' => 'Illegal Admin Utama',
+            'email' => 'illegal_admin_utama@provis.id',
+            'password' => 'password123',
+            'roles_id' => $roleAdminUtama->id,
+            'companies_id' => $pic->companies_id,
+        ]);
+        $response1->assertStatus(403);
+        $this->assertDatabaseMissing('users', ['email' => 'illegal_admin_utama@provis.id']);
+
+        // 2. Try create admin_progres
+        $response2 = $this->actingAs($pic)->post('/users', [
+            'username' => 'Illegal Admin Progres',
+            'email' => 'illegal_admin_progres@provis.id',
+            'password' => 'password123',
+            'roles_id' => $roleAdminProgres->id,
+            'companies_id' => $pic->companies_id,
+        ]);
+        $response2->assertStatus(403);
+        $this->assertDatabaseMissing('users', ['email' => 'illegal_admin_progres@provis.id']);
+
+        // 3. Try create pic
+        $response3 = $this->actingAs($pic)->post('/users', [
+            'username' => 'Illegal PIC',
+            'email' => 'illegal_pic@provis.id',
+            'password' => 'password123',
+            'roles_id' => $rolePic->id,
+            'companies_id' => $pic->companies_id,
+        ]);
+        $response3->assertStatus(403);
+        $this->assertDatabaseMissing('users', ['email' => 'illegal_pic@provis.id']);
+    }
+
+    public function test_pic_with_create_permission_can_create_worker()
+    {
+        $pic = User::whereHas('role', function($q) { $q->where('name', 'pic'); })->first();
+        $matrix = $pic->permission_matrix ?? [];
+        $matrix['features']['users'] = ['create'];
+        $pic->permission_matrix = $matrix;
+        $pic->save();
+
+        $roleWorker = Role::where('name', 'worker')->first();
+
+        $response = $this->actingAs($pic)->post('/users', [
+            'username' => 'Valid Worker',
+            'email' => 'valid_worker@provis.id',
+            'password' => 'password123',
+            'roles_id' => $roleWorker->id,
+            'companies_id' => $pic->companies_id,
+        ]);
+
+        $response->assertSessionHas('success');
+        $this->assertDatabaseHas('users', [
+            'email' => 'valid_worker@provis.id',
+            'roles_id' => $roleWorker->id,
+            'companies_id' => $pic->companies_id,
+        ]);
+    }
+
     public function test_pic_can_update_project_access_for_own_worker()
     {
         $pic = User::whereHas('role', function($q) { $q->where('name', 'pic'); })->first();

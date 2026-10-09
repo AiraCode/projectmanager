@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, EvidenceItem } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
+import { canStartTask } from '@/utils/taskDependencies';
 import { recalculateProgress } from '@/utils/progressEngine';
 import { StatusBadge, PageHeader, Card, Button, Modal, Toast, formatDateDisplay, formatDivisionName } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
@@ -133,10 +134,22 @@ export default function TodayTasksPage() {
       return recalculateSchedule(recalculateProgress(newData));
     });
 
-    if (completeTo100 && projectData.id) {
-      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, {}, {
+    if (projectData.id) {
+      const payload: Record<string, unknown> = {};
+      if (completeTo100) {
+        payload['progress'] = 100;
+      }
+      if (rawFile) {
+        payload['evidence_file'] = rawFile;
+      }
+      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, payload, {
         preserveScroll: true,
         preserveState: true,
+        forceFormData: !!rawFile,
+        onError: (errs) => {
+          const errText = Object.values(errs)[0] as string;
+          if (errText) alert(errText);
+        }
       });
     }
 
@@ -577,21 +590,7 @@ export default function TodayTasksPage() {
             const authorized = isAuthorizedToCheck(st.division || parentSmj.pic);
             const isChecked = st.checked || st.progress >= 100;
 
-            let predCompleted = true;
-            if (st.predecessor && (!st.depType || st.depType === 'FS')) {
-              let foundPred = false;
-              for (const m of projectData.mainJobs) {
-                for (const s of (m.subMainJobs || [])) {
-                  const pTask = s.subtasks?.find(t => t.id === st.predecessor || t.code === st.predecessor);
-                  if (pTask) {
-                    if (pTask.progress < 100) predCompleted = false;
-                    foundPred = true;
-                    break;
-                  }
-                }
-                if (foundPred) break;
-              }
-            }
+            const predCompleted = canStartTask(st, projectData.mainJobs);
 
             const lockedByPred = authorized && !predCompleted;
             const canCheck = authorized && predCompleted;
@@ -636,8 +635,12 @@ export default function TodayTasksPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       {lockedByPred && (
-                        <span title="Locked: Predecessor (FS) is not 100% completed">
+                        <span className="relative group cursor-help">
                           <Lock size={12} className="text-amber-500" />
+                          <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
+                            Terkunci: Pekerjaan sebelumnya (Predecessor) belum selesai 100%.
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
+                          </div>
                         </span>
                       )}
                       <StatusBadge status={isChecked ? 'Completed' : st.status} size="xs" />
@@ -725,7 +728,7 @@ export default function TodayTasksPage() {
                           title="Upload bukti penyelesaian (wajib untuk 100%)"
                         >
                           <UploadCloud size={11} className="text-amber-600" />
-                          <span>Upload Bukti (Wajib)</span>
+                          <span>Upload Bukti</span>
                         </button>
                       )
                     )}
@@ -845,10 +848,31 @@ function UploadEvidenceModal({
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(task.evidence?.previewUrl);
   const [completeChecked, setCompleteChecked] = useState(requireComplete || task.progress === 100);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFileError(null);
     const selected = e.target.files?.[0];
     if (selected) {
+      const ext = selected.name.split('.').pop()?.toLowerCase();
+      if (!ext || !['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
+        setFileError(`Format berkas "${selected.name}" tidak diizinkan. Hanya berkas PDF, JPG, atau PNG yang diperbolehkan.`);
+        e.target.value = '';
+        return;
+      }
+
+      if (ext === 'pdf' && selected.size > 20 * 1024 * 1024) {
+        setFileError(`Ukuran berkas PDF "${selected.name}" melebihi batas maksimal 20 MB.`);
+        e.target.value = '';
+        return;
+      }
+
+      if (['jpg', 'jpeg', 'png'].includes(ext) && selected.size > 10 * 1024 * 1024) {
+        setFileError(`Ukuran berkas gambar "${selected.name}" melebihi batas maksimal 10 MB.`);
+        e.target.value = '';
+        return;
+      }
+
       setFile(selected);
       if (selected.type.startsWith('image/')) {
         setPreviewUrl(URL.createObjectURL(selected));
@@ -888,11 +912,18 @@ function UploadEvidenceModal({
       size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {fileError && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+            <AlertCircle size={16} className="text-red-600 flex-shrink-0" />
+            <span>{fileError}</span>
+          </div>
+        )}
+
         {/* Required Notice Alert */}
         <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12px] leading-relaxed">
           <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
-            <strong className="font-bold">Syarat Wajib:</strong> Lampiran bukti penyelesaian (foto pelaksanaan, berkas serah terima, atau dokumen PDF/gambar) wajib diunggah untuk dapat menandai task ini selesai (100%).
+            <strong className="font-bold">Ketentuan Berkas Bukti:</strong> Hanya format <strong>PDF (maksimal 20 MB)</strong> atau <strong>Foto JPG/PNG (maksimal 10 MB)</strong> yang diperbolehkan untuk diunggah.
           </div>
         </div>
 
@@ -924,7 +955,7 @@ function UploadEvidenceModal({
               Ganti File
               <input
                 type="file"
-                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
                 className="hidden"
                 onChange={handleFileChange}
               />
@@ -937,12 +968,12 @@ function UploadEvidenceModal({
               Pilih atau seret berkas bukti (evidence) ke sini
             </span>
             <span className="text-[11.5px] text-neutral-400 mt-1">
-              Mendukung foto (JPG, PNG) atau dokumen (PDF, Word, Excel) maksimal 10MB
+              Hanya format PDF (maks. 20 MB) atau Foto JPG/PNG (maks. 10 MB)
             </span>
             <input
               type="file"
               required={!task.evidence}
-              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+              accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
               className="hidden"
               onChange={handleFileChange}
             />

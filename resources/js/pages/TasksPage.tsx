@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
-import { usePage, router } from '@inertiajs/react';
+import { usePage, router, Link } from '@inertiajs/react';
 import {
   Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square,
   Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties,
   Download, AlertCircle, AlertTriangle, CheckCircle2, Clock, UploadCloud,
-  FileText, Sparkles, X, Eye, CalendarDays, Sliders, Paperclip
+  FileText, Sparkles, X, Eye, CalendarDays, Sliders, Paperclip, Link2
 } from 'lucide-react';
 import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyType, EvidenceItem } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
+import { canStartTask } from '@/utils/taskDependencies';
 import { recalculateProgress } from '@/utils/progressEngine';
 import { exportToCSV } from '@/utils/exportEngine';
 import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast, EmptyState, formatDateDisplay, formatDivisionName } from '@/components/ui';
@@ -78,9 +79,11 @@ export default function TasksPage() {
   // - Admin (Utama / Progres): strictly read-only, NO modification allowed
   const authUser = pageProps?.auth?.user || user;
   const rawRole = (pageProps?.userRole || authUser?.role || authUser?.rawRole || '').toString().toLowerCase();
-  const isPIC    = authUser?.isPIC === true || rawRole === 'pic';
+  const isSuperAdmin = rawRole === 'super_admin' || rawRole === 'superadministrator' || rawRole === 'superadmin';
+  const isPIC    = authUser?.isPIC === true || rawRole === 'pic' || isSuperAdmin;
   const isWorker = authUser?.isWorker === true || rawRole === 'worker';
   const isAdmin  = authUser?.isAdminUtama === true || authUser?.isAdminProgres === true || rawRole === 'admin_utama' || rawRole === 'admin_progres' || rawRole === 'admin';
+
   
   const [projectData, setProjectData] = useState<Project>(() => {
     if (!project || !project.mainJobs) {
@@ -132,6 +135,26 @@ export default function TasksPage() {
   } | null>(null);
   const [todaySectionOpen, setTodaySectionOpen] = useState(true);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Manage Dependencies State
+  const [depModal, setDepModal] = useState<{ isOpen: boolean; task?: SubSubtask }>({ isOpen: false });
+  const [depForm, setDepForm] = useState({ predecessor_wbs_ids: [] as string[], dependency_type: 'FS' as DependencyType, lag_days: 0 });
+  const [actionError, setActionError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Sync depModal task data when projectData updates via Inertia
+  useEffect(() => {
+    if (depModal.isOpen && depModal.task) {
+      const updatedTask = projectData.mainJobs
+        .flatMap(mj => mj.subMainJobs)
+        .flatMap(smj => smj.subtasks)
+        .find(st => st.id === depModal.task!.id);
+      
+      if (updatedTask && JSON.stringify(updatedTask.dependencies) !== JSON.stringify(depModal.task.dependencies)) {
+        setDepModal(prev => ({ ...prev, task: updatedTask }));
+      }
+    }
+  }, [projectData, depModal.isOpen, depModal.task?.id]);
 
   const handleSaveEvidence = (taskId: string, newEvidences: EvidenceItem[], completeTo100: boolean = false, rawFiles?: File[]) => {
     if (!projectData.id) return;
@@ -365,10 +388,12 @@ export default function TasksPage() {
       divisions_id: taskData.divisionId || null,
       duration: taskData.duration || 1,
       start: taskData.startDate || null,
+      end: taskData.finishDate || null,
       predecessor: taskData.predecessor || null,
       dep_type: taskData.depType || 'FS',
       lag: taskData.lag || 0,
       lead: taskData.lead || 0,
+      predecessors: taskData.predecessors || [],
       requires_evidence: taskData.requiresEvidence || false,
       weight: taskData.weight !== undefined ? taskData.weight : 100,
     };
@@ -420,6 +445,48 @@ export default function TasksPage() {
     });
   };
 
+  const handleOpenDepModal = (task: SubSubtask) => {
+    setActionError('');
+    setDepForm({ predecessor_wbs_ids: [], dependency_type: 'FS', lag_days: 0 });
+    setDepModal({ isOpen: true, task });
+  };
+
+  const handleAddDependency = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!depModal.task || depForm.predecessor_wbs_ids.length === 0) return;
+
+    setSubmitting(true);
+    setActionError('');
+    router.post(`/projects/${projectData.id}/tasks/${depModal.task.id}/dependencies`, {
+      predecessor_wbs_ids: depForm.predecessor_wbs_ids,
+      dependency_type: depForm.dependency_type,
+      lag_days: depForm.lag_days,
+    }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setDepForm({ predecessor_wbs_ids: [], dependency_type: 'FS', lag_days: 0 });
+        setSubmitting(false);
+        // We let Inertia handle the props update which will flow into projectData
+      },
+      onError: (errors) => {
+        setActionError(Object.values(errors)[0] as string || 'Gagal menambahkan ketergantungan');
+        setSubmitting(false);
+      }
+    });
+  };
+
+  const handleRemoveDependency = (depId: number) => {
+    setDeleteConfirm({
+      title: 'Hapus Ketergantungan',
+      message: 'Apakah Anda yakin ingin menghapus relasi ketergantungan ini?',
+      onConfirm: () => {
+        router.delete(`/projects/${projectData.id}/tasks/${depModal.task?.id}/dependencies/${depId}`, {
+          preserveScroll: true,
+        });
+      }
+    });
+  };
+
   // Checklist authorization:
   // - Admin (Utama & Progres): FALSE (strictly read-only)
   // - PIC: FALSE (PIC CANNOT check tasks, only manages and adds tasks)
@@ -466,7 +533,7 @@ export default function TasksPage() {
     // REQUIREMENT: Evidence attachment is MANDATORY (required) to complete task (100%)
     if (isCompleted && currentTask && (!currentTask.evidences || currentTask.evidences.length === 0)) {
       if (currentTask.requiresEvidence) {
-        setToastMsg(`Bukti (evidence) WAJIB dilampirkan sebelum menyelesaikan task "${taskName}" (100%).`);
+        setToastMsg(`Bukti (evidence) diperlukan sebelum menyelesaikan task "${taskName}" (100%).`);
         if (commit) {
           setUploadEvidenceTask({
             task: currentTask,
@@ -691,15 +758,23 @@ export default function TasksPage() {
             )}
 
             {isPIC && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setShowMainJobModal({ mode: 'create' })}
-                icon={Plus}
-                className="text-[12px] h-[34px] flex-shrink-0"
-              >
-                Add Main Task
-              </Button>
+              <>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowMainJobModal({ mode: 'create' })}
+                  icon={Plus}
+                  className="text-[12px] h-[34px] flex-shrink-0"
+                >
+                  Add Main Task
+                </Button>
+                <Link
+                  href={`/projects/${projectData.id}/predecessors`}
+                  className="inline-flex items-center justify-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors h-[34px] flex-shrink-0"
+                >
+                  <Link2 size={14} /> Atur Predecessor
+                </Link>
+              </>
             )}
             
             <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200 flex-shrink-0">
@@ -868,6 +943,7 @@ export default function TasksPage() {
                       onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, parentSmj: smj, task })}
                       onDeleteSubMainJob={() => handleDeleteSubMainJob(mj.id, smj.id, (smj as any).dbId, smj.name)}
                       onDeleteTask={(taskId, taskName) => handleDeleteSubtask(smj.id, taskId, taskName)}
+                      onManageDependencies={handleOpenDepModal}
                       onCheck={handleCheck}
                       onProgressChange={handleProgressChange}
                       onOpenEvidence={(ev) => setEvidencePreview(ev)}
@@ -957,7 +1033,12 @@ export default function TasksPage() {
                             >
                               <td className="px-4 py-2 pl-12 font-mono text-[12px] text-neutral-500 font-semibold">{st.code}</td>
                               <td className="px-4 py-2 text-neutral-800 font-medium">
-                                <span className={isDone ? 'text-neutral-400 font-medium' : 'text-neutral-900 font-medium'}>{st.name}</span>
+                                <div className={isDone ? 'text-neutral-400 font-medium' : 'text-neutral-900 font-medium'}>{st.name}</div>
+                                {st.completedByName && (
+                                  <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium mt-1">
+                                    <CheckCircle2 size={10} /> Diselesaikan oleh: {st.completedByName} pada {st.completedAt}
+                                  </div>
+                                )}
                               </td>
                               <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">{st.weight ?? 100}%</td>
                               <td className="px-4 py-2 text-neutral-600 text-[11.5px]">{formatDivisionName(st.division || smj.pic)}</td>
@@ -971,7 +1052,54 @@ export default function TasksPage() {
                               <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.finishDate)}</td>
                               <td className="px-4 py-2 text-right text-neutral-600">{st.duration}d</td>
                               <td className="px-4 py-2 font-mono text-[11.5px] text-neutral-500">
-                                {st.predecessor ? `${st.predecessor} (${st.depType || 'FS'}${st.lag ? `+${st.lag}` : ''})` : '—'}
+                                {st.dependencies && st.dependencies.length > 0 ? (
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {st.dependencies.map(dep => (
+                                      <span key={dep.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type})`}>
+                                        <Link2 size={9} />
+                                        <span>{dep.dependency_type}</span>
+                                      </span>
+                                    ))}
+                                    {isPIC && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenDepModal(st)}
+                                        className="p-0.5 rounded text-neutral-400 hover:text-brand"
+                                        title="Kelola Ketergantungan"
+                                      >
+                                        <Link2 size={11} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : st.predecessor ? (
+                                  <div className="flex items-center gap-1">
+                                    <span>{st.predecessor} ({st.depType || 'FS'}{st.lag ? `+${st.lag}` : ''})</span>
+                                    {isPIC && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenDepModal(st)}
+                                        className="p-0.5 rounded text-neutral-400 hover:text-brand"
+                                        title="Kelola Ketergantungan"
+                                      >
+                                        <Link2 size={11} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1">
+                                    <span>—</span>
+                                    {isPIC && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenDepModal(st)}
+                                        className="p-0.5 rounded text-neutral-400 hover:text-brand"
+                                        title="Kelola Ketergantungan"
+                                      >
+                                        <Link2 size={11} />
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </td>
                               {/* Attachment / Bukti Column */}
                               <td className="px-4 py-2 text-center whitespace-nowrap">
@@ -1121,54 +1249,6 @@ export default function TasksPage() {
       )}
 
       {/* Action Toast Feedback */}
-      {deleteConfirm && (
-        <Modal
-          title={deleteConfirm.title}
-          onClose={() => setDeleteConfirm(null)}
-          size="sm"
-        >
-          <div className="space-y-4">
-            <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-900">
-              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 text-danger shadow-2xs">
-                <Trash2 size={20} />
-              </div>
-              <div className="text-[12.5px] leading-relaxed pt-0.5">
-                <p className="font-semibold text-neutral-800">
-                  {deleteConfirm.message}
-                </p>
-                <p className="text-[11.5px] text-neutral-500 mt-1">
-                  This action cannot be undone and will permanently remove associated data.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setDeleteConfirm(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                icon={Trash2}
-                onClick={() => {
-                  const action = deleteConfirm.onConfirm;
-                  setDeleteConfirm(null);
-                  action();
-                }}
-              >
-                Yes, Delete
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
       {/* Uncheck Confirmation Modal (Requirement 3) */}
       {uncheckConfirm && (
         <UncheckConfirmModal
@@ -1194,6 +1274,69 @@ export default function TasksPage() {
           onClose={() => setUploadEvidenceTask(null)}
           onSave={handleSaveEvidence}
         />
+      )}
+
+      {/* Manage Dependencies Modal */}
+      <ManageDependenciesModal
+        isOpen={depModal.isOpen}
+        task={depModal.task}
+        allSubtasks={projectData.mainJobs.flatMap(mj => mj.subMainJobs).flatMap(smj => smj.subtasks)}
+        depForm={depForm}
+        setDepForm={setDepForm}
+        onClose={() => setDepModal({ isOpen: false })}
+        onAddDependency={handleAddDependency}
+        onRemoveDependency={handleRemoveDependency}
+        submitting={submitting}
+        actionError={actionError}
+      />
+
+      {/* Delete Confirmation Modal (Moved to end for z-index priority) */}
+      {deleteConfirm && (
+        <Modal
+          title={deleteConfirm.title}
+          onClose={() => setDeleteConfirm(null)}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-900">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 text-danger shadow-2xs">
+                <Trash2 size={20} />
+              </div>
+              <div className="text-[12.5px] leading-relaxed pt-0.5">
+                <p className="font-semibold text-neutral-800">
+                  {deleteConfirm.message}
+                </p>
+                <p className="text-[11.5px] text-neutral-500 mt-1">
+                  Tindakan ini tidak dapat dibatalkan dan akan menghapus data secara permanen.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                icon={Trash2}
+                onClick={() => {
+                  const action = deleteConfirm.onConfirm;
+                  setDeleteConfirm(null);
+                  action();
+                }}
+              >
+                Ya, Hapus
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* Action Toast Feedback */}
@@ -1315,18 +1458,23 @@ function TodayTaskCard({
                 className="inline-flex items-center gap-1 text-amber-700 font-bold hover:underline"
               >
                 <UploadCloud size={12} />
-                Upload Bukti (Wajib)
+                Upload Bukti
               </button>
             )
           )}
         </div>
+        {st.completedByName && (
+          <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium pt-1 mt-1 border-t border-emerald-100">
+            <CheckCircle2 size={10} /> Diselesaikan oleh: {st.completedByName} pada {st.completedAt}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function SubMainJobSection({
-  mainJobs, smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onCheck, onProgressChange, onOpenEvidence, onOpenUploadEvidence
+  mainJobs, smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onManageDependencies, onCheck, onProgressChange, onOpenEvidence, onOpenUploadEvidence
 }: {
   mainJobs: MainJob[];
   smj: SubMainJob;
@@ -1339,6 +1487,7 @@ function SubMainJobSection({
   onOpenEditModal: (task: SubSubtask) => void;
   onDeleteSubMainJob: () => void;
   onDeleteTask: (taskId: string, taskName: string) => void;
+  onManageDependencies: (task: SubSubtask) => void;
   onCheck: (id: string, auth: boolean, name: string) => void;
   onProgressChange: (id: string, progress: number, auth: boolean, name: string, commit?: boolean) => void;
   onOpenEvidence: (evidence: any) => void;
@@ -1403,22 +1552,7 @@ function SubMainJobSection({
             smj.subtasks.map(st => {
               const authorized = isAuthorizedToCheck(st.division || smj.pic);
               
-              // Evaluate predecessor (FS)
-              let predCompleted = true;
-              if (st.predecessor && (!st.depType || st.depType === 'FS')) {
-                let foundPred = false;
-                for (const m of mainJobs) {
-                  for (const s of (m.subMainJobs || [])) {
-                    const pTask = s.subtasks?.find(t => t.id === st.predecessor || t.code === st.predecessor);
-                    if (pTask) {
-                      if (pTask.progress < 100) predCompleted = false;
-                      foundPred = true;
-                      break;
-                    }
-                  }
-                  if (foundPred) break;
-                }
-              }
+              const predCompleted = canStartTask(st, mainJobs);
 
               const effectivelyAuthorized = authorized && predCompleted;
 
@@ -1433,6 +1567,7 @@ function SubMainJobSection({
                   canEdit={isPIC}
                   onProgressChange={(val, commit) => onProgressChange(st.id, val, authorized, st.name, commit)}
                   onEdit={() => onOpenEditModal(st)}
+                  onManageDependencies={() => onManageDependencies(st)}
                   onDelete={() => onDeleteTask(st.id, st.name)}
                   onOpenEvidence={onOpenEvidence}
                   onOpenUploadEvidence={() => onOpenUploadEvidence(st)}
@@ -1447,7 +1582,7 @@ function SubMainJobSection({
 }
 
 function SubtaskRow({
-  st, divisi, isChecked, canCheck, lockedByPred, canEdit, onProgressChange, onEdit, onDelete, onOpenEvidence, onOpenUploadEvidence
+  st, divisi, isChecked, canCheck, lockedByPred, canEdit, onProgressChange, onEdit, onManageDependencies, onDelete, onOpenEvidence, onOpenUploadEvidence
 }: {
   st: SubSubtask;
   divisi: string;
@@ -1457,6 +1592,7 @@ function SubtaskRow({
   canEdit: boolean;
   onProgressChange: (val: number, commit?: boolean) => void;
   onEdit: () => void;
+  onManageDependencies: () => void;
   onDelete: () => void;
   onOpenEvidence: (evidence: any) => void;
   onOpenUploadEvidence: () => void;
@@ -1479,8 +1615,24 @@ function SubtaskRow({
             <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
               Weight {st.weight ?? 100}%
             </span>
-            {!canCheck && !lockedByPred && <span title="You are not authorized to adjust progress for this task"><Lock size={12} className="text-neutral-300" /></span>}
-            {lockedByPred && <span title="Locked: Predecessor (FS) is not 100% completed"><Lock size={12} className="text-amber-500" /></span>}
+            {!canCheck && !lockedByPred && (
+              <span className="relative group cursor-help">
+                <Lock size={12} className="text-neutral-300" />
+                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
+                  Anda tidak memiliki otoritas untuk mengubah progres task ini.
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
+                </div>
+              </span>
+            )}
+            {lockedByPred && (
+              <span className="relative group cursor-help">
+                <Lock size={12} className="text-amber-500" />
+                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
+                  Terkunci: Pekerjaan sebelumnya (Predecessor) belum selesai 100%.
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
+                </div>
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
@@ -1497,13 +1649,26 @@ function SubtaskRow({
                 {st.daysLeft} days left
               </span>
             )}
-            {st.predecessor && (
+            {st.dependencies && st.dependencies.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1">
+                {st.dependencies.map(dep => (
+                  <span
+                    key={dep.id}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                    title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type}, Lag: ${dep.lag_days}d)`}
+                  >
+                    <Link2 size={10} />
+                    <span>{dep.predecessor_name} ({dep.dependency_type})</span>
+                  </span>
+                ))}
+              </div>
+            ) : st.predecessor ? (
               <span className="font-medium text-neutral-600">
                 Pred: {st.predecessor} ({st.depType || 'FS'}
                 {st.lag ? ` +${st.lag}d lag` : ''}
                 {st.lead ? ` -${st.lead}d lead` : ''})
               </span>
-            )}
+            ) : null}
 
             {/* Evidence attachment indicator & upload button */}
             {(st.evidences && st.evidences.length > 0) ? (
@@ -1537,12 +1702,19 @@ function SubtaskRow({
                   type="button"
                   onClick={onOpenUploadEvidence}
                   className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
-                  title="Upload bukti penyelesaian (wajib untuk 100%)"
+                  title="Upload bukti penyelesaian"
                 >
                   <UploadCloud size={11} className="text-amber-600" />
-                  <span>Upload Bukti (Wajib)</span>
+                  <span>Upload Bukti</span>
                 </button>
               )
+            )}
+            
+            {st.completedByName && (
+              <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <CheckCircle2 size={12} className="text-emerald-500" />
+                Diselesaikan oleh {st.completedByName} pada {st.completedAt}
+              </span>
             )}
           </div>
         </div>
@@ -1581,6 +1753,9 @@ function SubtaskRow({
         {/* Edit / Delete: PIC only */}
         {canEdit && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+            <button onClick={onManageDependencies} className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Kelola Ketergantungan (Predecessor)">
+              <Link2 size={14} />
+            </button>
             <button onClick={onEdit} className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Edit Task (Name & Weight)">
               <Edit2 size={14} />
             </button>
@@ -1665,11 +1840,35 @@ function UploadEvidenceModal({
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [completeChecked, setCompleteChecked] = useState(requireComplete || task.progress === 100);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFileError(null);
     const selected = Array.from(e.target.files || []);
-    if (selected.length > 0) {
-      setFiles(prev => [...prev, ...selected]);
+    const validFiles: File[] = [];
+
+    for (const file of selected) {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (!ext || !['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
+        setFileError(`Format berkas "${file.name}" tidak diizinkan. Hanya berkas PDF, JPG, atau PNG yang diperbolehkan.`);
+        return;
+      }
+
+      if (ext === 'pdf' && file.size > 20 * 1024 * 1024) {
+        setFileError(`Ukuran berkas PDF "${file.name}" melebihi batas maksimal 20 MB.`);
+        return;
+      }
+
+      if (['jpg', 'jpeg', 'png'].includes(ext) && file.size > 10 * 1024 * 1024) {
+        setFileError(`Ukuran berkas gambar "${file.name}" melebihi batas maksimal 10 MB.`);
+        return;
+      }
+
+      validFiles.push(file);
+    }
+
+    if (validFiles.length > 0) {
+      setFiles(prev => [...prev, ...validFiles]);
     }
   };
 
@@ -1699,11 +1898,18 @@ function UploadEvidenceModal({
       size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {fileError && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+            <AlertCircle size={16} className="text-red-600 flex-shrink-0" />
+            <span>{fileError}</span>
+          </div>
+        )}
+
         {/* Required Notice Alert */}
         <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12px] leading-relaxed">
           <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
-            <strong className="font-bold">Syarat Wajib:</strong> Lampiran bukti penyelesaian (foto pelaksanaan, berkas serah terima, atau dokumen PDF/gambar) wajib diunggah untuk dapat menandai task ini selesai (100%).
+            <strong className="font-bold">Ketentuan Berkas Bukti:</strong> Hanya format <strong>PDF (maksimal 20 MB)</strong> atau <strong>Foto JPG/PNG (maksimal 10 MB)</strong> yang diperbolehkan untuk diunggah.
           </div>
         </div>
 
@@ -1730,13 +1936,13 @@ function UploadEvidenceModal({
               Pilih atau seret berkas bukti (evidence) ke sini
             </span>
             <span className="text-[11.5px] text-neutral-400 mt-1">
-              Mendukung foto dan dokumen PDF, bisa pilih lebih dari 1
+              Hanya format PDF (maks. 20 MB) atau Foto JPG/PNG (maks. 10 MB)
             </span>
             <input
               type="file"
               multiple
               required={(!task.evidences || task.evidences.length === 0) && files.length === 0}
-              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+              accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
               className="hidden"
               onChange={handleFileChange}
             />
@@ -1834,6 +2040,8 @@ function SearchablePredecessorSelect({
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -1845,6 +2053,24 @@ function SearchablePredecessorSelect({
   }, []);
 
   const query = search.trim().toLowerCase();
+
+  useEffect(() => {
+    if (query) {
+      const newExpanded = { ...expandedGroups };
+      availableSubMainJobs.forEach(smj => {
+        const matchingTasks = (smj.subtasks || []).filter(st => {
+          if (st.id === currentTaskId || st.code === currentTaskCode) return false;
+          return st.name.toLowerCase().includes(query) ||
+                 st.code.toLowerCase().includes(query) ||
+                 (st.division && st.division.toLowerCase().includes(query));
+        });
+        if (matchingTasks.length > 0) {
+          newExpanded[smj.id] = true;
+        }
+      });
+      setExpandedGroups(newExpanded);
+    }
+  }, [query, availableSubMainJobs]);
 
   // Find currently selected label
   let selectedLabel = value ? `Unknown Predecessor (${value})` : 'None (No Predecessor)';
@@ -1936,41 +2162,49 @@ function SearchablePredecessorSelect({
                 No matching tasks found for "{search}"
               </div>
             ) : (
-              filteredGroups.map(({ smj, matchingTasks }) => (
-                <div key={smj.id || smj.code} className="pt-1.5 pb-1">
-                  <div className="px-3 py-1 text-[11px] font-black text-neutral-400 uppercase tracking-wider">
-                    {smj.code} · {smj.name}
-                  </div>
-                  {/* Sub-Task label (Unclickable) */}
-                  <div className="w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg flex items-center justify-between text-neutral-800 bg-neutral-100/50 mb-1">
-                    <span className="truncate font-medium">
-                      <strong>{smj.code}</strong> - {smj.name}
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-neutral-200/80 text-neutral-500 uppercase">
-                      Sub-Task Group
-                    </span>
-                  </div>
-
-                  {/* Specific Task items */}
-                  {matchingTasks.map(st => (
-                    <button
-                      key={st.id || st.code}
-                      type="button"
-                      onClick={() => {
-                        onChange(st.id);
-                        setIsOpen(false);
-                      }}
-                      className={`w-full text-left pl-6 pr-3 py-1.5 text-[12px] rounded-lg transition-colors flex items-center justify-between ${
-                        value === st.id ? 'bg-brand text-white font-bold' : 'text-neutral-700 hover:bg-neutral-50'
-                      }`}
+              filteredGroups.map(({ smj, matchingTasks }) => {
+                const isExpanded = expandedGroups[smj.id] || false;
+                
+                return (
+                  <div key={smj.id || smj.code} className="pt-1.5 pb-1">
+                    <div className="px-3 py-1 text-[11px] font-black text-neutral-400 uppercase tracking-wider">
+                      {smj.code} · {smj.name}
+                    </div>
+                    {/* Sub-Task label (Clickable to expand/collapse) */}
+                    <div 
+                      onClick={() => setExpandedGroups(prev => ({ ...prev, [smj.id]: !prev[smj.id] }))}
+                      className="w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg flex items-center justify-between text-neutral-800 bg-neutral-100/50 mb-1 cursor-pointer hover:bg-neutral-200/50 transition-colors"
                     >
-                      <span className="truncate">
-                        <strong>{st.code}</strong> - {st.name}
+                      <span className="truncate font-medium flex items-center gap-1.5">
+                        <ChevronRight size={14} className={`text-neutral-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        <strong>{smj.code}</strong> - {smj.name}
                       </span>
-                    </button>
-                  ))}
-                </div>
-              ))
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-neutral-200/80 text-neutral-500 uppercase flex-shrink-0 ml-2">
+                        Sub-Task Group
+                      </span>
+                    </div>
+
+                    {/* Specific Task items */}
+                    {isExpanded && matchingTasks.map(st => (
+                      <button
+                        key={st.id || st.code}
+                        type="button"
+                        onClick={() => {
+                          onChange(st.id);
+                          setIsOpen(false);
+                        }}
+                        className={`w-full text-left pl-8 pr-3 py-1.5 text-[12px] rounded-lg transition-colors flex items-center justify-between ${
+                          value === st.id ? 'bg-brand text-white font-bold' : 'text-neutral-700 hover:bg-neutral-50'
+                        }`}
+                      >
+                        <span className="truncate">
+                          <strong>{st.code}</strong> - {st.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -2169,10 +2403,20 @@ function AddSubtaskModal({
       ? (divisions.find((d: any) => d.divisi?.toLowerCase() === initialData.division?.toLowerCase())?.id?.toString() || divisions[0]?.id?.toString() || '')
       : (divisions[0]?.id?.toString() || '')
   );
-  const [predecessor, setPredecessor] = useState(initialData?.predecessor || '');
-  const [depType, setDepType] = useState<DependencyType>(initialData?.depType || 'FS');
-  const [lag, setLag] = useState(initialData?.lag ? initialData.lag.toString() : '0');
-  const [lead, setLead] = useState(initialData?.lead ? initialData.lead.toString() : '0');
+  
+  const [dependencies, setDependencies] = useState<Array<{
+    id: string;
+    predecessor: string;
+    depType: DependencyType;
+    lag: string;
+    lead: string;
+  }>>(isEdit ? [] : [{
+    id: 'dep-1',
+    predecessor: initialData?.predecessor || '',
+    depType: initialData?.depType || 'FS',
+    lag: initialData?.lag ? initialData.lag.toString() : '0',
+    lead: initialData?.lead ? initialData.lead.toString() : '0'
+  }]);
   const [requiresEvidence, setRequiresEvidence] = useState(initialData?.requiresEvidence ?? false);
 
   // Available SubMainJobs across the project
@@ -2180,58 +2424,126 @@ function AddSubtaskModal({
     ? mainJobs.flatMap(mj => mj.subMainJobs || [])
     : (parentSmj ? [parentSmj] : []);
 
+  const allTasks = mainJobs?.flatMap(mj => mj.subMainJobs?.flatMap(smj => smj.subtasks || []) || []) || [];
+
   // Find predecessor task to calculate automatic start date
   useEffect(() => {
-    if (!predecessor) return;
-    
-    let predTask = null;
-    for (const mj of mainJobs) {
-      for (const smj of (mj.subMainJobs || [])) {
-        const found = smj.subtasks?.find(st => st.id === predecessor || st.code === predecessor);
-        if (found) {
-          predTask = found;
-          break;
+    let maxStart: Date | null = null;
+    let hasValidDep = false;
+
+    dependencies.forEach(dep => {
+      if (!dep.predecessor || dep.predecessor === '-') return;
+      
+      let predTask = null;
+      for (const mj of mainJobs) {
+        for (const smj of (mj.subMainJobs || [])) {
+          const found = smj.subtasks?.find(st => st.id === dep.predecessor || st.code === dep.predecessor);
+          if (found) {
+            predTask = found;
+            break;
+          }
+        }
+        if (predTask) break;
+      }
+      
+      if (predTask) {
+        hasValidDep = true;
+        const pStart = new Date(predTask.startDate);
+        const pEnd = new Date(predTask.finishDate);
+        const lagDays = parseInt(dep.lag) || 0;
+        const leadDays = parseInt(dep.lead) || 0;
+        const offset = leadDays - lagDays;
+        
+        let newStart = new Date();
+        if (dep.depType === 'FS') {
+          newStart = new Date(pEnd);
+          newStart.setDate(newStart.getDate() + offset);
+        } else if (dep.depType === 'SS') {
+          newStart = new Date(pStart);
+          newStart.setDate(newStart.getDate() + offset);
+        } else if (dep.depType === 'FF') {
+          const newEnd = new Date(pEnd);
+          newEnd.setDate(newEnd.getDate() + offset);
+          newStart = new Date(newEnd);
+          newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
+        } else if (dep.depType === 'SF') {
+          const newEnd = new Date(pStart);
+          newEnd.setDate(newEnd.getDate() + offset);
+          newStart = new Date(newEnd);
+          newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
+        }
+        
+        if (!maxStart || newStart > maxStart) {
+          maxStart = newStart;
         }
       }
-      if (predTask) break;
+    });
+
+    if (hasValidDep && maxStart) {
+      setStartDate(maxStart.toISOString().slice(0, 10));
     }
+  }, [dependencies, duration, mainJobs]);
+
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setStartDate(val);
     
-    if (predTask) {
+    setDependencies(prevDeps => prevDeps.map(dep => {
+      if (!dep.predecessor || dep.predecessor === '-') return dep;
+
+      let predTask = null;
+      for (const mj of mainJobs) {
+        for (const smj of (mj.subMainJobs || [])) {
+          const found = smj.subtasks?.find(st => st.id === dep.predecessor || st.code === dep.predecessor);
+          if (found) {
+            predTask = found;
+            break;
+          }
+        }
+        if (predTask) break;
+      }
+
+      if (!predTask) return dep;
+
       const pStart = new Date(predTask.startDate);
       const pEnd = new Date(predTask.finishDate);
-      const lagDays = parseInt(lag) || 0;
-      const leadDays = parseInt(lead) || 0;
-      const offset = lagDays - leadDays;
-      
-      let newStart = new Date();
-      if (depType === 'FS') {
-        newStart = new Date(pEnd);
-        newStart.setDate(newStart.getDate() + 1 + offset);
-      } else if (depType === 'SS') {
-        newStart = new Date(pStart);
-        newStart.setDate(newStart.getDate() + offset);
-      } else if (depType === 'FF') {
-        const newEnd = new Date(pEnd);
-        newEnd.setDate(newEnd.getDate() + offset);
-        newStart = new Date(newEnd);
-        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1) + 1);
-      } else if (depType === 'SF') {
-        const newEnd = new Date(pStart);
-        newEnd.setDate(newEnd.getDate() + 1 + offset);
-        newStart = new Date(newEnd);
-        newStart.setDate(newStart.getDate() - (parseInt(duration) || 1) + 1);
-      }
-      
-      setStartDate(newStart.toISOString().slice(0, 10));
-    }
-  }, [predecessor, depType, lag, lead, duration, mainJobs]);
+      const d = new Date(val);
 
-  // Calculate finish date preview
+      pStart.setHours(0,0,0,0);
+      pEnd.setHours(0,0,0,0);
+      d.setHours(0,0,0,0);
+
+      const diffDays = (d1: Date, d2: Date) => Math.round((d1.getTime() - d2.getTime()) / (1000 * 3600 * 24));
+      
+      let offset = 0;
+      if (dep.depType === 'FS') {
+        offset = diffDays(d, pEnd);
+      } else if (dep.depType === 'SS') {
+        offset = diffDays(d, pStart);
+      } else if (dep.depType === 'FF') {
+        const dEnd = new Date(d);
+        dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
+        offset = diffDays(dEnd, pEnd);
+      } else if (dep.depType === 'SF') {
+        const dEnd = new Date(d);
+        dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
+        offset = diffDays(dEnd, pStart);
+      }
+
+      return {
+        ...dep,
+        lead: offset > 0 ? offset.toString() : '0',
+        lag: offset < 0 ? Math.abs(offset).toString() : '0'
+      };
+    }));
+  };
+
+  // Calculate finish date preview - strictly after start date (min. +1 day: e.g. start 28 -> end 29)
   const finishDatePreview = useMemo(() => {
     try {
       const d = new Date(startDate);
-      const dur = parseInt(duration) || 1;
-      d.setDate(d.getDate() + dur - 1); // standard inclusive duration
+      const dur = Math.max(1, parseInt(duration) || 1);
+      d.setDate(d.getDate() + dur);
       return d.toISOString().slice(0, 10);
     } catch {
       return startDate;
@@ -2249,11 +2561,18 @@ function AddSubtaskModal({
       weight: parseFloat(weight) || 100,
       divisionId: divisionId ? parseInt(divisionId) : undefined,
       startDate,
+      finishDate: finishDatePreview,
       duration: parseInt(duration) || 1,
-      predecessor: predecessor || undefined,
-      depType,
-      lag: parseInt(lag) || 0,
-      lead: parseInt(lead) || 0,
+      predecessor: undefined,
+      depType: 'FS',
+      lag: 0,
+      lead: 0,
+      predecessors: dependencies.filter(d => d.predecessor && d.predecessor !== '-').map(d => ({
+        predecessor: d.predecessor,
+        dep_type: d.depType,
+        lag: parseInt(d.lag) || 0,
+        lead: parseInt(d.lead) || 0,
+      })),
       requiresEvidence,
     });
   };
@@ -2265,8 +2584,9 @@ function AddSubtaskModal({
       onClose={onClose}
       size="md"
     >
-      <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
-        {/* Task Name */}
+      <form onSubmit={handleSubmit} className="flex flex-col">
+        <div className="space-y-4 pr-1">
+          {/* Task Name */}
         <div>
           <label className="block text-[12px] font-bold text-neutral-700 mb-1">
             Task Description <span className="text-danger">*</span>
@@ -2321,80 +2641,104 @@ function AddSubtaskModal({
               type="date"
               required
               value={startDate}
-              onChange={e => setStartDate(e.target.value)}
+              onChange={handleStartDateChange}
               className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
             />
           </div>
         </div>
 
-        {/* Predecessor (Full Width) */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Predecessor (WBS Task / Sub-sub Task)
-          </label>
-          <SearchablePredecessorSelect
-            value={predecessor}
-            onChange={setPredecessor}
-            availableSubMainJobs={availableSubMainJobs}
-            currentTaskId={initialData?.id}
-            currentTaskCode={initialData?.code}
-          />
-        </div>
+        {/* Predecessors (Only shown if NOT edit mode, or if they want to manage them) */}
+        {!isEdit && (
+          <div className="space-y-3 pt-2 border-t border-neutral-100">
+            <div className="flex items-center justify-between">
+              <label className="block text-[12px] font-bold text-neutral-700">
+                Predecessors (WBS Task)
+              </label>
+              <button
+                type="button"
+                onClick={() => setDependencies(d => [...d, { id: `dep-${Date.now()}`, predecessor: '', depType: 'FS', lag: '0', lead: '0' }])}
+                className="text-[11px] font-bold text-brand hover:text-brand-dark px-2 py-1 bg-brand/5 rounded-lg transition-colors flex items-center gap-1"
+              >
+                <Plus size={12} /> Add Predecessor
+              </button>
+            </div>
 
-        {/* Dependency Type (Full Width) */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Dependency Type
-          </label>
-          <select
-            value={depType}
-            onChange={e => setDepType(e.target.value as DependencyType)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
-          >
-            <option value="FS">Finish-to-Start (FS)</option>
-            <option value="SS">Start-to-Start (SS)</option>
-            <option value="FF">Finish-to-Finish (FF)</option>
-            <option value="SF">Start-to-Finish (SF)</option>
-          </select>
-        </div>
-        
-        {/* Lag and Lead */}
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-100">
-          <div>
-            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Lag (Days)
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={lag}
-              onChange={e => {
-                const v = e.target.value;
-                setLag(v);
-                if (parseInt(v) > 0) setLead('0');
-              }}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
-              placeholder="0"
-            />
+            {dependencies.length === 0 ? (
+              <div className="text-[12px] text-neutral-500 italic p-3 bg-neutral-50 rounded-lg text-center border border-neutral-200">
+                No predecessors added. Task will start according to its own schedule.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {dependencies.map((dep, index) => (
+                  <div key={dep.id} className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 relative group">
+                    <button
+                      type="button"
+                      onClick={() => setDependencies(d => d.filter(x => x.id !== dep.id))}
+                      className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity border border-red-200 hover:bg-red-200 z-10"
+                      title="Remove Dependency"
+                    >
+                      <X size={12} />
+                    </button>
+                    
+                    <div className="space-y-2">
+                      <SearchablePredecessorSelect
+                        value={dep.predecessor}
+                        onChange={v => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, predecessor: v } : x))}
+                        availableSubMainJobs={availableSubMainJobs}
+                        currentTaskId={initialData?.id}
+                        currentTaskCode={initialData?.code}
+                      />
+
+                      <div className="grid grid-cols-[2fr_1fr_1fr] gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">Type</label>
+                          <select
+                            value={dep.depType}
+                            onChange={e => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, depType: e.target.value as any } : x))}
+                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] outline-none focus:border-brand bg-white font-medium"
+                          >
+                            <option value="FS">Finish-to-Start</option>
+                            <option value="SS">Start-to-Start</option>
+                            <option value="FF">Finish-to-Finish</option>
+                            <option value="SF">Start-to-Finish</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">Lag</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={dep.lag}
+                            onChange={e => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, lag: e.target.value } : x))}
+                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">Lead</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={dep.lead}
+                            onChange={e => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, lead: e.target.value } : x))}
+                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div>
-            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Lead (Days)
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={lead}
-              onChange={e => {
-                const v = e.target.value;
-                setLead(v);
-                if (parseInt(v) > 0) setLag('0');
-              }}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
-              placeholder="0"
-            />
+        )}
+        {isEdit && (
+          <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-start gap-2.5">
+            <Info size={14} className="text-blue-500 mt-0.5 flex-shrink-0" />
+            <p className="text-[11.5px] text-blue-800 font-medium leading-relaxed">
+              To add or manage task dependencies for this existing task, use the <strong className="text-blue-900">"Kelola Ketergantungan"</strong> button on the task row.
+            </p>
           </div>
-        </div>
+        )}
 
         {/* Evidence Requirement */}
         <div className="pt-2 border-t border-neutral-100">
@@ -2412,8 +2756,10 @@ function AddSubtaskModal({
            </label>
         </div>
 
+        </div>
+
         {/* Action Buttons */}
-        <div className="flex justify-end gap-2 pt-4">
+        <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-neutral-100 shrink-0">
           <Button variant="outline" size="sm" type="button" onClick={onClose}>
             Cancel
           </Button>
@@ -2427,6 +2773,295 @@ function AddSubtaskModal({
           </Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function ManageDependenciesModal({
+  isOpen,
+  task,
+  allSubtasks,
+  depForm,
+  setDepForm,
+  onClose,
+  onAddDependency,
+  onRemoveDependency,
+  submitting,
+  actionError
+}: {
+  isOpen: boolean;
+  task?: SubSubtask;
+  allSubtasks: SubSubtask[];
+  depForm: any;
+  setDepForm: (val: any) => void;
+  onClose: () => void;
+  onAddDependency: (e: React.FormEvent) => void;
+  onRemoveDependency: (depId: number) => void;
+  submitting: boolean;
+  actionError: string;
+}) {
+  const [searchDep, setSearchDep] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  if (!isOpen || !task) return null;
+
+  const dependencyGroups = (task.dependencies ?? []).reduce((groups, dependency) => {
+    const key = dependency.dependency_group_id ?? `dependency-${dependency.id}`;
+    const group = groups.get(key) ?? [];
+    group.push(dependency);
+    groups.set(key, group);
+    return groups;
+  }, new Map<number | string, NonNullable<typeof task.dependencies>>());
+
+  const availableTasks = allSubtasks
+    .filter(t => t.id !== task.id)
+    .filter(t => !task.dependencies?.some(dep => String(dep.predecessor_wbs_id) === String(t.id)));
+
+  const filteredTasks = availableTasks.filter(t => 
+    (t.code + ' ' + t.name).toLowerCase().includes(searchDep.toLowerCase())
+  );
+
+  const groupedAvailableTasks = filteredTasks.reduce((acc, t) => {
+    const parts = t.code.split('.');
+    const prefix = parts.length > 1 ? parts.slice(0, parts.length - 1).join('.') : t.code;
+    if (!acc[prefix]) acc[prefix] = [];
+    acc[prefix].push(t);
+    return acc;
+  }, {} as Record<string, SubSubtask[]>);
+
+  return (
+    <Modal
+      title={`Kelola Ketergantungan: ${task.name}`}
+      onClose={onClose}
+      size="lg"
+    >
+      <div className="space-y-5">
+        {/* Task Info Header */}
+        <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200 text-[12.5px] flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span className="text-neutral-500 font-medium">Task ID / Code:</span>{' '}
+            <strong className="font-mono text-neutral-900">{task.code}</strong>
+          </div>
+          <div>
+            <span className="text-neutral-500 font-medium">Jadwal:</span>{' '}
+            <strong>{task.startDate ? formatDateDisplay(task.startDate) : '-'} → {task.finishDate ? formatDateDisplay(task.finishDate) : '-'}</strong>
+          </div>
+          <div>
+            <span className="text-neutral-500 font-medium">Durasi:</span>{' '}
+            <strong>{task.duration} hari</strong>
+          </div>
+        </div>
+
+        {actionError && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold">
+            {actionError}
+          </div>
+        )}
+
+        {/* List of existing dependencies */}
+        <div>
+          <h4 className="text-[13px] font-bold text-neutral-900 mb-2 flex items-center gap-1.5">
+            <Link2 size={15} className="text-brand" />
+            Predecessor Terhubung ({task.dependencies?.length || 0})
+          </h4>
+
+          {(!task.dependencies || task.dependencies.length === 0) ? (
+            <div className="p-4 text-center rounded-xl bg-neutral-50 border border-neutral-200 text-neutral-500 text-[12.5px] italic">
+              Belum ada predecessor yang terhubung dengan task ini.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {[...dependencyGroups.entries()].map(([groupId, dependencies]) => {
+                const type = dependencies[0].dependency_type;
+                const typeDescription = {
+                  FS: 'Finish-to-Start (Task ini mulai setelah predecessor selesai)',
+                  SS: 'Start-to-Start (Task ini mulai setelah predecessor mulai)',
+                  FF: 'Finish-to-Finish (Task ini selesai setelah predecessor selesai)',
+                  SF: 'Start-to-Finish (Task ini selesai setelah predecessor mulai)',
+                }[type];
+
+                return (
+                  <div key={groupId} className="p-3 rounded-xl bg-white border border-neutral-200 shadow-2xs">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-mono font-black bg-indigo-100 text-indigo-800">
+                        {type}
+                      </span>
+                      <span className="text-[11.5px] text-neutral-500">
+                        {dependencies.length > 1 ? `Semua ${dependencies.length} predecessor wajib terpenuhi` : typeDescription}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {dependencies.map(dep => (
+                        <div key={dep.id} className="flex items-center justify-between gap-3">
+                          <div>
+                            <strong className="text-[13px] text-neutral-900">{dep.predecessor_name}</strong>
+                            {dep.lag_days !== 0 && (
+                              <span className="ml-2 text-[11px] text-neutral-500">
+                                Jeda: {dep.lag_days > 0 ? `+${dep.lag_days}` : dep.lag_days} hari
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveDependency(dep.id)}
+                            className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Hapus Ketergantungan"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Add New Dependency Form */}
+        <form onSubmit={onAddDependency} className="p-4 rounded-xl bg-neutral-50/80 border border-neutral-200 space-y-3">
+          <h5 className="text-[12.5px] font-bold text-neutral-900">
+            + Tambah Ketergantungan Baru
+          </h5>
+
+          <div>
+            <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
+              Pilih Task Predecessor (bisa lebih dari satu) <span className="text-red-500">*</span>
+            </label>
+            
+            {/* Search Input */}
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={14} />
+              <input
+                type="text"
+                placeholder="Cari berdasarkan kode atau nama task..."
+                value={searchDep}
+                onChange={e => setSearchDep(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-white border border-neutral-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand"
+              />
+            </div>
+
+            <div className="max-h-[220px] overflow-y-auto border border-neutral-200 rounded-lg bg-white p-2 space-y-1 custom-scrollbar">
+              {Object.keys(groupedAvailableTasks).length === 0 ? (
+                <div className="text-[11.5px] text-neutral-500 italic text-center py-4">
+                  Tidak ada task yang tersedia atau cocok dengan pencarian.
+                </div>
+              ) : (
+                Object.entries(groupedAvailableTasks).map(([prefix, tasks]) => {
+                  const isExpanded = expandedGroups[prefix] ?? true; // expanded by default
+                  
+                  return (
+                    <div key={prefix} className="mb-2 last:mb-0">
+                      {/* Group Header */}
+                      <div 
+                        onClick={() => setExpandedGroups(prev => ({ ...prev, [prefix]: !isExpanded }))}
+                        className="flex items-center gap-2 px-2 py-1.5 bg-neutral-100 rounded-lg cursor-pointer hover:bg-neutral-200/60 transition-colors mb-1"
+                      >
+                        <ChevronRight size={14} className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        <span className="text-[11px] font-black text-neutral-700 uppercase tracking-wider">
+                          WBS Group: {prefix} ({tasks.length})
+                        </span>
+                      </div>
+                      
+                      {/* Group Items */}
+                      {isExpanded && (
+                        <div className="space-y-1 pl-1">
+                          {tasks.map(t => (
+                            <label key={t.id} className={`flex items-start gap-2.5 px-2.5 py-2 hover:bg-neutral-50 rounded-lg cursor-pointer transition-colors border ${depForm.predecessor_wbs_ids.includes(t.id) ? 'border-brand/30 bg-brand/5' : 'border-transparent'}`}>
+                              <input 
+                                type="checkbox"
+                                checked={depForm.predecessor_wbs_ids.includes(t.id)}
+                                onChange={(e) => {
+                                  const newIds = e.target.checked 
+                                    ? [...depForm.predecessor_wbs_ids, t.id]
+                                    : depForm.predecessor_wbs_ids.filter(id => id !== t.id);
+                                  setDepForm({ ...depForm, predecessor_wbs_ids: newIds });
+                                }}
+                                className="mt-0.5 text-brand focus:ring-brand rounded border-neutral-300 cursor-pointer"
+                              />
+                              <div className="flex flex-col flex-1 min-w-0">
+                                <span className="text-[12px] font-bold text-neutral-800 line-clamp-1">{t.code} - {t.name}</span>
+                                <span className="text-[10.5px] text-neutral-500">
+                                  {t.startDate ? formatDateDisplay(t.startDate) : '-'} s/d {t.finishDate ? formatDateDisplay(t.finishDate) : '-'}
+                                </span>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11.5px] font-bold text-neutral-700">
+                  Tipe Ketergantungan <span className="text-red-500">*</span>
+                </label>
+                <div className="relative group">
+                  <Info size={14} className="text-brand cursor-help" />
+                  <div className="pointer-events-none absolute bottom-full right-[-10px] mb-2 w-[280px] opacity-0 group-hover:opacity-100 transition-opacity z-10 p-3 bg-neutral-800 text-white text-[11px] rounded-xl shadow-xl leading-relaxed">
+                    <div className="font-bold text-[12px] mb-2 border-b border-neutral-600 pb-1">Panduan Relasi (Dependency)</div>
+                    <ul className="space-y-2">
+                      <li><strong className="text-emerald-400">FS (Finish-to-Start):</strong> Task B mulai setelah Task A selesai.</li>
+                      <li><strong className="text-blue-400">SS (Start-to-Start):</strong> Task B mulai bersamaan dengan Task A.</li>
+                      <li><strong className="text-purple-400">FF (Finish-to-Finish):</strong> Task B selesai bersamaan dengan Task A.</li>
+                      <li><strong className="text-orange-400">SF (Start-to-Finish):</strong> Task B selesai setelah Task A mulai.</li>
+                    </ul>
+                    <div className="mt-2 pt-2 border-t border-neutral-600">
+                      <strong className="text-yellow-400">Jeda (Lag):</strong> Waktu tunggu (hari).<br/>
+                      <span className="text-neutral-400 text-[10px]">Positif (+) = menunda mulai, Negatif (-) = mulai lebih awal.</span>
+                    </div>
+                    <div className="absolute top-full right-3 border-4 border-transparent border-t-neutral-800" />
+                  </div>
+                </div>
+              </div>
+              <select
+                value={depForm.dependency_type}
+                onChange={e => setDepForm({ ...depForm, dependency_type: e.target.value as any })}
+                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
+              >
+                <option value="FS">FS: Finish-to-Start (Standar)</option>
+                <option value="SS">SS: Start-to-Start</option>
+                <option value="FF">FF: Finish-to-Finish</option>
+                <option value="SF">SF: Start-to-Finish</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
+                Jeda / Lag (Hari)
+              </label>
+              <input
+                type="number"
+                value={depForm.lag_days}
+                onChange={e => setDepForm({ ...depForm, lag_days: parseInt(e.target.value) || 0 })}
+                placeholder="0"
+                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+              />
+              <span className="text-[10.5px] text-neutral-500 mt-0.5 block">
+                Nilai positif (+) = jeda hari, negatif (-) = percepatan (lead time).
+              </span>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button
+              variant="primary"
+              size="sm"
+              type="submit"
+              disabled={submitting || depForm.predecessor_wbs_ids.length === 0}
+              icon={Link2}
+            >
+              {submitting ? 'Menyambungkan...' : 'Hubungkan Predecessor'}
+            </Button>
+          </div>
+        </form>
+      </div>
     </Modal>
   );
 }

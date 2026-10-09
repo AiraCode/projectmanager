@@ -156,4 +156,20 @@ class SuperAdminController extends Controller
             'projects' => $projects,
         ]);
     }
+    public function divisionsPage()
+    {
+        $divisions = \App\Models\Division::withCount(['users'])
+            ->latest()
+            ->get()
+            ->map(fn($d) => [
+                'id'          => $d->id,
+                'divisi'      => $d->divisi,
+                'users_count' => $d->users_count,
+                'created_at'  => $d->created_at?->format('d M Y'),
+            ]);
+
+        return Inertia::render('SuperAdmin/DivisionsPage', [
+            'divisions' => $divisions,
+        ]);
+    }
 }
