@@ -287,7 +287,7 @@ export default function TimelinePage() {
                 onClick={() => setShowAllPhases((v) => !v)}
                 className="text-[11px] text-brand font-semibold px-2 py-0.5 rounded-md bg-brand-light hover:bg-brand/15 border border-brand/25 transition-colors"
               >
-                {showAllPhases ? 'Tampilkan lebih sedikit' : `+${remainingPhaseCount} lainnya`}
+                {showAllPhases ? 'Show less' : `+${remainingPhaseCount} more`}
               </button>
             )}
           </div>
@@ -301,7 +301,7 @@ export default function TimelinePage() {
           </div>
           <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-danger bg-danger-light px-2.5 py-1 rounded-lg border border-danger/20 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-danger animate-pulse" />
-            <span>Today · {TODAY.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+            <span>Today · {TODAY.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
           </div>
         </div>
       </div>

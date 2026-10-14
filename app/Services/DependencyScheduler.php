@@ -182,6 +182,21 @@ class DependencyScheduler
             $newStart = $currentStart->copy();
         }
 
+        $mainWbs = $task->parentSubWbs?->mainWbs;
+        $project = $mainWbs?->project;
+        $minLimit = $mainWbs?->start ? Carbon::parse($mainWbs->start)->startOfDay() : ($project?->start ? Carbon::parse($project->start)->startOfDay() : null);
+        $maxLimit = $mainWbs?->end ? Carbon::parse($mainWbs->end)->startOfDay() : ($project?->end ? Carbon::parse($project->end)->startOfDay() : null);
+
+        // Clamp: never start before minLimit (Project / Main Task start)
+        if ($minLimit && $newStart->lt($minLimit)) {
+            $newStart = $minLimit->copy();
+        }
+
+        // Clamp: never start after maxLimit (Main Task finish date)
+        if ($maxLimit && $newStart->gt($maxLimit)) {
+            $newStart = $maxLimit->copy();
+        }
+
         $newEnd = $newStart->copy()->addDays($durationDays);
 
         // Guarantee end is strictly after start (at least 1 day)
@@ -323,10 +338,25 @@ class DependencyScheduler
                     $mainStart = $siblingSubs->min('start');
                     $mainEnd   = $siblingSubs->max('end');
 
-                    $mainWbs->update([
-                        'start' => $mainStart,
-                        'end'   => $mainEnd,
-                    ]);
+                    $project = $mainWbs->project;
+                    if ($project && $project->end && $mainEnd && Carbon::parse($mainEnd)->gt(Carbon::parse($project->end))) {
+                        $mainEnd = Carbon::parse($project->end);
+                    }
+                    if ($project && $project->start && $mainStart && Carbon::parse($mainStart)->lt(Carbon::parse($project->start))) {
+                        $mainStart = Carbon::parse($project->start);
+                    }
+
+                    $updates = [];
+                    if (!$mainWbs->start || ($mainStart && Carbon::parse($mainStart)->lt(Carbon::parse($mainWbs->start)))) {
+                        $updates['start'] = $mainStart;
+                    }
+                    if (!$mainWbs->end || ($mainEnd && Carbon::parse($mainEnd)->gt(Carbon::parse($mainWbs->end)))) {
+                        $updates['end'] = $mainEnd;
+                    }
+
+                    if (!empty($updates)) {
+                        $mainWbs->update($updates);
+                    }
                 }
             }
         }

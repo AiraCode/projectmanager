@@ -722,12 +722,12 @@ class ProjectController extends Controller
 
         $mainTasks = MainWbs::where('projects_id', $project->id)->with('subWbs')->get();
         if ($mainTasks->isEmpty()) {
-            return back()->with('error', 'Proyek harus memiliki minimal 1 Main Task.');
+            return back()->with('error', 'The project must have at least 1 Main Task.');
         }
 
         foreach ($mainTasks as $mt) {
             if ($mt->subWbs->isEmpty()) {
-                return back()->with('error', "Main Task '{$mt->name}' harus memiliki minimal 1 Sub Task.");
+                return back()->with('error', "Main Task '{$mt->name}' must have at least 1 Sub Task.");
             }
         }
 
@@ -748,7 +748,7 @@ class ProjectController extends Controller
         ]);
 
         return redirect()->route('projects.show', $project->id)
-            ->with('success', 'Konfigurasi proyek selesai! Proyek telah aktif dan siap dikerjakan.');
+            ->with('success', 'Project setup complete! The project is now active.');
     }
 
     /**
@@ -903,7 +903,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($projectId);
 
-        return back()->with('success', 'Ketergantungan tugas berhasil ditambahkan dan jadwal diperbarui.');
+        return back()->with('success', 'Task dependency added and schedule updated successfully.');
     }
 
     /**
@@ -955,7 +955,7 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($projectId);
 
-        return back()->with('success', 'Ketergantungan berhasil dihapus.');
+        return back()->with('success', 'Dependency removed successfully.');
     }
 
     /**
@@ -983,8 +983,29 @@ class ProjectController extends Controller
             'name' => $validated['name'],
         ]);
 
-        $start = !empty($validated['start']) ? Carbon::parse($validated['start']) : ($project->start ?? Carbon::now());
-        $end   = !empty($validated['end']) ? Carbon::parse($validated['end']) : ($project->end ?? Carbon::now()->addMonths(6));
+        $start = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($project->start ? Carbon::parse($project->start)->startOfDay() : Carbon::now()->startOfDay());
+        $end   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : ($project->end ? Carbon::parse($project->end)->startOfDay() : Carbon::now()->addMonths(6)->startOfDay());
+
+        if ($project->start) {
+            $projStart = Carbon::parse($project->start)->startOfDay();
+            if ($start->lt($projStart)) {
+                return back()->withErrors(['start' => "Start date Main Task ({$start->format('d/m/Y')}) tidak boleh lebih awal dari Start Date proyek ({$projStart->format('d/m/Y')})."]);
+            }
+        }
+
+        if ($project->end) {
+            $projEnd = Carbon::parse($project->end)->startOfDay();
+            if ($end->gt($projEnd)) {
+                return back()->withErrors(['end' => "End date Main Task ({$end->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+            }
+            if ($start->gt($projEnd)) {
+                return back()->withErrors(['start' => "Start date Main Task ({$start->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+            }
+        }
+
+        if ($end->lte($start)) {
+            return back()->withErrors(['end' => 'End date Main Task harus setelah Start date (minimal 1 hari setelahnya).']);
+        }
 
         MainWbs::create([
             'projects_id'            => $project->id,
@@ -1027,23 +1048,41 @@ class ProjectController extends Controller
             'end'    => 'nullable|date',
         ]);
 
+        $newStart = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($mainWbs->start ? Carbon::parse($mainWbs->start)->startOfDay() : null);
+        $newEnd   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : ($mainWbs->end ? Carbon::parse($mainWbs->end)->startOfDay() : null);
+
+        if ($project->start && $newStart) {
+            $projStart = Carbon::parse($project->start)->startOfDay();
+            if ($newStart->lt($projStart)) {
+                return back()->withErrors(['start' => "Start date Main Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari Start Date proyek ({$projStart->format('d/m/Y')})."]);
+            }
+        }
+
+        if ($project->end) {
+            $projEnd = Carbon::parse($project->end)->startOfDay();
+            if ($newEnd && $newEnd->gt($projEnd)) {
+                return back()->withErrors(['end' => "End date Main Task ({$newEnd->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+            }
+            if ($newStart && $newStart->gt($projEnd)) {
+                return back()->withErrors(['start' => "Start date Main Task ({$newStart->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+            }
+        }
+
+        if ($newStart && $newEnd && $newEnd->lte($newStart)) {
+            return back()->withErrors(['end' => 'End date Main Task harus setelah Start date (minimal 1 hari setelahnya).']);
+        }
+
         $mainWbs->name = $validated['name'];
         if (isset($validated['weight'])) {
             $mainWbs->percentage = $validated['weight'];
         }
-        if (!empty($validated['start'])) {
-            $mainWbs->start = Carbon::parse($validated['start']);
-            $mainWbs->actual_start = $mainWbs->start;
+        if ($newStart) {
+            $mainWbs->start = $newStart;
+            $mainWbs->actual_start = $newStart;
         }
-        if (!empty($validated['end'])) {
-            $mainWbs->end = Carbon::parse($validated['end']);
-            $mainWbs->actual_end = $mainWbs->end;
-        }
-
-        // Strict Date Validation: End must be strictly after start (at least 1 day)
-        if ($mainWbs->start && $mainWbs->end && $mainWbs->end->lte($mainWbs->start)) {
-            $mainWbs->end = $mainWbs->start->copy()->addDays(1);
-            $mainWbs->actual_end = $mainWbs->end;
+        if ($newEnd) {
+            $mainWbs->end = $newEnd;
+            $mainWbs->actual_end = $newEnd;
         }
         $mainWbs->save();
 
@@ -1075,7 +1114,7 @@ class ProjectController extends Controller
             $project->mainWbs()->forceDelete();
         });
 
-        return back()->with('message', 'Semua task berhasil dihapus secara permanen.');
+        return back()->with('message', 'All tasks have been permanently deleted.');
     }
 
     /**
@@ -1187,20 +1226,38 @@ class ProjectController extends Controller
             'end'   => 'nullable|date',
         ]);
 
-        $subWbs->name = $validated['name'];
-        if (!empty($validated['start'])) {
-            $subWbs->start = Carbon::parse($validated['start']);
-            $subWbs->actual_start = $subWbs->start;
-        }
-        if (!empty($validated['end'])) {
-            $subWbs->end = Carbon::parse($validated['end']);
-            $subWbs->actual_end = $subWbs->end;
+        $newStart = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($subWbs->start ? Carbon::parse($subWbs->start)->startOfDay() : null);
+        $newEnd   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : ($subWbs->end ? Carbon::parse($subWbs->end)->startOfDay() : null);
+
+        if ($project->start && $newStart) {
+            $projStart = Carbon::parse($project->start)->startOfDay();
+            if ($newStart->lt($projStart)) {
+                return back()->withErrors(['start' => "Start date Sub Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari Start Date proyek ({$projStart->format('d/m/Y')})."]);
+            }
         }
 
-        // Strict Date Validation: End must be strictly after start (at least 1 day)
-        if ($subWbs->start && $subWbs->end && $subWbs->end->lte($subWbs->start)) {
-            $subWbs->end = $subWbs->start->copy()->addDays(1);
-            $subWbs->actual_end = $subWbs->end;
+        if ($project->end) {
+            $projEnd = Carbon::parse($project->end)->startOfDay();
+            if ($newEnd && $newEnd->gt($projEnd)) {
+                return back()->withErrors(['end' => "End date Sub Task ({$newEnd->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+            }
+            if ($newStart && $newStart->gt($projEnd)) {
+                return back()->withErrors(['start' => "Start date Sub Task ({$newStart->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+            }
+        }
+
+        if ($newStart && $newEnd && $newEnd->lte($newStart)) {
+            return back()->withErrors(['end' => 'End date Sub Task harus setelah Start date (minimal 1 hari setelahnya).']);
+        }
+
+        $subWbs->name = $validated['name'];
+        if ($newStart) {
+            $subWbs->start = $newStart;
+            $subWbs->actual_start = $newStart;
+        }
+        if ($newEnd) {
+            $subWbs->end = $newEnd;
+            $subWbs->actual_end = $newEnd;
         }
         $subWbs->save();
 
@@ -1281,15 +1338,28 @@ class ProjectController extends Controller
             'requires_evidence' => 'nullable|boolean',
         ]);
 
-        $subWbs = SubWbs::findOrFail($validated['sub_wbs_id']);
+        $subWbs = SubWbs::with('mainWbs')->findOrFail($validated['sub_wbs_id']);
+        $mainWbs = $subWbs->mainWbs;
+        $minLimit = $mainWbs?->start ? Carbon::parse($mainWbs->start)->startOfDay() : ($project->start ? Carbon::parse($project->start)->startOfDay() : null);
+        $maxLimit = $mainWbs?->end ? Carbon::parse($mainWbs->end)->startOfDay() : ($project->end ? Carbon::parse($project->end)->startOfDay() : null);
 
-        $startDate = !empty($validated['start']) ? Carbon::parse($validated['start']) : ($subWbs->start ?? Carbon::now());
+        $startDate = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($minLimit ?? Carbon::now()->startOfDay());
         $duration  = max(1, (int) ($validated['duration'] ?? 1));
-        $endDate   = !empty($validated['end']) ? Carbon::parse($validated['end']) : $startDate->copy()->addDays($duration);
+        $endDate   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : $startDate->copy()->addDays($duration);
 
         // Strict Date Validation: End must be strictly after start (at least 1 day)
         if ($endDate->lte($startDate)) {
             $endDate = $startDate->copy()->addDays(max(1, $duration));
+        }
+
+        if ($minLimit && $startDate->lt($minLimit)) {
+            return back()->withErrors(['start' => "Start date Task ({$startDate->format('d/m/Y')}) tidak boleh lebih awal dari jadwal mulai Main Task / Proyek ({$minLimit->format('d/m/Y')})."]);
+        }
+        if ($maxLimit && $startDate->gt($maxLimit)) {
+            return back()->withErrors(['start' => "Start date Task ({$startDate->format('d/m/Y')}) tidak boleh dimulai lebih lama dari waktu selesai Main Task ({$maxLimit->format('d/m/Y')})."]);
+        }
+        if ($maxLimit && $endDate->gt($maxLimit)) {
+            return back()->withErrors(['end' => "End date Task ({$endDate->format('d/m/Y')}) tidak boleh melebihi batas waktu selesai Main Task ({$maxLimit->format('d/m/Y')})."]);
         }
 
         $divisionId = $validated['divisions_id'] ?? $user->divisions_id ?? Division::first()?->id;
@@ -1414,16 +1484,35 @@ class ProjectController extends Controller
         if (isset($validated['divisions_id'])) {
             $task->divisions_id = $validated['divisions_id'];
         }
-        if (!empty($validated['start'])) {
-            $task->start = Carbon::parse($validated['start']);
-        }
-        if (!empty($validated['end'])) {
-            $task->end = Carbon::parse($validated['end']);
+        $newStart = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($task->start ? Carbon::parse($task->start)->startOfDay() : null);
+        $newEnd   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : ($task->end ? Carbon::parse($task->end)->startOfDay() : null);
+
+        $mainWbs = $task->parentSubWbs?->mainWbs;
+        $minLimit = $mainWbs?->start ? Carbon::parse($mainWbs->start)->startOfDay() : ($project->start ? Carbon::parse($project->start)->startOfDay() : null);
+        $maxLimit = $mainWbs?->end ? Carbon::parse($mainWbs->end)->startOfDay() : ($project->end ? Carbon::parse($project->end)->startOfDay() : null);
+
+        if ($minLimit && $newStart && $newStart->lt($minLimit)) {
+            return back()->withErrors(['start' => "Start date Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari jadwal mulai Main Task / Proyek ({$minLimit->format('d/m/Y')})."]);
         }
 
-        // Strict Date Validation: End must be strictly after start (at least 1 day)
-        if ($task->start && $task->end && $task->end->lte($task->start)) {
-            $task->end = $task->start->copy()->addDays(1);
+        if ($maxLimit) {
+            if ($newStart && $newStart->gt($maxLimit)) {
+                return back()->withErrors(['start' => "Start date Task ({$newStart->format('d/m/Y')}) tidak boleh dimulai lebih lama dari waktu selesai Main Task ({$maxLimit->format('d/m/Y')})."]);
+            }
+            if ($newEnd && $newEnd->gt($maxLimit)) {
+                return back()->withErrors(['end' => "End date Task ({$newEnd->format('d/m/Y')}) tidak boleh melebihi batas waktu selesai Main Task ({$maxLimit->format('d/m/Y')})."]);
+            }
+        }
+
+        if ($newStart && $newEnd && $newEnd->lte($newStart)) {
+            return back()->withErrors(['end' => 'End date Task harus setelah Start date (minimal 1 hari setelahnya).']);
+        }
+
+        if ($newStart) {
+            $task->start = $newStart;
+        }
+        if ($newEnd) {
+            $task->end = $newEnd;
         }
         if ($task->start && $task->end) {
             $task->duration_days = max(1, $task->start->diffInDays($task->end));
@@ -1596,7 +1685,7 @@ class ProjectController extends Controller
         }
 
         if (($project->setup_status ?? 'active') === 'pending_setup') {
-            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
+            return back()->with('error', 'This project is still in WBS setup mode and not active yet.');
         }
 
         if ($role === 'worker') {
@@ -1656,22 +1745,22 @@ class ProjectController extends Controller
 
         foreach ($uploadedFiles as $file) {
             if (!$file->isValid()) {
-                return back()->with('error', 'Berkas yang diunggah tidak valid atau rusak.');
+                return back()->with('error', 'The uploaded file is invalid or corrupted.');
             }
 
             $ext = strtolower($file->getClientOriginalExtension());
             if (!in_array($ext, $allowedExtensions, true)) {
-                return back()->with('error', "Format berkas '{$file->getClientOriginalName()}' tidak diizinkan. Hanya berkas PDF, JPG, dan PNG yang dapat diunggah.");
+                return back()->with('error', "File format '{$file->getClientOriginalName()}' is not supported. Only PDF, JPG, and PNG files are allowed.");
             }
 
             $size = $file->getSize();
             if ($ext === 'pdf') {
                 if ($size > $maxPdfBytes) {
-                    return back()->with('error', "Ukuran berkas PDF '{$file->getClientOriginalName()}' melebihi batas maksimal 20 MB.");
+                    return back()->with('error', "PDF file size '{$file->getClientOriginalName()}' exceeds the maximum limit of 20 MB.");
                 }
             } else {
                 if ($size > $maxImageBytes) {
-                    return back()->with('error', "Ukuran berkas gambar '{$file->getClientOriginalName()}' melebihi batas maksimal 10 MB.");
+                    return back()->with('error', "Image file size '{$file->getClientOriginalName()}' exceeds the maximum limit of 10 MB.");
                 }
             }
         }
@@ -1783,7 +1872,7 @@ class ProjectController extends Controller
                 return redirect()->route('projects.setup', $project->id);
             }
             return redirect()->route('projectlistpage')
-                ->with('error', 'Proyek ini sedang dalam tahap konfigurasi WBS (setup) oleh PIC dan belum dapat diakses.');
+                ->with('error', 'This project is currently in WBS setup mode by the PIC and is not accessible yet.');
         }
 
         return null;
@@ -2068,7 +2157,7 @@ class ProjectController extends Controller
         }
 
         if (($project->setup_status ?? 'active') === 'pending_setup') {
-            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
+            return back()->with('error', 'This project is still in WBS setup mode and not active yet.');
         }
 
         $validated = $request->validate([
@@ -2129,7 +2218,7 @@ class ProjectController extends Controller
         }
 
         if (($project->setup_status ?? 'active') === 'pending_setup') {
-            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
+            return back()->with('error', 'This project is still in WBS setup mode and not active yet.');
         }
 
         $entry = BudgetEntry::where('projects_id', $project->id)->where('id', $entryId)->firstOrFail();
@@ -2158,7 +2247,7 @@ class ProjectController extends Controller
         }
 
         if (($project->setup_status ?? 'active') === 'pending_setup') {
-            return back()->with('error', 'Proyek ini masih dalam tahap konfigurasi WBS (setup) dan belum aktif.');
+            return back()->with('error', 'This project is still in WBS setup mode and not active yet.');
         }
 
         $validated = $request->validate([

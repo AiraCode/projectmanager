@@ -121,13 +121,13 @@ export default function WeeklyPage() {
 
           <div className="flex items-center gap-2.5 self-end sm:self-auto">
             <div className="flex items-center gap-2 mr-2">
-              <span className="text-[12px] font-medium text-neutral-500">Divisi:</span>
+              <span className="text-[12px] font-medium text-neutral-500">Division:</span>
               <select
                 value={selectedDivision}
                 onChange={e => setSelectedDivision(e.target.value)}
                 className="text-[12px] border border-neutral-200 rounded-md px-2 py-1 outline-none focus:border-brand bg-white text-neutral-700"
               >
-                <option value="All">Semua Divisi</option>
+                <option value="All">All Divisions</option>
                 {allDivisions.map(div => (
                   <option key={div} value={div}>{div}</option>
                 ))}
@@ -305,7 +305,7 @@ export default function WeeklyPage() {
 
                             {weekTasks.length === 0 ? (
                               <div className="text-[12px] text-neutral-400 italic py-2 pl-6">
-                                Tidak ada task yang terjadwal di minggu ini.
+                                No tasks scheduled for this week.
                               </div>
                             ) : (
                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
@@ -329,7 +329,7 @@ export default function WeeklyPage() {
                                       </div>
                                     </div>
                                     <div className="flex items-center justify-between text-[11px] text-neutral-500 pt-1.5 border-t border-neutral-100">
-                                      <span>Bobot: {t.weight}%</span>
+                                      <span>Weight: {t.weight}%</span>
                                       <span className="font-semibold text-neutral-700">Progress: {t.progress}%</span>
                                       <span className="text-[10px] text-neutral-400">{formatDateDisplay(t.startDate)} - {formatDateDisplay(t.finishDate)}</span>
                                     </div>

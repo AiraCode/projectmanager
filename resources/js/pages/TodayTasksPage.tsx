@@ -153,7 +153,7 @@ export default function TodayTasksPage() {
       });
     }
 
-    setToastMsg(completeTo100 ? `Bukti berhasil diunggah & task ditandai 100% selesai ✓` : `Bukti berhasil disimpan.`);
+    setToastMsg(completeTo100 ? `Evidence uploaded successfully & task marked 100% complete ✓` : `Evidence saved successfully.`);
     setUploadEvidenceTask(null);
   };
 
@@ -237,7 +237,7 @@ export default function TodayTasksPage() {
 
     // MANDATORY EVIDENCE RULE: Must have evidence before reaching 100%
     if (isCompleted && currentTask && !currentTask.evidence) {
-      setToastMsg(`Bukti (evidence) WAJIB dilampirkan sebelum menyelesaikan task "${taskName}" (100%).`);
+      setToastMsg(`Evidence is REQUIRED before marking task "${taskName}" 100% complete.`);
       if (commit) {
         setUploadEvidenceTask({
           task: currentTask,
@@ -638,7 +638,7 @@ export default function TodayTasksPage() {
                         <span className="relative group cursor-help">
                           <Lock size={12} className="text-amber-500" />
                           <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
-                            Terkunci: Pekerjaan sebelumnya (Predecessor) belum selesai 100%.
+                            Locked: Predecessor task is not 100% complete yet.
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
                           </div>
                         </span>
@@ -703,17 +703,17 @@ export default function TodayTasksPage() {
                           type="button"
                           onClick={() => setEvidencePreview(st.evidence || null)}
                           className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-bold hover:bg-emerald-200 transition-colors shadow-2xs"
-                          title={`Lihat bukti: ${st.evidence.name}`}
+                          title={`View evidence: ${st.evidence.name}`}
                         >
                           <Paperclip size={11} className="text-emerald-700" />
-                          Bukti: {st.evidence.name}
+                          Evidence: {st.evidence.name}
                         </button>
                         {authorized && (
                           <button
                             type="button"
                             onClick={() => setUploadEvidenceTask({ task: st })}
                             className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
-                            title="Ganti berkas bukti"
+                            title="Replace evidence file"
                           >
                             <Edit2 size={11} />
                           </button>
@@ -725,10 +725,10 @@ export default function TodayTasksPage() {
                           type="button"
                           onClick={() => setUploadEvidenceTask({ task: st })}
                           className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
-                          title="Upload bukti penyelesaian (wajib untuk 100%)"
+                          title="Upload completion evidence (required for 100%)"
                         >
                           <UploadCloud size={11} className="text-amber-600" />
-                          <span>Upload Bukti</span>
+                          <span>Upload Evidence</span>
                         </button>
                       )
                     )}
@@ -856,19 +856,19 @@ function UploadEvidenceModal({
     if (selected) {
       const ext = selected.name.split('.').pop()?.toLowerCase();
       if (!ext || !['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
-        setFileError(`Format berkas "${selected.name}" tidak diizinkan. Hanya berkas PDF, JPG, atau PNG yang diperbolehkan.`);
+        setFileError(`File format "${selected.name}" is not supported. Only PDF, JPG, or PNG files are allowed.`);
         e.target.value = '';
         return;
       }
 
       if (ext === 'pdf' && selected.size > 20 * 1024 * 1024) {
-        setFileError(`Ukuran berkas PDF "${selected.name}" melebihi batas maksimal 20 MB.`);
+        setFileError(`PDF file size "${selected.name}" exceeds the maximum limit of 20 MB.`);
         e.target.value = '';
         return;
       }
 
       if (['jpg', 'jpeg', 'png'].includes(ext) && selected.size > 10 * 1024 * 1024) {
-        setFileError(`Ukuran berkas gambar "${selected.name}" melebihi batas maksimal 10 MB.`);
+        setFileError(`Image file size "${selected.name}" exceeds the maximum limit of 10 MB.`);
         e.target.value = '';
         return;
       }
@@ -923,7 +923,7 @@ function UploadEvidenceModal({
         <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12px] leading-relaxed">
           <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
-            <strong className="font-bold">Ketentuan Berkas Bukti:</strong> Hanya format <strong>PDF (maksimal 20 MB)</strong> atau <strong>Foto JPG/PNG (maksimal 10 MB)</strong> yang diperbolehkan untuk diunggah.
+            <strong className="font-bold">Evidence File Requirements:</strong> Only <strong>PDF (max. 20 MB)</strong> or <strong>JPG/PNG photos (max. 10 MB)</strong> formats are allowed.
           </div>
         </div>
 
@@ -947,12 +947,12 @@ function UploadEvidenceModal({
                   {file ? file.name : task.evidence?.name}
                 </div>
                 <div className="text-[11px] text-neutral-500">
-                  {file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : (task.evidence?.size || 'Attached')} · Siap disimpan
+                  {file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : (task.evidence?.size || 'Attached')} · Ready to save
                 </div>
               </div>
             </div>
             <label className="text-[12px] font-bold text-brand hover:underline cursor-pointer">
-              Ganti File
+              Change File
               <input
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
@@ -965,10 +965,10 @@ function UploadEvidenceModal({
           <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-neutral-300 hover:border-brand rounded-xl cursor-pointer bg-neutral-50/50 hover:bg-brand/5 transition-all text-center">
             <UploadCloud size={32} className="text-brand mb-2" />
             <span className="text-[13.5px] font-bold text-neutral-800">
-              Pilih atau seret berkas bukti (evidence) ke sini
+              Select or drag evidence file here
             </span>
             <span className="text-[11.5px] text-neutral-400 mt-1">
-              Hanya format PDF (maks. 20 MB) atau Foto JPG/PNG (maks. 10 MB)
+              PDF format only (max. 20 MB) or JPG/PNG photos (max. 10 MB)
             </span>
             <input
               type="file"
@@ -990,14 +990,14 @@ function UploadEvidenceModal({
             className="w-4 h-4 rounded text-brand focus:ring-brand border-neutral-300 accent-brand cursor-pointer"
           />
           <label htmlFor="markCompleteCheckToday" className="text-[12.5px] font-semibold text-neutral-800 cursor-pointer">
-            Langsung tandai task ini selesai 100% (berubah menjadi Hijau)
+            Immediately mark this task 100% complete
           </label>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
           <Button variant="outline" size="sm" type="button" onClick={onClose}>
-            Batal
+            Cancel
           </Button>
           <Button
             variant="primary"
@@ -1006,7 +1006,7 @@ function UploadEvidenceModal({
             disabled={!file && !task.evidence}
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
           >
-            {completeChecked ? 'Upload Bukti & Selesaikan (100%)' : 'Simpan Bukti'}
+            {completeChecked ? 'Upload Evidence & Complete (100%)' : 'Save Evidence'}
           </Button>
         </div>
       </form>

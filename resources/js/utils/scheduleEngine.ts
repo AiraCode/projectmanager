@@ -142,8 +142,11 @@ export function recalculateSchedule(project: Project): Project {
       if (!mjFinish || smj.finishDate > mjFinish) mjFinish = smj.finishDate;
     }
 
-    if (mjStart) mj.startDate = mjStart;
-    if (mjFinish) mj.finishDate = mjFinish;
+    if (!mj.startDate) mj.startDate = mjStart;
+    else if (mjStart && mjStart < mj.startDate) mj.startDate = mjStart;
+
+    if (!mj.finishDate) mj.finishDate = mjFinish;
+    else if (mjFinish && mjFinish > mj.finishDate) mj.finishDate = mjFinish;
   }
 
   return newProject;

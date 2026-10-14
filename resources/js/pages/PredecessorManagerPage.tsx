@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { usePage, router, Link } from '@inertiajs/react';
-import { ArrowLeft, Save, Plus, Edit2, Trash2, LayoutList, GitMerge } from 'lucide-react';
-import { PageHeader, Card, Button, Modal } from '@/components/ui';
+import { ArrowLeft, Save, Plus, Edit2, Trash2, LayoutList, GitMerge, Lock, Sparkles } from 'lucide-react';
+import { PageHeader, Card, Button, Modal, formatDateDisplay } from '@/components/ui';
 import { ReactFlow, Controls, Background, MiniMap, addEdge, applyNodeChanges, applyEdgeChanges, MarkerType, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -80,8 +80,8 @@ export default function PredecessorManagerPage() {
         data: { 
           code: t.code,
           name: t.name,
-          start: t.start ? new Date(t.start).toLocaleDateString('id-ID') : '-',
-          end: t.end ? new Date(t.end).toLocaleDateString('id-ID') : '-'
+          start: t.start ? formatDateDisplay(t.start) : '-',
+          end: t.end ? formatDateDisplay(t.end) : '-'
         }
       };
     });
@@ -196,7 +196,7 @@ export default function PredecessorManagerPage() {
           variant={activeTab === 'diagram' ? 'primary' : 'outline'} 
           onClick={() => setActiveTab('diagram')}
         >
-          <GitMerge size={16} className="mr-2" /> Diagram (Bagan) View
+          <GitMerge size={16} className="mr-2" /> Diagram View
         </Button>
         <Button 
           variant={activeTab === 'table' ? 'primary' : 'outline'} 
@@ -234,10 +234,10 @@ export default function PredecessorManagerPage() {
                       {row.name}
                     </td>
                     <td className="p-4 text-[13px] text-neutral-600">
-                      {row.start ? new Date(row.start).toLocaleDateString('id-ID') : '-'}
+                      {row.start ? formatDateDisplay(row.start) : '-'}
                     </td>
                     <td className="p-4 text-[13px] text-neutral-600">
-                      {row.end ? new Date(row.end).toLocaleDateString('id-ID') : '-'}
+                      {row.end ? formatDateDisplay(row.end) : '-'}
                     </td>
                     <td className="p-4">
                       {row.type === 'task' ? (
@@ -292,16 +292,77 @@ export default function PredecessorManagerPage() {
             <label className="block text-sm font-medium text-neutral-700 mb-1">Name</label>
             <input type="text" className="w-full form-input" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-1">Start Date</label>
-              <input type="date" className="w-full form-input" value={formData.start} onChange={(e) => setFormData({...formData, start: e.target.value})} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-1">End Date</label>
-              <input type="date" className="w-full form-input" value={formData.end} onChange={(e) => setFormData({...formData, end: e.target.value})} />
-            </div>
-          </div>
+          {(() => {
+            const allLeafTasks = tableData.filter(t => t.type === 'task');
+            const isFirstTask = allLeafTasks.length > 0 && String(allLeafTasks[0].id) === String(editingRow?.id);
+            const isLockedTask = editingRow?.type === 'task' && !isFirstTask;
+
+            return (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-neutral-700">Start Date</label>
+                    {editingRow?.type === 'task' && (
+                      isFirstTask ? (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          First Task
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex items-center gap-1">
+                          <Lock size={10} /> Locked
+                        </span>
+                      )
+                    )}
+                  </div>
+                  <input
+                    type="date"
+                    min={project?.start ? project.start.slice(0, 10) : undefined}
+                    max={formData.end || (project?.end ? project.end.slice(0, 10) : undefined)}
+                    className={`w-full form-input ${isLockedTask ? 'bg-neutral-100 text-neutral-500 cursor-not-allowed select-none' : ''}`}
+                    value={formData.start}
+                    readOnly={isLockedTask}
+                    onChange={(e) => {
+                      if (!isLockedTask) {
+                        let val = e.target.value;
+                        const pStart = project?.start ? project.start.slice(0, 10) : null;
+                        const pEnd = project?.end ? project.end.slice(0, 10) : null;
+                        if (pStart && val && val < pStart) val = pStart;
+                        if (pEnd && val && val > pEnd) val = pEnd;
+                        setFormData({...formData, start: val});
+                      }
+                    }}
+                  />
+                  {isLockedTask && (
+                    <p className="text-[11px] text-neutral-500 mt-1">Start date is computed from predecessor.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">End Date</label>
+                  <input
+                    type="date"
+                    min={formData.start || (project?.start ? project.start.slice(0, 10) : undefined)}
+                    max={project?.end ? project.end.slice(0, 10) : undefined}
+                    className="w-full form-input"
+                    value={formData.end}
+                    onChange={(e) => {
+                      let val = e.target.value;
+                      const pEnd = project?.end ? project.end.slice(0, 10) : null;
+                      if (pEnd && val && val > pEnd) val = pEnd;
+                      setFormData({...formData, end: val});
+                    }}
+                  />
+                </div>
+                {project?.end && (
+                  <div className="col-span-2 text-[11px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200 flex items-center justify-between">
+                    <span>Project Finish Deadline: <strong>{new Date(project.end).toLocaleDateString('en-US')}</strong></span>
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-200/60 px-1.5 py-0.5 rounded border border-amber-300">
+                      Max Bound: {new Date(project.end).toLocaleDateString('en-US')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="flex justify-end gap-3 mt-6">
             <Button variant="outline" onClick={() => setEditingRow(null)}>Cancel</Button>
             <Button variant="primary" onClick={handleSave}><Save size={16} className="mr-2" /> Save Changes</Button>
@@ -310,15 +371,15 @@ export default function PredecessorManagerPage() {
       </Modal>
 
       {/* Edit Edge Modal */}
-      <Modal isOpen={!!edgeModal} onClose={() => setEdgeModal(null)} title="Pengaturan Relasi">
+      <Modal isOpen={!!edgeModal} onClose={() => setEdgeModal(null)} title="Dependency Settings">
         <div className="space-y-4">
           <p className="text-sm text-neutral-600 mb-4">
-            Relasi dari Task <b>{tableData.find(t => String(t.id) === edgeModal?.source)?.code}</b> ke Task <b>{tableData.find(t => String(t.id) === edgeModal?.target)?.code}</b>.
+            Dependency from Task <b>{tableData.find(t => String(t.id) === edgeModal?.source)?.code}</b> to Task <b>{tableData.find(t => String(t.id) === edgeModal?.target)?.code}</b>.
           </p>
           
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-1">Tipe Relasi</label>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Dependency Type</label>
               <select className="w-full form-input" value={edgeForm.dependency_type} onChange={(e) => setEdgeForm({...edgeForm, dependency_type: e.target.value})}>
                 <option value="FS">FS (Finish-to-Start)</option>
                 <option value="SS">SS (Start-to-Start)</option>
@@ -334,11 +395,11 @@ export default function PredecessorManagerPage() {
 
           <div className="flex justify-between items-center mt-6 pt-4 border-t border-neutral-100">
             <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={handleDeleteDependency}>
-              <Trash2 size={16} className="mr-2" /> Hapus Relasi
+              <Trash2 size={16} className="mr-2" /> Remove Dependency
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setEdgeModal(null)}>Batal</Button>
-              <Button variant="primary" onClick={handleUpdateDependency}><Save size={16} className="mr-2" /> Simpan</Button>
+              <Button variant="outline" onClick={() => setEdgeModal(null)}>Cancel</Button>
+              <Button variant="primary" onClick={handleUpdateDependency}><Save size={16} className="mr-2" /> Save</Button>
             </div>
           </div>
         </div>

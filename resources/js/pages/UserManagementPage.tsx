@@ -423,13 +423,13 @@ export default function UserManagementPage({
                   value={selectedDomain} 
                   onChange={e => handleDomainChange(e.target.value)}
                   className="bg-neutral-100 text-neutral-700 text-[12px] font-bold border-l border-neutral-200 px-2 py-2 cursor-pointer focus:outline-none hover:bg-neutral-200 transition-colors"
-                  title="Pilih domain email"
+                  title="Select email domain"
                 >
                   <option value="@provis.id">@provis.id (Default)</option>
                   <option value="@gmail.com">@gmail.com</option>
                   <option value="@yahoo.com">@yahoo.com</option>
                   <option value="@outlook.com">@outlook.com</option>
-                  <option value="custom">Domain Lain...</option>
+                  <option value="custom">Other Domain...</option>
                 </select>
               </div>
             ) : (
@@ -438,7 +438,7 @@ export default function UserManagementPage({
                 value={data.email} 
                 onChange={e => setData('email', e.target.value)} 
                 required 
-                placeholder="nama@domainlain.com" 
+                placeholder="name@example.com" 
                 className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-[13px] focus:ring-1 focus:ring-brand focus:border-brand" 
               />
             )}
@@ -446,16 +446,16 @@ export default function UserManagementPage({
           </div>
           <div>
             <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Password {editingUser ? '(Kosongkan jika tidak diubah)' : ''}
+              Password {editingUser ? '(Leave blank if unchanged)' : ''}
             </label>
             <input 
               type="password" 
               value={data.password} 
               onChange={e => setData('password', e.target.value)} 
               required={!editingUser} 
-              placeholder={editingUser ? "Kosongkan jika tidak diubah" : "Masukkan password"}
+              placeholder={editingUser ? "Leave blank if unchanged" : "Enter password"}
               pattern="^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$"
-              title="Minimal 8 karakter, kombinasi huruf dan angka"
+              title="Minimum 8 characters, combination of letters and numbers"
               className={`w-full border rounded-lg px-3 py-2 text-[13px] focus:outline-none transition-colors ${
                 data.password.length > 0
                   ? isPasswordValid
@@ -471,12 +471,12 @@ export default function UserManagementPage({
                 {isPasswordValid ? (
                   <>
                     <CheckCircle2 size={13} className="shrink-0" />
-                    <span>Password sudah memenuhi syarat (min. 8 karakter, huruf & angka)</span>
+                    <span>Password requirements met (min. 8 characters, letters & numbers)</span>
                   </>
                 ) : (
                   <>
                     <AlertCircle size={13} className="shrink-0" />
-                    <span>Belum memenuhi syarat: min. 8 karakter, harus ada huruf dan angka</span>
+                    <span>Requirements not met: min. 8 characters, letters and numbers required</span>
                   </>
                 )}
               </p>
@@ -596,7 +596,7 @@ export default function UserManagementPage({
               }}
               className="rounded text-brand focus:ring-brand w-4 h-4"
             />
-            Samakan semua settingan permission
+            Unify all permission settings
           </label>
         </div>
       )}

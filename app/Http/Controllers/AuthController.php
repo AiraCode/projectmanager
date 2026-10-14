@@ -97,6 +97,6 @@ class AuthController extends Controller
         $user->must_change_password = false;
         $user->save();
 
-        return back()->with('success', 'Password berhasil diubah.');
+        return back()->with('success', 'Password updated successfully.');
     }
 }

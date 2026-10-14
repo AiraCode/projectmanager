@@ -1,3067 +1,4739 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
-import { usePage, router, Link } from '@inertiajs/react';
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
+import { usePage, router, Link } from "@inertiajs/react";
 import {
-  Plus, Search, ChevronDown, ChevronRight, Lock, CheckSquare, Square,
-  Shield, Calendar, Layers, Info, Trash2, Edit2, ListTodo, TableProperties,
-  Download, AlertCircle, AlertTriangle, CheckCircle2, Clock, UploadCloud,
-  FileText, Sparkles, X, Eye, CalendarDays, Sliders, Paperclip, Link2
-} from 'lucide-react';
-import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, DependencyType, EvidenceItem } from '@/data/mockData';
-import { recalculateSchedule } from '@/utils/scheduleEngine';
-import { canStartTask } from '@/utils/taskDependencies';
-import { recalculateProgress } from '@/utils/progressEngine';
-import { exportToCSV } from '@/utils/exportEngine';
-import { StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast, EmptyState, formatDateDisplay, formatDivisionName } from '@/components/ui';
-import { useAuth } from '@/context/AuthContext';
+    Plus,
+    Search,
+    ChevronDown,
+    ChevronRight,
+    Lock,
+    CheckSquare,
+    Square,
+    Shield,
+    Calendar,
+    Layers,
+    Info,
+    Trash2,
+    Edit2,
+    ListTodo,
+    TableProperties,
+    Download,
+    AlertCircle,
+    AlertTriangle,
+    CheckCircle2,
+    Clock,
+    UploadCloud,
+    FileText,
+    Sparkles,
+    X,
+    Eye,
+    CalendarDays,
+    Sliders,
+    Paperclip,
+    Link2,
+} from "lucide-react";
+import {
+    Project,
+    PROJECT,
+    MainJob,
+    SubMainJob,
+    SubSubtask,
+    Status,
+    DependencyType,
+    EvidenceItem,
+} from "@/data/mockData";
+import { recalculateSchedule } from "@/utils/scheduleEngine";
+import { canStartTask } from "@/utils/taskDependencies";
+import { recalculateProgress } from "@/utils/progressEngine";
+import { exportToCSV } from "@/utils/exportEngine";
+import {
+    StatusBadge,
+    ProgressBar,
+    PageHeader,
+    Card,
+    Button,
+    Modal,
+    Toast,
+    EmptyState,
+    formatDateDisplay,
+    formatDivisionName,
+} from "@/components/ui";
+import { useAuth } from "@/context/AuthContext";
 
-const STATUSES: Status[] = ['Open', 'On Track', 'At Risk', 'Delayed', 'Cancelled', 'Completed'];
+const STATUSES: Status[] = [
+    "Open",
+    "On Track",
+    "At Risk",
+    "Delayed",
+    "Cancelled",
+    "Completed",
+];
 
-function EditableProgress({ value, disabled, onSave, isChecked }: { value: number, disabled: boolean, onSave: (val: number) => void, isChecked: boolean }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [val, setVal] = useState(value.toString());
+function EditableProgress({
+    value,
+    disabled,
+    onSave,
+    isChecked,
+}: {
+    value: number;
+    disabled: boolean;
+    onSave: (val: number) => void;
+    isChecked: boolean;
+}) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [val, setVal] = useState(value.toString());
 
-  useEffect(() => {
-    setVal(value.toString());
-  }, [value]);
+    useEffect(() => {
+        setVal(value.toString());
+    }, [value]);
 
-  if (isEditing && !disabled) {
+    if (isEditing && !disabled) {
+        return (
+            <input
+                autoFocus
+                type="number"
+                min="0"
+                max="100"
+                value={val}
+                onChange={(e) => setVal(e.target.value)}
+                onBlur={() => {
+                    setIsEditing(false);
+                    const parsed = parseInt(val);
+                    if (
+                        !isNaN(parsed) &&
+                        parsed !== value &&
+                        parsed >= 0 &&
+                        parsed <= 100
+                    )
+                        onSave(parsed);
+                    else setVal(value.toString());
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                        setIsEditing(false);
+                        const parsed = parseInt(val);
+                        if (
+                            !isNaN(parsed) &&
+                            parsed !== value &&
+                            parsed >= 0 &&
+                            parsed <= 100
+                        )
+                            onSave(parsed);
+                        else setVal(value.toString());
+                    } else if (e.key === "Escape") {
+                        setIsEditing(false);
+                        setVal(value.toString());
+                    }
+                }}
+                className="w-12 h-6 text-right text-[12.5px] font-black border border-brand/50 rounded outline-none p-0 hide-arrows -mr-1"
+                style={{ appearance: "textfield" }}
+            />
+        );
+    }
+
     return (
-      <input
-        autoFocus
-        type="number"
-        min="0" max="100"
-        value={val}
-        onChange={e => setVal(e.target.value)}
-        onBlur={() => {
-          setIsEditing(false);
-          const parsed = parseInt(val);
-          if (!isNaN(parsed) && parsed !== value && parsed >= 0 && parsed <= 100) onSave(parsed);
-          else setVal(value.toString());
-        }}
-        onKeyDown={e => {
-          if (e.key === 'Enter') {
-            setIsEditing(false);
-            const parsed = parseInt(val);
-            if (!isNaN(parsed) && parsed !== value && parsed >= 0 && parsed <= 100) onSave(parsed);
-            else setVal(value.toString());
-          } else if (e.key === 'Escape') {
-            setIsEditing(false);
-            setVal(value.toString());
-          }
-        }}
-        className="w-12 h-6 text-right text-[12.5px] font-black border border-brand/50 rounded outline-none p-0 hide-arrows -mr-1"
-        style={{ appearance: 'textfield' }}
-      />
+        <span
+            className={`text-[12.5px] font-black w-11 text-right tabular-nums ${!disabled ? "cursor-text hover:bg-neutral-100 rounded px-1 -mx-1" : ""} ${isChecked ? "text-emerald-700" : "text-neutral-800"}`}
+            onClick={() => {
+                if (!disabled) setIsEditing(true);
+            }}
+            title={!disabled ? "Click to set percentage manually" : ""}
+        >
+            {value}%
+        </span>
     );
-  }
-
-  return (
-    <span 
-      className={`text-[12.5px] font-black w-11 text-right tabular-nums ${!disabled ? 'cursor-text hover:bg-neutral-100 rounded px-1 -mx-1' : ''} ${isChecked ? 'text-emerald-700' : 'text-neutral-800'}`}
-      onClick={() => { if (!disabled) setIsEditing(true); }}
-      title={!disabled ? "Click to set percentage manually" : ""}
-    >
-      {value}%
-    </span>
-  );
 }
 
 export default function TasksPage() {
-  const { user } = useAuth();
-  const pageProps = usePage().props as any;
-  const project = pageProps?.project;
-  const divisions = pageProps?.divisions || [];
-  const availableProjects = pageProps?.availableProjects || [];
-  
-  // Role checks:
-  // - PIC: can add/edit/delete tasks and sub-tasks, toggle checklist in their project
-  // - Worker: can ONLY check/uncheck tasks assigned to their division
-  // - Admin (Utama / Progres): strictly read-only, NO modification allowed
-  const authUser = pageProps?.auth?.user || user;
-  const rawRole = (pageProps?.userRole || authUser?.role || authUser?.rawRole || '').toString().toLowerCase();
-  const isSuperAdmin = rawRole === 'super_admin' || rawRole === 'superadministrator' || rawRole === 'superadmin';
-  const isPIC    = authUser?.isPIC === true || rawRole === 'pic' || isSuperAdmin;
-  const isWorker = authUser?.isWorker === true || rawRole === 'worker';
-  const isAdmin  = authUser?.isAdminUtama === true || authUser?.isAdminProgres === true || rawRole === 'admin_utama' || rawRole === 'admin_progres' || rawRole === 'admin';
+    const { user } = useAuth();
+    const pageProps = usePage().props as any;
+    const project = pageProps?.project;
+    const divisions = pageProps?.divisions || [];
+    const availableProjects = pageProps?.availableProjects || [];
 
-  
-  const [projectData, setProjectData] = useState<Project>(() => {
-    if (!project || !project.mainJobs) {
-      return { id: 0, title: 'No Project Assigned', mainJobs: [], weeklyData: [], scurveData: [] } as any as Project;
-    }
-    return recalculateSchedule(recalculateProgress(project));
-  });
+    // Role checks:
+    // - PIC: can add/edit/delete tasks and sub-tasks, toggle checklist in their project
+    // - Worker: can ONLY check/uncheck tasks assigned to their division
+    // - Admin (Utama / Progres): strictly read-only, NO modification allowed
+    const authUser = pageProps?.auth?.user || user;
+    const rawRole = (
+        pageProps?.userRole ||
+        authUser?.role ||
+        authUser?.rawRole ||
+        ""
+    )
+        .toString()
+        .toLowerCase();
+    const isSuperAdmin =
+        rawRole === "super_admin" ||
+        rawRole === "superadministrator" ||
+        rawRole === "superadmin";
+    const isPIC = authUser?.isPIC === true || rawRole === "pic" || isSuperAdmin;
+    const isWorker = authUser?.isWorker === true || rawRole === "worker";
+    const isAdmin =
+        authUser?.isAdminUtama === true ||
+        authUser?.isAdminProgres === true ||
+        rawRole === "admin_utama" ||
+        rawRole === "admin_progres" ||
+        rawRole === "admin";
 
-  useEffect(() => {
-    if (project && project.mainJobs) {
-      setProjectData(recalculateSchedule(recalculateProgress(project)));
-    } else {
-      setProjectData({ id: 0, title: 'No Project Assigned', mainJobs: [], weeklyData: [], scurveData: [] } as any as Project);
-    }
-  }, [project]);
-  
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<Status | ''>('');
-  const [viewMode, setViewMode] = useState<'checklist' | 'table'>('checklist');
-  const [expandedMJ, setExpandedMJ] = useState<Record<string, boolean>>({ 'mj-1': true, 'mj-01': true });
-  const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({ 'smj-1': true, 'smj-1-1': true });
-  
-  // Modals & Enhanced Features State
-  const [showMainJobModal, setShowMainJobModal] = useState<{
-    mode: 'create' | 'edit';
-    id?: string;
-    dbId?: number;
-    name?: string;
-    weight?: number;
-    startDate?: string;
-    finishDate?: string;
-  } | null>(null);
-  const [showAddTaskModal, setShowAddTaskModal] = useState<{ smjId: string; smjDbId?: number; parentSmj?: SubMainJob; task?: SubSubtask } | null>(null);
-  const [showAddSubMainJobModal, setShowAddSubMainJobModal] = useState<{ mjId: string; mjDbId?: number; mjName: string; parentWeight?: number; currentSubCount?: number } | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{
-    title: string;
-    message: string;
-    onConfirm: () => void;
-  } | null>(null);
-  const [uncheckConfirm, setUncheckConfirm] = useState<{
-    taskId: string;
-    taskName: string;
-    prevProgress?: number;
-  } | null>(null);
-  const [evidencePreview, setEvidencePreview] = useState<EvidenceItem | null>(null);
-  const [uploadEvidenceTask, setUploadEvidenceTask] = useState<{
-    task: SubSubtask;
-    requireComplete?: boolean;
-  } | null>(null);
-  const [todaySectionOpen, setTodaySectionOpen] = useState(true);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
-
-  // Manage Dependencies State
-  const [depModal, setDepModal] = useState<{ isOpen: boolean; task?: SubSubtask }>({ isOpen: false });
-  const [depForm, setDepForm] = useState({ predecessor_wbs_ids: [] as string[], dependency_type: 'FS' as DependencyType, lag_days: 0 });
-  const [actionError, setActionError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  // Sync depModal task data when projectData updates via Inertia
-  useEffect(() => {
-    if (depModal.isOpen && depModal.task) {
-      const updatedTask = projectData.mainJobs
-        .flatMap(mj => mj.subMainJobs)
-        .flatMap(smj => smj.subtasks)
-        .find(st => st.id === depModal.task!.id);
-      
-      if (updatedTask && JSON.stringify(updatedTask.dependencies) !== JSON.stringify(depModal.task.dependencies)) {
-        setDepModal(prev => ({ ...prev, task: updatedTask }));
-      }
-    }
-  }, [projectData, depModal.isOpen, depModal.task?.id]);
-
-  const handleSaveEvidence = (taskId: string, newEvidences: EvidenceItem[], completeTo100: boolean = false, rawFiles?: File[]) => {
-    if (!projectData.id) return;
-
-    // Find current progress
-    let currentProg = 0;
-    projectData.mainJobs.forEach(mj => {
-      mj.subMainJobs.forEach(smj => {
-        smj.subtasks.forEach(st => {
-          if (st.id === taskId) currentProg = st.progress;
-        });
-      });
+    const [projectData, setProjectData] = useState<Project>(() => {
+        if (!project || !project.mainJobs) {
+            return {
+                id: 0,
+                title: "No Project Assigned",
+                mainJobs: [],
+                weeklyData: [],
+                scurveData: [],
+            } as any as Project;
+        }
+        return recalculateSchedule(recalculateProgress(project));
     });
-    const targetProgress = completeTo100 ? 100 : currentProg;
 
-    // Build the payload — Inertia router.post handles File objects natively
-    const payload: Record<string, unknown> = {
-      progress: targetProgress,
-    };
-
-    if (rawFiles && rawFiles.length > 0) {
-      if (rawFiles.length === 1) {
-        payload['evidence_file'] = rawFiles[0];
-      } else {
-        rawFiles.forEach((f, i) => {
-          payload[`evidence_file_${i}`] = f;
-        });
-        payload['evidence_file_count'] = rawFiles.length;
-      }
-    }
-
-    router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, payload, {
-      preserveScroll: true,
-      preserveState: true,
-      forceFormData: true,
-      onSuccess: (page) => {
-        // Optimistically merge new evidences into local state so UI updates immediately
-        // without needing a full page reload
-        const serverProject = (page.props as any)?.project;
-        if (serverProject) {
-          setProjectData(recalculateSchedule(recalculateProgress(serverProject)));
+    useEffect(() => {
+        if (project && project.mainJobs) {
+            setProjectData(recalculateSchedule(recalculateProgress(project)));
         } else {
-          // Fallback: manually merge new evidences into local state
-          setProjectData(prev => {
-            const updated = { ...prev };
-            updated.mainJobs = updated.mainJobs.map(mj => ({
-              ...mj,
-              subMainJobs: mj.subMainJobs.map(smj => ({
-                ...smj,
-                subtasks: smj.subtasks.map(st => {
-                  if (st.id !== taskId) return st;
-                  return {
-                    ...st,
-                    progress: targetProgress,
-                    checked: targetProgress >= 100,
-                    evidences: [...(st.evidences || []), ...newEvidences],
-                  };
-                }),
-              })),
-            }));
-            return recalculateSchedule(recalculateProgress(updated));
-          });
+            setProjectData({
+                id: 0,
+                title: "No Project Assigned",
+                mainJobs: [],
+                weeklyData: [],
+                scurveData: [],
+            } as any as Project);
         }
-        setToastMsg(
-          completeTo100
-            ? 'Bukti penyelesaian berhasil diunggah & task selesai (100%) ✓'
-            : 'Bukti berhasil dilampirkan ke task ✓'
-        );
-        setUploadEvidenceTask(null);
-      },
-      onError: (err) => {
-        console.error(err);
-        setToastMsg('Gagal mengunggah bukti.');
-        setUploadEvidenceTask(null);
-      }
+    }, [project]);
+
+    const [search, setSearch] = useState("");
+    const [filterStatus, setFilterStatus] = useState<Status | "">("");
+    const [viewMode, setViewMode] = useState<"checklist" | "table">(
+        "checklist",
+    );
+    const [expandedMJ, setExpandedMJ] = useState<Record<string, boolean>>({
+        "mj-1": true,
+        "mj-01": true,
     });
-  };
+    const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({
+        "smj-1": true,
+        "smj-1-1": true,
+    });
 
-  // Dynamic Today's Tasks
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+    // Modals & Enhanced Features State
+    const [showMainJobModal, setShowMainJobModal] = useState<{
+        mode: "create" | "edit";
+        id?: string;
+        dbId?: number;
+        name?: string;
+        weight?: number;
+        startDate?: string;
+        finishDate?: string;
+    } | null>(null);
+    const [showAddTaskModal, setShowAddTaskModal] = useState<{
+        smjId: string;
+        smjDbId?: number;
+        parentSmj?: SubMainJob;
+        task?: SubSubtask;
+    } | null>(null);
+    const [showAddSubMainJobModal, setShowAddSubMainJobModal] = useState<{
+        mjId: string;
+        mjDbId?: number;
+        mjName: string;
+        parentWeight?: number;
+        currentSubCount?: number;
+    } | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<{
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    } | null>(null);
+    const [uncheckConfirm, setUncheckConfirm] = useState<{
+        taskId: string;
+        taskName: string;
+        prevProgress?: number;
+    } | null>(null);
+    const [evidencePreview, setEvidencePreview] = useState<EvidenceItem | null>(
+        null,
+    );
+    const [uploadEvidenceTask, setUploadEvidenceTask] = useState<{
+        task: SubSubtask;
+        requireComplete?: boolean;
+    } | null>(null);
+    const [todaySectionOpen, setTodaySectionOpen] = useState(true);
+    const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const todayTasks = useMemo(() => {
-    const list: Array<{
-      st: SubSubtask;
-      parentSmj: SubMainJob;
-      parentMj: MainJob;
-      timingStatus: 'active' | 'starting' | 'due' | 'overdue';
-    }> = [];
+    // Manage Dependencies State
+    const [depModal, setDepModal] = useState<{
+        isOpen: boolean;
+        task?: SubSubtask;
+    }>({ isOpen: false });
+    const [depForm, setDepForm] = useState({
+        predecessor_wbs_ids: [] as string[],
+        dependency_type: "FS" as DependencyType,
+        lag_days: 0,
+    });
+    const [actionError, setActionError] = useState("");
+    const [submitting, setSubmitting] = useState(false);
 
-    projectData.mainJobs.forEach(mj => {
-      mj.subMainJobs.forEach(smj => {
-        smj.subtasks.forEach(st => {
-          if (!st.startDate && !st.finishDate) return;
-          const start = st.startDate || '';
-          const end = st.finishDate || st.startDate || '';
-          const isDone = st.checked || st.progress >= 100;
+    // Sync depModal task data when projectData updates via Inertia
+    useEffect(() => {
+        if (depModal.isOpen && depModal.task) {
+            const updatedTask = projectData.mainJobs
+                .flatMap((mj) => mj.subMainJobs)
+                .flatMap((smj) => smj.subtasks)
+                .find((st) => st.id === depModal.task!.id);
 
-          if (end < todayStr && !isDone) {
-            list.push({ st, parentSmj: smj, parentMj: mj, timingStatus: 'overdue' });
-          } else if (end === todayStr) {
-            list.push({ st, parentSmj: smj, parentMj: mj, timingStatus: 'due' });
-          } else if (start === todayStr) {
-            list.push({ st, parentSmj: smj, parentMj: mj, timingStatus: 'starting' });
-          } else if (start <= todayStr && end >= todayStr) {
-            list.push({ st, parentSmj: smj, parentMj: mj, timingStatus: 'active' });
-          }
+            if (
+                updatedTask &&
+                JSON.stringify(updatedTask.dependencies) !==
+                    JSON.stringify(depModal.task.dependencies)
+            ) {
+                setDepModal((prev) => ({ ...prev, task: updatedTask }));
+            }
+        }
+    }, [projectData, depModal.isOpen, depModal.task?.id]);
+
+    const handleSaveEvidence = (
+        taskId: string,
+        newEvidences: EvidenceItem[],
+        completeTo100: boolean = false,
+        rawFiles?: File[],
+    ) => {
+        if (!projectData.id) return;
+
+        // Find current progress
+        let currentProg = 0;
+        projectData.mainJobs.forEach((mj) => {
+            mj.subMainJobs.forEach((smj) => {
+                smj.subtasks.forEach((st) => {
+                    if (st.id === taskId) currentProg = st.progress;
+                });
+            });
         });
-      });
-    });
+        const targetProgress = completeTo100 ? 100 : currentProg;
 
-    return list;
-  }, [projectData, todayStr]);
+        // Build the payload — Inertia router.post handles File objects natively
+        const payload: Record<string, unknown> = {
+            progress: targetProgress,
+        };
 
-  const toggleMJ = (id: string) => setExpandedMJ(p => ({ ...p, [id]: !p[id] }));
-  const toggleSMJ = (id: string) => setExpandedSMJ(p => ({ ...p, [id]: !p[id] }));
-
-  // Add / Edit Main Task (Main Job / Level 1 WBS)
-  const handleSaveMainJob = (name: string, weight: number, start?: string, end?: string, targetId?: string, targetDbId?: number) => {
-    if (!projectData.id || !name) return;
-
-    if (targetId) {
-      const cleanDbId = targetDbId || (targetId.startsWith('mj-') ? parseInt(targetId.replace('mj-', '')) : parseInt(targetId));
-      router.put(`/projects/${projectData.id}/main-wbs/${cleanDbId}`, {
-        name,
-        weight,
-        start: start || null,
-        end: end || null,
-      }, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setToastMsg(`Main Task "${name}" updated successfully.`);
-          setShowMainJobModal(null);
-        },
-        onError: (errors) => {
-          console.error('Error updating Main Task:', errors);
-          const errText = Object.values(errors).flat().join(', ');
-          setToastMsg(`Failed to update Main Task: ${errText || 'Please check your input'}`);
-        },
-      });
-    } else {
-      router.post(`/projects/${projectData.id}/main-wbs`, {
-        name,
-        weight,
-        start: start || null,
-        end: end || null,
-      }, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setToastMsg(`Main Task "${name}" added successfully.`);
-          setShowMainJobModal(null);
-        },
-        onError: (errors) => {
-          console.error('Error adding Main Task:', errors);
-          const errText = Object.values(errors).flat().join(', ');
-          setToastMsg(`Failed to add Main Task: ${errText || 'Please check your input'}`);
-        },
-      });
-    }
-  };
-
-  // Delete Main Task (Main Job)
-  const handleDeleteMainJob = (mjId: string, mjDbId: number | undefined, mjName: string) => {
-    setDeleteConfirm({
-      title: 'Delete Main Task',
-      message: `Delete Main Task "${mjName}" along with all its Sub Tasks and task items?`,
-      onConfirm: () => {
-        const targetDbId = mjDbId || (mjId.startsWith('mj-') ? mjId.replace('mj-', '') : mjId);
-        if (projectData.id && targetDbId) {
-          router.delete(`/projects/${projectData.id}/main-wbs/${targetDbId}`, {
-            preserveScroll: true,
-            onSuccess: () => {
-              setToastMsg(`Main Task "${mjName}" deleted successfully.`);
-            },
-            onError: () => setToastMsg('Failed to delete Main Task from server.'),
-          });
+        if (rawFiles && rawFiles.length > 0) {
+            if (rawFiles.length === 1) {
+                payload["evidence_file"] = rawFiles[0];
+            } else {
+                rawFiles.forEach((f, i) => {
+                    payload[`evidence_file_${i}`] = f;
+                });
+                payload["evidence_file_count"] = rawFiles.length;
+            }
         }
-      },
-    });
-  };
 
-  // Add Sub Task (Sub Main Job under Main Job)
-  const handleSaveSubMainJob = (mjId: string, name: string, mjDbId?: number) => {
-    if (!projectData.id || !name) return;
-
-    const cleanMainId = mjDbId || (mjId.startsWith('mj-') ? parseInt(mjId.replace('mj-', '')) : parseInt(mjId));
-    router.post(`/projects/${projectData.id}/sub-wbs`, {
-      main_wbs_id: cleanMainId,
-      name: name,
-    }, {
-      preserveScroll: true,
-      onSuccess: () => {
-        setToastMsg(`Sub Task "${name}" added successfully.`);
-        setShowAddSubMainJobModal(null);
-      },
-      onError: (errors) => {
-        console.error('Error adding Sub Task:', errors);
-        const errText = Object.values(errors).flat().join(', ');
-        setToastMsg(`Failed to add Sub Task: ${errText || 'Please check your input'}`);
-      },
-    });
-  };
-
-  // Delete Sub Task (Sub Main Job)
-  const handleDeleteSubMainJob = (mjId: string, smjId: string, smjDbId: number | undefined, smjName: string) => {
-    setDeleteConfirm({
-      title: 'Delete Sub Task',
-      message: `Delete Sub Task "${smjName}" along with all tasks inside it?`,
-      onConfirm: () => {
-        const targetDbId = smjDbId || (smjId.startsWith('smj-') ? smjId.replace('smj-', '') : smjId);
-        if (projectData.id && targetDbId) {
-          router.delete(`/projects/${projectData.id}/sub-wbs/${targetDbId}`, {
-            preserveScroll: true,
-            onSuccess: () => {
-              setToastMsg(`Sub Task "${smjName}" deleted successfully.`);
+        router.post(
+            `/projects/${projectData.id}/tasks/${taskId}/toggle`,
+            payload,
+            {
+                preserveScroll: true,
+                preserveState: true,
+                forceFormData: true,
+                onSuccess: (page) => {
+                    // Optimistically merge new evidences into local state so UI updates immediately
+                    // without needing a full page reload
+                    const serverProject = (page.props as any)?.project;
+                    if (serverProject) {
+                        setProjectData(
+                            recalculateSchedule(
+                                recalculateProgress(serverProject),
+                            ),
+                        );
+                    } else {
+                        // Fallback: manually merge new evidences into local state
+                        setProjectData((prev) => {
+                            const updated = { ...prev };
+                            updated.mainJobs = updated.mainJobs.map((mj) => ({
+                                ...mj,
+                                subMainJobs: mj.subMainJobs.map((smj) => ({
+                                    ...smj,
+                                    subtasks: smj.subtasks.map((st) => {
+                                        if (st.id !== taskId) return st;
+                                        return {
+                                            ...st,
+                                            progress: targetProgress,
+                                            checked: targetProgress >= 100,
+                                            evidences: [
+                                                ...(st.evidences || []),
+                                                ...newEvidences,
+                                            ],
+                                        };
+                                    }),
+                                })),
+                            }));
+                            return recalculateSchedule(
+                                recalculateProgress(updated),
+                            );
+                        });
+                    }
+                    setToastMsg(
+                        completeTo100
+                            ? "Completion evidence uploaded successfully & task marked 100% complete ✓"
+                            : "Evidence attached to task successfully ✓",
+                    );
+                    setUploadEvidenceTask(null);
+                },
+                onError: (err) => {
+                    console.error(err);
+                    setToastMsg("Failed to upload evidence.");
+                    setUploadEvidenceTask(null);
+                },
             },
-            onError: () => setToastMsg('Failed to delete Sub Task from server.'),
-          });
-        }
-      },
-    });
-  };
-
-  // Add or Edit Sub-Subtask (Task)
-  const handleSaveSubtask = (smjId: string, taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => {
-    if (!projectData.id || !taskData.name) return;
-
-    const cleanSubWbsId = taskData.smjDbId || (smjId.startsWith('smj-') ? parseInt(smjId.replace('smj-', '')) : parseInt(smjId));
-    const payload = {
-      sub_wbs_id: cleanSubWbsId,
-      name: taskData.name,
-      divisions_id: taskData.divisionId || null,
-      duration: taskData.duration || 1,
-      start: taskData.startDate || null,
-      end: taskData.finishDate || null,
-      predecessor: taskData.predecessor || null,
-      dep_type: taskData.depType || 'FS',
-      lag: taskData.lag || 0,
-      lead: taskData.lead || 0,
-      predecessors: taskData.predecessors || [],
-      requires_evidence: taskData.requiresEvidence || false,
-      weight: taskData.weight !== undefined ? taskData.weight : 100,
+        );
     };
 
-    if (taskData.id) {
-      router.put(`/projects/${projectData.id}/tasks/${taskData.id}`, payload, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setToastMsg(`Task "${taskData.name}" updated successfully.`);
-          setShowAddTaskModal(null);
-        },
-        onError: (errors) => {
-          console.error('Error updating task:', errors);
-          const errText = Object.values(errors).flat().join(', ');
-          setToastMsg(`Failed to update task: ${errText || 'Please check your input'}`);
-        },
-      });
-    } else {
-      router.post(`/projects/${projectData.id}/tasks`, payload, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setToastMsg(`Task "${taskData.name}" added successfully.`);
-          setShowAddTaskModal(null);
-        },
-        onError: (errors) => {
-          console.error('Error adding task:', errors);
-          const errText = Object.values(errors).flat().join(', ');
-          setToastMsg(`Failed to save task: ${errText || 'Please check your input'}`);
-        },
-      });
-    }
-  };
+    // Dynamic Today's Tasks
+    const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const handleDeleteSubtask = (smjId: string, taskId: string, taskName: string) => {
-    setDeleteConfirm({
-      title: 'Delete Task',
-      message: `Delete task "${taskName}"?`,
-      onConfirm: () => {
-        if (projectData.id && taskId) {
-          router.delete(`/projects/${projectData.id}/tasks/${taskId}`, {
-            preserveScroll: true,
-            onSuccess: () => {
-              setToastMsg(`Task "${taskName}" successfully deleted.`);
+    const todayTasks = useMemo(() => {
+        const list: Array<{
+            st: SubSubtask;
+            parentSmj: SubMainJob;
+            parentMj: MainJob;
+            timingStatus: "active" | "starting" | "due" | "overdue";
+        }> = [];
+
+        projectData.mainJobs.forEach((mj) => {
+            mj.subMainJobs.forEach((smj) => {
+                smj.subtasks.forEach((st) => {
+                    if (!st.startDate && !st.finishDate) return;
+                    const start = st.startDate || "";
+                    const end = st.finishDate || st.startDate || "";
+                    const isDone = st.checked || st.progress >= 100;
+
+                    if (end < todayStr && !isDone) {
+                        list.push({
+                            st,
+                            parentSmj: smj,
+                            parentMj: mj,
+                            timingStatus: "overdue",
+                        });
+                    } else if (end === todayStr) {
+                        list.push({
+                            st,
+                            parentSmj: smj,
+                            parentMj: mj,
+                            timingStatus: "due",
+                        });
+                    } else if (start === todayStr) {
+                        list.push({
+                            st,
+                            parentSmj: smj,
+                            parentMj: mj,
+                            timingStatus: "starting",
+                        });
+                    } else if (start <= todayStr && end >= todayStr) {
+                        list.push({
+                            st,
+                            parentSmj: smj,
+                            parentMj: mj,
+                            timingStatus: "active",
+                        });
+                    }
+                });
+            });
+        });
+
+        return list;
+    }, [projectData, todayStr]);
+
+    const toggleMJ = (id: string) =>
+        setExpandedMJ((p) => ({ ...p, [id]: !p[id] }));
+    const toggleSMJ = (id: string) =>
+        setExpandedSMJ((p) => ({ ...p, [id]: !p[id] }));
+
+    // Add / Edit Main Task (Main Job / Level 1 WBS)
+    const handleSaveMainJob = (
+        name: string,
+        weight: number,
+        start?: string,
+        end?: string,
+        targetId?: string,
+        targetDbId?: number,
+    ) => {
+        if (!projectData.id || !name) return;
+
+        if (targetId) {
+            const cleanDbId =
+                targetDbId ||
+                (targetId.startsWith("mj-")
+                    ? parseInt(targetId.replace("mj-", ""))
+                    : parseInt(targetId));
+            router.put(
+                `/projects/${projectData.id}/main-wbs/${cleanDbId}`,
+                {
+                    name,
+                    weight,
+                    start: start || null,
+                    end: end || null,
+                },
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        setToastMsg(
+                            `Main Task "${name}" updated successfully.`,
+                        );
+                        setShowMainJobModal(null);
+                    },
+                    onError: (errors) => {
+                        console.error("Error updating Main Task:", errors);
+                        const errText = Object.values(errors).flat().join(", ");
+                        setToastMsg(
+                            `Failed to update Main Task: ${errText || "Please check your input"}`,
+                        );
+                    },
+                },
+            );
+        } else {
+            router.post(
+                `/projects/${projectData.id}/main-wbs`,
+                {
+                    name,
+                    weight,
+                    start: start || null,
+                    end: end || null,
+                },
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        setToastMsg(`Main Task "${name}" added successfully.`);
+                        setShowMainJobModal(null);
+                    },
+                    onError: (errors) => {
+                        console.error("Error adding Main Task:", errors);
+                        const errText = Object.values(errors).flat().join(", ");
+                        setToastMsg(
+                            `Failed to add Main Task: ${errText || "Please check your input"}`,
+                        );
+                    },
+                },
+            );
+        }
+    };
+
+    // Delete Main Task (Main Job)
+    const handleDeleteMainJob = (
+        mjId: string,
+        mjDbId: number | undefined,
+        mjName: string,
+    ) => {
+        setDeleteConfirm({
+            title: "Delete Main Task",
+            message: `Delete Main Task "${mjName}" along with all its Sub Tasks and task items?`,
+            onConfirm: () => {
+                const targetDbId =
+                    mjDbId ||
+                    (mjId.startsWith("mj-") ? mjId.replace("mj-", "") : mjId);
+                if (projectData.id && targetDbId) {
+                    router.delete(
+                        `/projects/${projectData.id}/main-wbs/${targetDbId}`,
+                        {
+                            preserveScroll: true,
+                            onSuccess: () => {
+                                setToastMsg(
+                                    `Main Task "${mjName}" deleted successfully.`,
+                                );
+                            },
+                            onError: () =>
+                                setToastMsg(
+                                    "Failed to delete Main Task from server.",
+                                ),
+                        },
+                    );
+                }
             },
-            onError: () => setToastMsg('Failed to delete task from server.'),
-          });
-        }
-      },
-    });
-  };
-
-  const handleOpenDepModal = (task: SubSubtask) => {
-    setActionError('');
-    setDepForm({ predecessor_wbs_ids: [], dependency_type: 'FS', lag_days: 0 });
-    setDepModal({ isOpen: true, task });
-  };
-
-  const handleAddDependency = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!depModal.task || depForm.predecessor_wbs_ids.length === 0) return;
-
-    setSubmitting(true);
-    setActionError('');
-    router.post(`/projects/${projectData.id}/tasks/${depModal.task.id}/dependencies`, {
-      predecessor_wbs_ids: depForm.predecessor_wbs_ids,
-      dependency_type: depForm.dependency_type,
-      lag_days: depForm.lag_days,
-    }, {
-      preserveScroll: true,
-      onSuccess: () => {
-        setDepForm({ predecessor_wbs_ids: [], dependency_type: 'FS', lag_days: 0 });
-        setSubmitting(false);
-        // We let Inertia handle the props update which will flow into projectData
-      },
-      onError: (errors) => {
-        setActionError(Object.values(errors)[0] as string || 'Gagal menambahkan ketergantungan');
-        setSubmitting(false);
-      }
-    });
-  };
-
-  const handleRemoveDependency = (depId: number) => {
-    setDeleteConfirm({
-      title: 'Hapus Ketergantungan',
-      message: 'Apakah Anda yakin ingin menghapus relasi ketergantungan ini?',
-      onConfirm: () => {
-        router.delete(`/projects/${projectData.id}/tasks/${depModal.task?.id}/dependencies/${depId}`, {
-          preserveScroll: true,
         });
-      }
-    });
-  };
+    };
 
-  // Checklist authorization:
-  // - Admin (Utama & Progres): FALSE (strictly read-only)
-  // - PIC: FALSE (PIC CANNOT check tasks, only manages and adds tasks)
-  // - Worker: TRUE only if worker's division matches the task's division
-  const isAuthorizedToCheck = (taskDivision: string) => {
-    if (isAdmin || isPIC) return false;
-    if (isWorker) {
-      const workerDiv = (authUser?.division ?? '').trim().toLowerCase();
-      const targetDiv = (taskDivision ?? '').trim().toLowerCase();
-      return workerDiv !== '' && (workerDiv === targetDiv || targetDiv === 'general' || targetDiv === 'internal');
-    }
-    return false;
-  };
+    // Add Sub Task (Sub Main Job under Main Job)
+    const handleSaveSubMainJob = (
+        mjId: string,
+        name: string,
+        mjDbId?: number,
+    ) => {
+        if (!projectData.id || !name) return;
 
-  // Continuous Progress Slider Update (0–100%)
-  const handleProgressChange = (taskId: string, newProgress: number, authorized: boolean, taskName: string, commit: boolean = false) => {
-    if (!authorized) {
-      if (isAdmin) {
-        setToastMsg('Action Restricted: Admin role is Read-Only.');
-      } else if (isPIC) {
-        setToastMsg('Action Restricted: Progress slider can only be updated by workers of the assigned division.');
-      } else {
-        setToastMsg('You do not have permission to update progress for this task.');
-      }
-      return;
-    }
+        const cleanMainId =
+            mjDbId ||
+            (mjId.startsWith("mj-")
+                ? parseInt(mjId.replace("mj-", ""))
+                : parseInt(mjId));
+        router.post(
+            `/projects/${projectData.id}/sub-wbs`,
+            {
+                main_wbs_id: cleanMainId,
+                name: name,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setToastMsg(`Sub Task "${name}" added successfully.`);
+                    setShowAddSubMainJobModal(null);
+                },
+                onError: (errors) => {
+                    console.error("Error adding Sub Task:", errors);
+                    const errText = Object.values(errors).flat().join(", ");
+                    setToastMsg(
+                        `Failed to add Sub Task: ${errText || "Please check your input"}`,
+                    );
+                },
+            },
+        );
+    };
 
-    const clamped = Math.max(0, Math.min(100, Math.round(newProgress)));
-    const isCompleted = clamped === 100;
-
-    // Find current task state to verify evidence
-    let currentTask: SubSubtask | undefined;
-    for (const mj of projectData.mainJobs) {
-      for (const smj of mj.subMainJobs) {
-        const found = smj.subtasks.find(st => st.id === taskId);
-        if (found) {
-          currentTask = found;
-          break;
-        }
-      }
-      if (currentTask) break;
-    }
-
-    // REQUIREMENT: Evidence attachment is MANDATORY (required) to complete task (100%)
-    if (isCompleted && currentTask && (!currentTask.evidences || currentTask.evidences.length === 0)) {
-      if (currentTask.requiresEvidence) {
-        setToastMsg(`Bukti (evidence) diperlukan sebelum menyelesaikan task "${taskName}" (100%).`);
-        if (commit) {
-          setUploadEvidenceTask({
-            task: currentTask,
-            requireComplete: true,
-          });
-        }
-        return;
-      }
-    }
-
-    const originalData = projectData;
-    setProjectData(prev => {
-      const newData = { ...prev };
-      newData.mainJobs = newData.mainJobs.map(mj => ({
-        ...mj,
-        subMainJobs: mj.subMainJobs.map(smj => ({
-          ...smj,
-          subtasks: smj.subtasks.map(st => {
-            if (st.id === taskId) {
-              const prev = st.progress < 100 ? st.progress : (st.prevProgress || 0);
-              return {
-                ...st,
-                progress: clamped,
-                checked: isCompleted,
-                prevProgress: prev,
-              };
-            }
-            return st;
-          })
-        }))
-      }));
-      return recalculateSchedule(recalculateProgress(newData));
-    });
-
-    if (commit && projectData.id) {
-      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: clamped }, {
-        preserveScroll: true,
-        preserveState: true,
-        onSuccess: (page: any) => {
-          const flashError = page?.props?.flash?.error;
-          if (flashError) {
-            setToastMsg(flashError);
-            setProjectData(originalData);
-            return;
-          }
-          if (clamped === 100) setToastMsg(`Task "${taskName}" marked as completed (100%) ✓`);
-          else setToastMsg(`Task "${taskName}" progress saved (${clamped}%)`);
-        },
-        onError: (errors) => {
-          const msg = Object.values(errors).flat().join(', ');
-          setToastMsg(msg || 'Failed to update progress.');
-          setProjectData(originalData);
-        }
-      });
-    }
-  };
-
-  // Checkbox toggle with Uncheck Confirmation Modal
-  const handleCheck = (taskId: string, authorized: boolean, taskName: string) => {
-    if (!authorized) {
-      if (isAdmin) {
-        setToastMsg('Action Restricted: Admin role is Read-Only and cannot check off tasks.');
-      } else if (isPIC) {
-        setToastMsg('Action Restricted: PICs can only add and schedule tasks. Completing the checklist can only be performed by workers of the assigned division.');
-      } else if (isWorker) {
-        setToastMsg(`Action Restricted: You are assigned to the "${user?.division || pageProps?.division || 'Worker'}" division. You may only check tasks assigned to your division.`);
-      } else {
-        setToastMsg('You do not have permission to check this task.');
-      }
-      return;
-    }
-
-    // Find current task state
-    let currentTask: SubSubtask | undefined;
-    for (const mj of projectData.mainJobs) {
-      for (const smj of mj.subMainJobs) {
-        const found = smj.subtasks.find(st => st.id === taskId);
-        if (found) {
-          currentTask = found;
-          break;
-        }
-      }
-      if (currentTask) break;
-    }
-
-    if (!currentTask) return;
-
-    // Requirement 3: If already completed/checked, show confirmation modal to prevent accidental uncheck!
-    if (currentTask.checked || currentTask.progress >= 100) {
-      setUncheckConfirm({
-        taskId,
-        taskName,
-        prevProgress: currentTask.prevProgress,
-      });
-      return;
-    }
-
-    // If incomplete, mark completed (100%)
-    handleProgressChange(taskId, 100, true, taskName, true);
-  };
-
-  const confirmUncheck = () => {
-    if (!uncheckConfirm) return;
-    const { taskId, taskName, prevProgress } = uncheckConfirm;
-    const revertProgress = (prevProgress !== undefined && prevProgress < 100) ? prevProgress : 0;
-
-    const originalData = projectData;
-    setProjectData(prev => {
-      const newData = { ...prev };
-      newData.mainJobs = newData.mainJobs.map(mj => ({
-        ...mj,
-        subMainJobs: mj.subMainJobs.map(smj => ({
-          ...smj,
-          subtasks: smj.subtasks.map(st => {
-            if (st.id === taskId) {
-              return {
-                ...st,
-                progress: revertProgress,
-                checked: false,
-              };
-            }
-            return st;
-          })
-        }))
-      }));
-      return recalculateSchedule(recalculateProgress(newData));
-    });
-
-    if (projectData.id) {
-      router.post(`/projects/${projectData.id}/tasks/${taskId}/toggle`, { progress: revertProgress }, {
-        preserveScroll: true,
-        preserveState: true,
-        onSuccess: (page: any) => {
-          const flashError = page?.props?.flash?.error;
-          if (flashError) {
-            setToastMsg(flashError);
-            setProjectData(originalData);
-            return;
-          }
-          setToastMsg(`Task "${taskName}" marked as incomplete.`);
-        },
-        onError: () => {
-            setToastMsg('Failed to update task status.');
-            setProjectData(originalData);
-        }
-      });
-    }
-
-    setUncheckConfirm(null);
-  };
-
-  const filteredMJs = projectData.mainJobs.map(mj => {
-    if (!isWorker) return mj;
-    const workerDiv = (user?.division ?? pageProps?.division ?? '').trim().toLowerCase();
-    
-    // Filter SMJs and STs to only show worker's own tasks
-    const filteredSmjs = mj.subMainJobs.map(smj => {
-      const filteredSts = smj.subtasks.filter(st => {
-        const targetDiv = (st.division || smj.pic || '').trim().toLowerCase();
-        return workerDiv !== '' && workerDiv === targetDiv;
-      });
-      return { ...smj, subtasks: filteredSts };
-    }).filter(smj => smj.subtasks.length > 0);
-
-    return { ...mj, subMainJobs: filteredSmjs };
-  }).filter(mj => {
-    if (isWorker && mj.subMainJobs.length === 0) return false;
-    if (search && !mj.name.toLowerCase().includes(search.toLowerCase()) &&
-        !mj.subMainJobs.some(smj => smj.name.toLowerCase().includes(search.toLowerCase()) ||
-          smj.subtasks.some(st => st.name.toLowerCase().includes(search.toLowerCase())))) return false;
-    if (filterStatus && mj.status !== filterStatus &&
-        !mj.subMainJobs.some(smj => smj.status === filterStatus)) return false;
-    return true;
-  });
-
-  const hasFilter = Boolean(search.trim() || filterStatus);
-  const hasProjectTasks = (projectData?.mainJobs || []).length > 0;
-
-  const handleExportCSV = () => {
-    const headers = ['WBS Code', 'Level', 'Description', 'PIC', 'Status', 'Progress (%)', 'Start Date', 'Finish Date', 'Duration', 'Predecessor'];
-    const rows: any[][] = [];
-    
-    filteredMJs.forEach(mj => {
-      rows.push([mj.code, 'Main Job', mj.name, '-', mj.status, mj.progress, mj.startDate || '-', mj.finishDate || '-', '-', '-']);
-      mj.subMainJobs.forEach(smj => {
-        rows.push([smj.code, 'Sub Main Job', smj.name, smj.pic, smj.status, smj.progress, smj.startDate || '-', smj.finishDate || '-', '-', '-']);
-        smj.subtasks.forEach(st => {
-          const predStr = st.predecessor ? `${st.predecessor} (${st.depType || 'FS'}${st.lag ? '+'+st.lag : ''})` : '-';
-          rows.push([st.code, 'Sub-Subtask', st.name, smj.pic, st.checked ? 'Completed' : st.status, st.checked ? 100 : st.progress, st.startDate, st.finishDate, st.duration, predStr]);
+    // Delete Sub Task (Sub Main Job)
+    const handleDeleteSubMainJob = (
+        mjId: string,
+        smjId: string,
+        smjDbId: number | undefined,
+        smjName: string,
+    ) => {
+        setDeleteConfirm({
+            title: "Delete Sub Task",
+            message: `Delete Sub Task "${smjName}" along with all tasks inside it?`,
+            onConfirm: () => {
+                const targetDbId =
+                    smjDbId ||
+                    (smjId.startsWith("smj-")
+                        ? smjId.replace("smj-", "")
+                        : smjId);
+                if (projectData.id && targetDbId) {
+                    router.delete(
+                        `/projects/${projectData.id}/sub-wbs/${targetDbId}`,
+                        {
+                            preserveScroll: true,
+                            onSuccess: () => {
+                                setToastMsg(
+                                    `Sub Task "${smjName}" deleted successfully.`,
+                                );
+                            },
+                            onError: () =>
+                                setToastMsg(
+                                    "Failed to delete Sub Task from server.",
+                                ),
+                        },
+                    );
+                }
+            },
         });
-      });
-    });
-    
-    exportToCSV(`Tasks_Export_${new Date().toISOString().slice(0,10)}`, headers, rows);
-    setToastMsg('Tasks exported to CSV successfully.');
-  };
+    };
 
-  return (
-    <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
-      <PageHeader
-        title="Task Management"
-        subtitle={`3-Tier WBS: Main Job → Sub Task (Sub Main Job) → Task (${projectData.name || 'Project'})`}
-        actions={
-          <div className="flex items-center flex-wrap gap-2.5 sm:gap-3">
-            <span className="text-[12px] text-neutral-500 hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-100 border border-neutral-200/80">
-              Role: <strong className="text-neutral-800">{user?.displayRole || user?.role}</strong>
-              {isAdmin && <span className="ml-1 text-warning font-semibold">(Read-Only)</span>}
-              {isPIC && <span className="ml-1 text-emerald-600 font-semibold">(PIC - Manage & Add Tasks)</span>}
-              {isWorker && <span className="ml-1 text-blue-600 font-semibold">· Division: {user?.division || 'Internal'}</span>}
-            </span>
+    // Add or Edit Sub-Subtask (Task)
+    const handleSaveSubtask = (
+        smjId: string,
+        taskData: Partial<SubSubtask> & {
+            smjDbId?: number;
+            divisionId?: number;
+        },
+    ) => {
+        if (!projectData.id || !taskData.name) return;
 
-            {isWorker && availableProjects.length > 1 && (
-              <select
-                className="bg-white border border-neutral-200 text-[12px] font-semibold text-neutral-800 rounded-md px-2 py-1 flex-shrink-0"
-                value={projectData.id?.replace('p-', '')}
-                onChange={(e) => router.get(`/tasks?project_id=${e.target.value}`)}
-              >
-                {availableProjects.map((p: any) => (
-                  <option key={p.id} value={p.id}>{p.title}</option>
-                ))}
-              </select>
-            )}
+        const cleanSubWbsId =
+            taskData.smjDbId ||
+            (smjId.startsWith("smj-")
+                ? parseInt(smjId.replace("smj-", ""))
+                : parseInt(smjId));
+        const payload = {
+            sub_wbs_id: cleanSubWbsId,
+            name: taskData.name,
+            divisions_id: taskData.divisionId || null,
+            duration: taskData.duration || 1,
+            start: taskData.startDate || null,
+            end: taskData.finishDate || null,
+            predecessor: taskData.predecessor || null,
+            dep_type: taskData.depType || "FS",
+            lag: taskData.lag || 0,
+            lead: taskData.lead || 0,
+            predecessors: taskData.predecessors || [],
+            requires_evidence: taskData.requiresEvidence || false,
+            weight: taskData.weight !== undefined ? taskData.weight : 100,
+        };
 
-            {isPIC && (
-              <>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setShowMainJobModal({ mode: 'create' })}
-                  icon={Plus}
-                  className="text-[12px] h-[34px] flex-shrink-0"
-                >
-                  Add Main Task
-                </Button>
-                <Link
-                  href={`/projects/${projectData.id}/predecessors`}
-                  className="inline-flex items-center justify-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors h-[34px] flex-shrink-0"
-                >
-                  <Link2 size={14} /> Atur Predecessor
-                </Link>
-              </>
-            )}
-            
-            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200 flex-shrink-0">
-              <button
-                onClick={() => setViewMode('checklist')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
-                  viewMode === 'checklist'
-                    ? 'bg-brand text-white shadow-xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
-                }`}
-              >
-                <ListTodo size={14} /> <span>Checklist View</span>
-              </button>
-              <button
-                onClick={() => setViewMode('table')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
-                  viewMode === 'table'
-                    ? 'bg-brand text-white shadow-xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
-                }`}
-              >
-                <TableProperties size={14} /> <span>Table View</span>
-              </button>
-            </div>
-            
-            <Button variant="outline" size="sm" onClick={handleExportCSV} icon={Download} className="text-[12px] h-[34px] flex-shrink-0">
-              Export CSV
-            </Button>
-          </div>
+        if (taskData.id) {
+            router.put(
+                `/projects/${projectData.id}/tasks/${taskData.id}`,
+                payload,
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        setToastMsg(
+                            `Task "${taskData.name}" updated successfully.`,
+                        );
+                        setShowAddTaskModal(null);
+                    },
+                    onError: (errors) => {
+                        console.error("Error updating task:", errors);
+                        const errText = Object.values(errors).flat().join(", ");
+                        setToastMsg(
+                            `Failed to update task: ${errText || "Please check your input"}`,
+                        );
+                    },
+                },
+            );
+        } else {
+            router.post(`/projects/${projectData.id}/tasks`, payload, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setToastMsg(`Task "${taskData.name}" added successfully.`);
+                    setShowAddTaskModal(null);
+                },
+                onError: (errors) => {
+                    console.error("Error adding task:", errors);
+                    const errText = Object.values(errors).flat().join(", ");
+                    setToastMsg(
+                        `Failed to save task: ${errText || "Please check your input"}`,
+                    );
+                },
+            });
         }
-      />
+    };
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-2.5">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search Main Job, Sub Task, or Task…"
-            className="w-full pl-8 pr-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white shadow-xs"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value as Status | '')}
-            className="px-3 py-2 rounded-lg border border-neutral-200 text-[13px] text-neutral-700 outline-none focus:border-brand bg-white shadow-xs"
-          >
-            <option value="">All Statuses</option>
-            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          {(search || filterStatus) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setSearch(''); setFilterStatus(''); }}
-              className="text-[12px]"
-            >
-              Reset
-            </Button>
-          )}
-        </div>
-      </div>
+    const handleDeleteSubtask = (
+        smjId: string,
+        taskId: string,
+        taskName: string,
+    ) => {
+        setDeleteConfirm({
+            title: "Delete Task",
+            message: `Delete task "${taskName}"?`,
+            onConfirm: () => {
+                if (projectData.id && taskId) {
+                    router.delete(
+                        `/projects/${projectData.id}/tasks/${taskId}`,
+                        {
+                            preserveScroll: true,
+                            onSuccess: () => {
+                                setToastMsg(
+                                    `Task "${taskName}" successfully deleted.`,
+                                );
+                            },
+                            onError: () =>
+                                setToastMsg(
+                                    "Failed to delete task from server.",
+                                ),
+                        },
+                    );
+                }
+            },
+        });
+    };
 
+    const handleOpenDepModal = (task: SubSubtask) => {
+        setActionError("");
+        setDepForm({
+            predecessor_wbs_ids: [],
+            dependency_type: "FS",
+            lag_days: 0,
+        });
+        setDepModal({ isOpen: true, task });
+    };
 
-      {/* Content Rendering based on View Mode */}
-      {viewMode === 'checklist' ? (
-        <div className="space-y-3">
-          {filteredMJs.map(mj => (
-            <Card key={mj.id} className="overflow-hidden">
-              {/* Level 1: Main Job Header */}
-              <div
-                onClick={() => toggleMJ(mj.id)}
-                className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 py-3.5 hover:bg-neutral-50/70 transition-colors text-left cursor-pointer"
-              >
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <div className="text-neutral-400 flex-shrink-0 mt-1">
-                    {expandedMJ[mj.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  </div>
-                  <div className="w-6 h-6 rounded bg-brand text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
-                    <span className="text-[10px] font-bold">{mj.code}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[15px] sm:text-[16px] font-black text-neutral-900 leading-snug break-words">{mj.name}</div>
-                    <div className="flex items-center gap-2 mt-1 text-[12px] text-neutral-600 font-semibold flex-wrap">
-                      <span>Main Job Weight: <strong className="text-neutral-800 font-bold">{mj.weight}%</strong></span>
-                      <span className="text-neutral-300">•</span>
-                      <span>{mj.subMainJobs.length} Sub Tasks</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center flex-wrap gap-2.5 sm:gap-3 flex-shrink-0 self-start md:self-center pl-9 md:pl-0">
-                  <StatusBadge status={mj.status} size="sm" />
-                  <div className="w-16 hidden sm:block">
-                    <ProgressBar value={mj.progress} size="xs" showLabel={false} />
-                  </div>
-                  <span className="text-[14px] sm:text-[16px] font-black text-neutral-900 w-11 text-right tabular-nums">{mj.progress}%</span>
+    const handleAddDependency = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!depModal.task || depForm.predecessor_wbs_ids.length === 0) return;
 
-                  {/* PIC can add Sub Task, edit Main Task & delete Main Task */}
-                  {isPIC && (
-                    <div className="flex items-center gap-1.5 ml-1 flex-wrap" onClick={e => e.stopPropagation()}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setShowAddSubMainJobModal({
-                            mjId: mj.id,
-                            mjDbId: (mj as any).dbId,
-                            mjName: mj.name,
-                            parentWeight: mj.weight,
-                            currentSubCount: mj.subMainJobs.length,
-                          });
-                        }}
-                        className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300 flex-shrink-0"
-                        icon={Plus}
-                      >
-                        Add Sub Task
-                      </Button>
-                      <button
-                        type="button"
-                        onClick={() => setShowMainJobModal({
-                          mode: 'edit',
-                          id: mj.id,
-                          dbId: (mj as any).dbId,
-                          name: mj.name,
-                          weight: mj.weight,
-                          startDate: mj.startDate,
-                          finishDate: mj.finishDate
-                        })}
-                        className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
-                        title="Edit Main Task (Name & Weight)"
-                      >
-                        <Edit2 size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteMainJob(mj.id, (mj as any).dbId, mj.name)}
-                        className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
-                        title="Delete Main Task"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+        setSubmitting(true);
+        setActionError("");
+        router.post(
+            `/projects/${projectData.id}/tasks/${depModal.task.id}/dependencies`,
+            {
+                predecessor_wbs_ids: depForm.predecessor_wbs_ids,
+                dependency_type: depForm.dependency_type,
+                lag_days: depForm.lag_days,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setDepForm({
+                        predecessor_wbs_ids: [],
+                        dependency_type: "FS",
+                        lag_days: 0,
+                    });
+                    setSubmitting(false);
+                    // We let Inertia handle the props update which will flow into projectData
+                },
+                onError: (errors) => {
+                    setActionError(
+                        (Object.values(errors)[0] as string) ||
+                            "Failed to add dependency",
+                    );
+                    setSubmitting(false);
+                },
+            },
+        );
+    };
 
-              {/* Level 2: Sub Tasks (Sub Main Jobs) */}
-              {expandedMJ[mj.id] && (
-                <div className="border-t border-neutral-100 divide-y divide-neutral-100 bg-neutral-50/30">
-                  {mj.subMainJobs.map(smj => (
-                    <SubMainJobSection
-                      key={smj.id}
-                      mainJobs={projectData.mainJobs}
-                      smj={smj}
-                      expanded={!!expandedSMJ[smj.id]}
-                      onToggle={() => toggleSMJ(smj.id)}
-                      isAuthorizedToCheck={isAuthorizedToCheck}
-                      isPIC={isPIC}
-                      isAdmin={isAdmin}
-                      onOpenAddModal={() => {
-                        setExpandedSMJ(p => ({ ...p, [smj.id]: true }));
-                        setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, parentSmj: smj });
-                      }}
-                      onOpenEditModal={(task) => setShowAddTaskModal({ smjId: smj.id, smjDbId: (smj as any).dbId, parentSmj: smj, task })}
-                      onDeleteSubMainJob={() => handleDeleteSubMainJob(mj.id, smj.id, (smj as any).dbId, smj.name)}
-                      onDeleteTask={(taskId, taskName) => handleDeleteSubtask(smj.id, taskId, taskName)}
-                      onManageDependencies={handleOpenDepModal}
-                      onCheck={handleCheck}
-                      onProgressChange={handleProgressChange}
-                      onOpenEvidence={(ev) => setEvidencePreview(ev)}
-                      onOpenUploadEvidence={(task) => setUploadEvidenceTask({ task })}
-                    />
-                  ))}
-                  {mj.subMainJobs.length === 0 && (
-                    <div className="px-10 py-3 text-[12px] text-neutral-400 italic">
-                      No Sub Tasks yet. {isPIC && "Click 'Add Sub Task' to create one."}
-                    </div>
-                  )}
-                </div>
-              )}
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto scrollbar-thin max-h-[70vh]">
-            <table className="w-full min-w-[1000px] text-left border-collapse">
-              <thead className="bg-neutral-100/80 border-b border-neutral-200 sticky top-0 z-10">
-                <tr className="text-[12px] font-bold text-neutral-600 uppercase tracking-wider">
-                  <th className="px-4 py-3">WBS Code</th>
-                  <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3 text-right">Weight</th>
-                  <th className="px-4 py-3">Division</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Progress</th>
-                  <th className="px-4 py-3">Start Date</th>
-                  <th className="px-4 py-3">Finish Date</th>
-                  <th className="px-4 py-3 text-right">Dur</th>
-                  <th className="px-4 py-3">Pred</th>
-                  <th className="px-4 py-3 text-center">Attachment / Bukti</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 text-[13px]">
-                {filteredMJs.map(mj => (
-                  <Fragment key={mj.id}>
-                    {/* Main Job Row */}
-                    <tr className="bg-brand/5 hover:bg-brand/10 transition-colors">
-                      <td className="px-4 py-3 font-bold text-brand">{mj.code}</td>
-                      <td className="px-4 py-3 font-bold text-neutral-900 text-[14px]">{mj.name}</td>
-                      <td className="px-4 py-3 text-right font-black text-brand text-[13px]">{mj.weight}%</td>
-                      <td className="px-4 py-3 text-neutral-500 font-medium">—</td>
-                      <td className="px-4 py-3"><StatusBadge status={mj.status} size="sm" /></td>
-                      <td className="px-4 py-3 text-right font-black text-brand text-[14px]">{mj.progress}%</td>
-                      <td className="px-4 py-3 text-neutral-600 font-medium">{formatDateDisplay(mj.startDate)}</td>
-                      <td className="px-4 py-3 text-neutral-600 font-medium">{formatDateDisplay(mj.finishDate)}</td>
-                      <td className="px-4 py-3 text-right text-neutral-400">—</td>
-                      <td className="px-4 py-3 text-neutral-400">—</td>
-                      <td className="px-4 py-3 text-center text-neutral-400">—</td>
-                    </tr>
-                    
-                    {/* Sub Main Job Rows */}
-                    {mj.subMainJobs.map(smj => (
-                      <Fragment key={smj.id}>
-                        <tr className="bg-neutral-50 hover:bg-neutral-100/70 transition-colors">
-                          <td className="px-4 py-2.5 pl-8 font-bold text-neutral-700">{smj.code}</td>
-                          <td className="px-4 py-2.5 font-bold text-neutral-800 text-[13.5px]">{smj.name}</td>
-                          <td className="px-4 py-2.5 text-right font-bold text-neutral-800 text-[12.5px]">{smj.weight}%</td>
-                          <td className="px-4 py-2.5">
-                            <span className="px-2 py-0.5 bg-white border border-neutral-200 rounded text-[11px] font-bold text-neutral-600">
-                              {formatDivisionName(smj.pic)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5"><StatusBadge status={smj.status} size="xs" /></td>
-                          <td className="px-4 py-2.5 text-right font-black text-neutral-800 text-[13px]">{smj.progress}%</td>
-                          <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(smj.startDate)}</td>
-                          <td className="px-4 py-2.5 text-neutral-600 font-medium">{formatDateDisplay(smj.finishDate)}</td>
-                          <td className="px-4 py-2.5 text-right text-neutral-400">—</td>
-                          <td className="px-4 py-2.5 text-neutral-400">—</td>
-                          <td className="px-4 py-2.5 text-center text-neutral-400">—</td>
-                        </tr>
-                        
-                        {/* Sub-Subtask Rows */}
-                        {smj.subtasks.map(st => {
-                          const isDone = st.checked || st.progress >= 100;
-                          const authorized = isAuthorizedToCheck(st.division || smj.pic);
-                          return (
-                            <tr
-                              key={st.id}
-                              className={`transition-colors ${
-                                isDone
-                                  ? 'bg-emerald-50/70 hover:bg-emerald-100/50'
-                                  : 'hover:bg-neutral-50/50'
-                              }`}
-                            >
-                              <td className="px-4 py-2 pl-12 font-mono text-[12px] text-neutral-500 font-semibold">{st.code}</td>
-                              <td className="px-4 py-2 text-neutral-800 font-medium">
-                                <div className={isDone ? 'text-neutral-400 font-medium' : 'text-neutral-900 font-medium'}>{st.name}</div>
-                                {st.completedByName && (
-                                  <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium mt-1">
-                                    <CheckCircle2 size={10} /> Diselesaikan oleh: {st.completedByName} pada {st.completedAt}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">{st.weight ?? 100}%</td>
-                              <td className="px-4 py-2 text-neutral-600 text-[11.5px]">{formatDivisionName(st.division || smj.pic)}</td>
-                              <td className="px-4 py-2"><StatusBadge status={isDone ? 'Completed' : st.status} size="xs" /></td>
-                              <td className="px-4 py-2 text-right font-bold text-neutral-800 text-[13px]">
-                                <span className={isDone ? 'text-emerald-700 font-black' : ''}>
-                                  {isDone ? '100' : st.progress}%
+    const handleRemoveDependency = (depId: number) => {
+        setDeleteConfirm({
+            title: "Remove Dependency",
+            message:
+                "Are you sure you want to remove this dependency?",
+            onConfirm: () => {
+                router.delete(
+                    `/projects/${projectData.id}/tasks/${depModal.task?.id}/dependencies/${depId}`,
+                    {
+                        preserveScroll: true,
+                    },
+                );
+            },
+        });
+    };
+
+    // Checklist authorization:
+    // - Admin (Utama & Progres): FALSE (strictly read-only)
+    // - PIC: FALSE (PIC CANNOT check tasks, only manages and adds tasks)
+    // - Worker: TRUE only if worker's division matches the task's division
+    const isAuthorizedToCheck = (taskDivision: string) => {
+        if (isAdmin || isPIC) return false;
+        if (isWorker) {
+            const workerDiv = (authUser?.division ?? "").trim().toLowerCase();
+            const targetDiv = (taskDivision ?? "").trim().toLowerCase();
+            return (
+                workerDiv !== "" &&
+                (workerDiv === targetDiv ||
+                    targetDiv === "general" ||
+                    targetDiv === "internal")
+            );
+        }
+        return false;
+    };
+
+    // Continuous Progress Slider Update (0–100%)
+    const handleProgressChange = (
+        taskId: string,
+        newProgress: number,
+        authorized: boolean,
+        taskName: string,
+        commit: boolean = false,
+    ) => {
+        if (!authorized) {
+            if (isAdmin) {
+                setToastMsg("Action Restricted: Admin role is Read-Only.");
+            } else if (isPIC) {
+                setToastMsg(
+                    "Action Restricted: Progress slider can only be updated by workers of the assigned division.",
+                );
+            } else {
+                setToastMsg(
+                    "You do not have permission to update progress for this task.",
+                );
+            }
+            return;
+        }
+
+        const clamped = Math.max(0, Math.min(100, Math.round(newProgress)));
+        const isCompleted = clamped === 100;
+
+        // Find current task state to verify evidence
+        let currentTask: SubSubtask | undefined;
+        for (const mj of projectData.mainJobs) {
+            for (const smj of mj.subMainJobs) {
+                const found = smj.subtasks.find((st) => st.id === taskId);
+                if (found) {
+                    currentTask = found;
+                    break;
+                }
+            }
+            if (currentTask) break;
+        }
+
+        // REQUIREMENT: Evidence attachment is MANDATORY (required) to complete task (100%)
+        if (
+            isCompleted &&
+            currentTask &&
+            (!currentTask.evidences || currentTask.evidences.length === 0)
+        ) {
+            if (currentTask.requiresEvidence) {
+                setToastMsg(
+                    `Evidence is required before marking task "${taskName}" 100% complete.`,
+                );
+                if (commit) {
+                    setUploadEvidenceTask({
+                        task: currentTask,
+                        requireComplete: true,
+                    });
+                }
+                return;
+            }
+        }
+
+        const originalData = projectData;
+        setProjectData((prev) => {
+            const newData = { ...prev };
+            newData.mainJobs = newData.mainJobs.map((mj) => ({
+                ...mj,
+                subMainJobs: mj.subMainJobs.map((smj) => ({
+                    ...smj,
+                    subtasks: smj.subtasks.map((st) => {
+                        if (st.id === taskId) {
+                            const prev =
+                                st.progress < 100
+                                    ? st.progress
+                                    : st.prevProgress || 0;
+                            return {
+                                ...st,
+                                progress: clamped,
+                                checked: isCompleted,
+                                prevProgress: prev,
+                            };
+                        }
+                        return st;
+                    }),
+                })),
+            }));
+            return recalculateSchedule(recalculateProgress(newData));
+        });
+
+        if (commit && projectData.id) {
+            router.post(
+                `/projects/${projectData.id}/tasks/${taskId}/toggle`,
+                { progress: clamped },
+                {
+                    preserveScroll: true,
+                    preserveState: true,
+                    onSuccess: (page: any) => {
+                        const flashError = page?.props?.flash?.error;
+                        if (flashError) {
+                            setToastMsg(flashError);
+                            setProjectData(originalData);
+                            return;
+                        }
+                        if (clamped === 100)
+                            setToastMsg(
+                                `Task "${taskName}" marked as completed (100%) ✓`,
+                            );
+                        else
+                            setToastMsg(
+                                `Task "${taskName}" progress saved (${clamped}%)`,
+                            );
+                    },
+                    onError: (errors) => {
+                        const msg = Object.values(errors).flat().join(", ");
+                        setToastMsg(msg || "Failed to update progress.");
+                        setProjectData(originalData);
+                    },
+                },
+            );
+        }
+    };
+
+    // Checkbox toggle with Uncheck Confirmation Modal
+    const handleCheck = (
+        taskId: string,
+        authorized: boolean,
+        taskName: string,
+    ) => {
+        if (!authorized) {
+            if (isAdmin) {
+                setToastMsg(
+                    "Action Restricted: Admin role is Read-Only and cannot check off tasks.",
+                );
+            } else if (isPIC) {
+                setToastMsg(
+                    "Action Restricted: PICs can only add and schedule tasks. Completing the checklist can only be performed by workers of the assigned division.",
+                );
+            } else if (isWorker) {
+                setToastMsg(
+                    `Action Restricted: You are assigned to the "${user?.division || pageProps?.division || "Worker"}" division. You may only check tasks assigned to your division.`,
+                );
+            } else {
+                setToastMsg("You do not have permission to check this task.");
+            }
+            return;
+        }
+
+        // Find current task state
+        let currentTask: SubSubtask | undefined;
+        for (const mj of projectData.mainJobs) {
+            for (const smj of mj.subMainJobs) {
+                const found = smj.subtasks.find((st) => st.id === taskId);
+                if (found) {
+                    currentTask = found;
+                    break;
+                }
+            }
+            if (currentTask) break;
+        }
+
+        if (!currentTask) return;
+
+        // Requirement 3: If already completed/checked, show confirmation modal to prevent accidental uncheck!
+        if (currentTask.checked || currentTask.progress >= 100) {
+            setUncheckConfirm({
+                taskId,
+                taskName,
+                prevProgress: currentTask.prevProgress,
+            });
+            return;
+        }
+
+        // If incomplete, mark completed (100%)
+        handleProgressChange(taskId, 100, true, taskName, true);
+    };
+
+    const confirmUncheck = () => {
+        if (!uncheckConfirm) return;
+        const { taskId, taskName, prevProgress } = uncheckConfirm;
+        const revertProgress =
+            prevProgress !== undefined && prevProgress < 100 ? prevProgress : 0;
+
+        const originalData = projectData;
+        setProjectData((prev) => {
+            const newData = { ...prev };
+            newData.mainJobs = newData.mainJobs.map((mj) => ({
+                ...mj,
+                subMainJobs: mj.subMainJobs.map((smj) => ({
+                    ...smj,
+                    subtasks: smj.subtasks.map((st) => {
+                        if (st.id === taskId) {
+                            return {
+                                ...st,
+                                progress: revertProgress,
+                                checked: false,
+                            };
+                        }
+                        return st;
+                    }),
+                })),
+            }));
+            return recalculateSchedule(recalculateProgress(newData));
+        });
+
+        if (projectData.id) {
+            router.post(
+                `/projects/${projectData.id}/tasks/${taskId}/toggle`,
+                { progress: revertProgress },
+                {
+                    preserveScroll: true,
+                    preserveState: true,
+                    onSuccess: (page: any) => {
+                        const flashError = page?.props?.flash?.error;
+                        if (flashError) {
+                            setToastMsg(flashError);
+                            setProjectData(originalData);
+                            return;
+                        }
+                        setToastMsg(`Task "${taskName}" marked as incomplete.`);
+                    },
+                    onError: () => {
+                        setToastMsg("Failed to update task status.");
+                        setProjectData(originalData);
+                    },
+                },
+            );
+        }
+
+        setUncheckConfirm(null);
+    };
+
+    const filteredMJs = projectData.mainJobs
+        .map((mj) => {
+            if (!isWorker) return mj;
+            const workerDiv = (user?.division ?? pageProps?.division ?? "")
+                .trim()
+                .toLowerCase();
+
+            // Filter SMJs and STs to only show worker's own tasks
+            const filteredSmjs = mj.subMainJobs
+                .map((smj) => {
+                    const filteredSts = smj.subtasks.filter((st) => {
+                        const targetDiv = (st.division || smj.pic || "")
+                            .trim()
+                            .toLowerCase();
+                        return workerDiv !== "" && workerDiv === targetDiv;
+                    });
+                    return { ...smj, subtasks: filteredSts };
+                })
+                .filter((smj) => smj.subtasks.length > 0);
+
+            return { ...mj, subMainJobs: filteredSmjs };
+        })
+        .filter((mj) => {
+            if (isWorker && mj.subMainJobs.length === 0) return false;
+            if (
+                search &&
+                !mj.name.toLowerCase().includes(search.toLowerCase()) &&
+                !mj.subMainJobs.some(
+                    (smj) =>
+                        smj.name.toLowerCase().includes(search.toLowerCase()) ||
+                        smj.subtasks.some((st) =>
+                            st.name
+                                .toLowerCase()
+                                .includes(search.toLowerCase()),
+                        ),
+                )
+            )
+                return false;
+            if (
+                filterStatus &&
+                mj.status !== filterStatus &&
+                !mj.subMainJobs.some((smj) => smj.status === filterStatus)
+            )
+                return false;
+            return true;
+        });
+
+    const hasFilter = Boolean(search.trim() || filterStatus);
+    const hasProjectTasks = (projectData?.mainJobs || []).length > 0;
+
+    const handleExportCSV = () => {
+        const headers = [
+            "WBS Code",
+            "Level",
+            "Description",
+            "PIC",
+            "Status",
+            "Progress (%)",
+            "Start Date",
+            "Finish Date",
+            "Duration",
+            "Predecessor",
+        ];
+        const rows: any[][] = [];
+
+        filteredMJs.forEach((mj) => {
+            rows.push([
+                mj.code,
+                "Main Job",
+                mj.name,
+                "-",
+                mj.status,
+                mj.progress,
+                mj.startDate || "-",
+                mj.finishDate || "-",
+                "-",
+                "-",
+            ]);
+            mj.subMainJobs.forEach((smj) => {
+                rows.push([
+                    smj.code,
+                    "Sub Main Job",
+                    smj.name,
+                    smj.pic,
+                    smj.status,
+                    smj.progress,
+                    smj.startDate || "-",
+                    smj.finishDate || "-",
+                    "-",
+                    "-",
+                ]);
+                smj.subtasks.forEach((st) => {
+                    const predStr = st.predecessor
+                        ? `${st.predecessor} (${st.depType || "FS"}${st.lag ? "+" + st.lag : ""})`
+                        : "-";
+                    rows.push([
+                        st.code,
+                        "Sub-Subtask",
+                        st.name,
+                        smj.pic,
+                        st.checked ? "Completed" : st.status,
+                        st.checked ? 100 : st.progress,
+                        st.startDate,
+                        st.finishDate,
+                        st.duration,
+                        predStr,
+                    ]);
+                });
+            });
+        });
+
+        exportToCSV(
+            `Tasks_Export_${new Date().toISOString().slice(0, 10)}`,
+            headers,
+            rows,
+        );
+        setToastMsg("Tasks exported to CSV successfully.");
+    };
+
+    return (
+        <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
+            <PageHeader
+                title="Task Management"
+                subtitle={`3-Tier WBS: Main Job → Sub Task (Sub Main Job) → Task (${projectData.name || "Project"})`}
+                actions={
+                    <div className="flex items-center flex-wrap gap-2.5 sm:gap-3">
+                        <span className="text-[12px] text-neutral-500 hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-100 border border-neutral-200/80">
+                            Role:{" "}
+                            <strong className="text-neutral-800">
+                                {user?.displayRole || user?.role}
+                            </strong>
+                            {isAdmin && (
+                                <span className="ml-1 text-warning font-semibold">
+                                    (Read-Only)
                                 </span>
-                              </td>
-                              <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.startDate)}</td>
-                              <td className="px-4 py-2 text-neutral-600">{formatDateDisplay(st.finishDate)}</td>
-                              <td className="px-4 py-2 text-right text-neutral-600">{st.duration}d</td>
-                              <td className="px-4 py-2 font-mono text-[11.5px] text-neutral-500">
-                                {st.dependencies && st.dependencies.length > 0 ? (
-                                  <div className="flex flex-wrap items-center gap-1">
-                                    {st.dependencies.map(dep => (
-                                      <span key={dep.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type})`}>
-                                        <Link2 size={9} />
-                                        <span>{dep.dependency_type}</span>
-                                      </span>
-                                    ))}
+                            )}
+                            {isPIC && (
+                                <span className="ml-1 text-emerald-600 font-semibold">
+                                    (PIC - Manage & Add Tasks)
+                                </span>
+                            )}
+                            {isWorker && (
+                                <span className="ml-1 text-blue-600 font-semibold">
+                                    · Division: {user?.division || "Internal"}
+                                </span>
+                            )}
+                        </span>
+
+                        {isWorker && availableProjects.length > 1 && (
+                            <select
+                                className="bg-white border border-neutral-200 text-[12px] font-semibold text-neutral-800 rounded-md px-2 py-1 flex-shrink-0"
+                                value={projectData.id?.replace("p-", "")}
+                                onChange={(e) =>
+                                    router.get(
+                                        `/tasks?project_id=${e.target.value}`,
+                                    )
+                                }
+                            >
+                                {availableProjects.map((p: any) => (
+                                    <option key={p.id} value={p.id}>
+                                        {p.title}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+
+                        {isPIC && (
+                            <>
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() =>
+                                        setShowMainJobModal({ mode: "create" })
+                                    }
+                                    icon={Plus}
+                                    className="text-[12px] h-[34px] flex-shrink-0"
+                                >
+                                    Add Main Task
+                                </Button>
+                                <Link
+                                    href={`/projects/${projectData.id}/predecessors`}
+                                    className="inline-flex items-center justify-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors h-[34px] flex-shrink-0"
+                                >
+                                    <Link2 size={14} /> Manage Predecessors
+                                </Link>
+                            </>
+                        )}
+
+                        <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200 flex-shrink-0">
+                            <button
+                                onClick={() => setViewMode("checklist")}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
+                                    viewMode === "checklist"
+                                        ? "bg-brand text-white shadow-xs"
+                                        : "text-neutral-600 hover:text-neutral-900"
+                                }`}
+                            >
+                                <ListTodo size={14} />{" "}
+                                <span>Checklist View</span>
+                            </button>
+                            <button
+                                onClick={() => setViewMode("table")}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
+                                    viewMode === "table"
+                                        ? "bg-brand text-white shadow-xs"
+                                        : "text-neutral-600 hover:text-neutral-900"
+                                }`}
+                            >
+                                <TableProperties size={14} />{" "}
+                                <span>Table View</span>
+                            </button>
+                        </div>
+
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleExportCSV}
+                            icon={Download}
+                            className="text-[12px] h-[34px] flex-shrink-0"
+                        >
+                            Export CSV
+                        </Button>
+                    </div>
+                }
+            />
+
+            {/* Filter and Search Bar */}
+            <div className="flex flex-col sm:flex-row gap-2.5">
+                <div className="relative flex-1">
+                    <Search
+                        size={14}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                    />
+                    <input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search Main Job, Sub Task, or Task…"
+                        className="w-full pl-8 pr-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white shadow-xs"
+                    />
+                </div>
+                <div className="flex items-center gap-2">
+                    <select
+                        value={filterStatus}
+                        onChange={(e) =>
+                            setFilterStatus(e.target.value as Status | "")
+                        }
+                        className="px-3 py-2 rounded-lg border border-neutral-200 text-[13px] text-neutral-700 outline-none focus:border-brand bg-white shadow-xs"
+                    >
+                        <option value="">All Statuses</option>
+                        {STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                                {s}
+                            </option>
+                        ))}
+                    </select>
+                    {(search || filterStatus) && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                setSearch("");
+                                setFilterStatus("");
+                            }}
+                            className="text-[12px]"
+                        >
+                            Reset
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            {/* Content Rendering based on View Mode */}
+            {viewMode === "checklist" ? (
+                <div className="space-y-3">
+                    {filteredMJs.map((mj) => (
+                        <Card key={mj.id} className="overflow-hidden">
+                            {/* Level 1: Main Job Header */}
+                            <div
+                                onClick={() => toggleMJ(mj.id)}
+                                className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 py-3.5 hover:bg-neutral-50/70 transition-colors text-left cursor-pointer"
+                            >
+                                <div className="flex items-start gap-3 flex-1 min-w-0">
+                                    <div className="text-neutral-400 flex-shrink-0 mt-1">
+                                        {expandedMJ[mj.id] ? (
+                                            <ChevronDown size={16} />
+                                        ) : (
+                                            <ChevronRight size={16} />
+                                        )}
+                                    </div>
+                                    <div className="w-6 h-6 rounded bg-brand text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
+                                        <span className="text-[10px] font-bold">
+                                            {mj.code}
+                                        </span>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[15px] sm:text-[16px] font-black text-neutral-900 leading-snug break-words">
+                                            {mj.name}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-1 text-[12px] text-neutral-600 font-semibold flex-wrap">
+                                            <span>
+                                                Main Job Weight:{" "}
+                                                <strong className="text-neutral-800 font-bold">
+                                                    {mj.weight}%
+                                                </strong>
+                                            </span>
+                                            <span className="text-neutral-300">
+                                                •
+                                            </span>
+                                            <span>
+                                                {mj.subMainJobs.length} Sub
+                                                Tasks
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center flex-wrap gap-2.5 sm:gap-3 flex-shrink-0 self-start md:self-center pl-9 md:pl-0">
+                                    <StatusBadge status={mj.status} size="sm" />
+                                    <div className="w-16 hidden sm:block">
+                                        <ProgressBar
+                                            value={mj.progress}
+                                            size="xs"
+                                            showLabel={false}
+                                        />
+                                    </div>
+                                    <span className="text-[14px] sm:text-[16px] font-black text-neutral-900 w-11 text-right tabular-nums">
+                                        {mj.progress}%
+                                    </span>
+
+                                    {/* PIC can add Sub Task, edit Main Task & delete Main Task */}
                                     {isPIC && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenDepModal(st)}
-                                        className="p-0.5 rounded text-neutral-400 hover:text-brand"
-                                        title="Kelola Ketergantungan"
-                                      >
-                                        <Link2 size={11} />
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : st.predecessor ? (
-                                  <div className="flex items-center gap-1">
-                                    <span>{st.predecessor} ({st.depType || 'FS'}{st.lag ? `+${st.lag}` : ''})</span>
-                                    {isPIC && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenDepModal(st)}
-                                        className="p-0.5 rounded text-neutral-400 hover:text-brand"
-                                        title="Kelola Ketergantungan"
-                                      >
-                                        <Link2 size={11} />
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-1">
-                                    <span>—</span>
-                                    {isPIC && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenDepModal(st)}
-                                        className="p-0.5 rounded text-neutral-400 hover:text-brand"
-                                        title="Kelola Ketergantungan"
-                                      >
-                                        <Link2 size={11} />
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </td>
-                              {/* Attachment / Bukti Column */}
-                              <td className="px-4 py-2 text-center whitespace-nowrap">
-                                {(st.evidences && st.evidences.length > 0) ? (
-                                  <div className="inline-flex items-center gap-1 justify-center flex-wrap max-w-[150px]">
-                                    {st.evidences.map((ev, idx) => (
-                                        <button
-                                          key={idx}
-                                          type="button"
-                                          onClick={() => setEvidencePreview(ev)}
-                                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-bold hover:bg-emerald-200 transition-colors"
-                                          title={`Lihat bukti: ${ev.name}`}
+                                        <div
+                                            className="flex items-center gap-1.5 ml-1 flex-wrap"
+                                            onClick={(e) => e.stopPropagation()}
                                         >
-                                          <Paperclip size={10} />
-                                          Bukti {idx+1}
-                                        </button>
-                                    ))}
-                                    {/* Only workers of assigned division can add more evidence */}
-                                    {authorized && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setUploadEvidenceTask({ task: st })}
-                                        className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
-                                        title="Tambah berkas bukti"
-                                      >
-                                        <Edit2 size={11} />
-                                      </button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    setShowAddSubMainJobModal({
+                                                        mjId: mj.id,
+                                                        mjDbId: (mj as any)
+                                                            .dbId,
+                                                        mjName: mj.name,
+                                                        parentWeight: mj.weight,
+                                                        currentSubCount:
+                                                            mj.subMainJobs
+                                                                .length,
+                                                    });
+                                                }}
+                                                className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300 flex-shrink-0"
+                                                icon={Plus}
+                                            >
+                                                Add Sub Task
+                                            </Button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setShowMainJobModal({
+                                                        mode: "edit",
+                                                        id: mj.id,
+                                                        dbId: (mj as any).dbId,
+                                                        name: mj.name,
+                                                        weight: mj.weight,
+                                                        startDate: mj.startDate,
+                                                        finishDate:
+                                                            mj.finishDate,
+                                                    })
+                                                }
+                                                className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
+                                                title="Edit Main Task (Name & Weight)"
+                                            >
+                                                <Edit2 size={13} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    handleDeleteMainJob(
+                                                        mj.id,
+                                                        (mj as any).dbId,
+                                                        mj.name,
+                                                    )
+                                                }
+                                                className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
+                                                title="Delete Main Task"
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
+                                        </div>
                                     )}
-                                  </div>
-                                ) : (
-                                  authorized ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => setUploadEvidenceTask({ task: st })}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
-                                      title="Upload bukti penyelesaian"
-                                    >
-                                      <UploadCloud size={11} className="text-amber-600" />
-                                      <span>Upload Bukti</span>
-                                    </button>
-                                  ) : (
-                                    <span className="text-neutral-300 text-[12px]">—</span>
-                                  )
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </Fragment>
+                                </div>
+                            </div>
+
+                            {/* Level 2: Sub Tasks (Sub Main Jobs) */}
+                            {expandedMJ[mj.id] && (
+                                <div className="border-t border-neutral-100 divide-y divide-neutral-100 bg-neutral-50/30">
+                                    {mj.subMainJobs.map((smj) => (
+                                        <SubMainJobSection
+                                            key={smj.id}
+                                            mainJobs={projectData.mainJobs}
+                                            smj={smj}
+                                            expanded={!!expandedSMJ[smj.id]}
+                                            onToggle={() => toggleSMJ(smj.id)}
+                                            isAuthorizedToCheck={
+                                                isAuthorizedToCheck
+                                            }
+                                            isPIC={isPIC}
+                                            isAdmin={isAdmin}
+                                            onOpenAddModal={() => {
+                                                setExpandedSMJ((p) => ({
+                                                    ...p,
+                                                    [smj.id]: true,
+                                                }));
+                                                setShowAddTaskModal({
+                                                    smjId: smj.id,
+                                                    smjDbId: (smj as any).dbId,
+                                                    parentSmj: smj,
+                                                });
+                                            }}
+                                            onOpenEditModal={(task) =>
+                                                setShowAddTaskModal({
+                                                    smjId: smj.id,
+                                                    smjDbId: (smj as any).dbId,
+                                                    parentSmj: smj,
+                                                    task,
+                                                })
+                                            }
+                                            onDeleteSubMainJob={() =>
+                                                handleDeleteSubMainJob(
+                                                    mj.id,
+                                                    smj.id,
+                                                    (smj as any).dbId,
+                                                    smj.name,
+                                                )
+                                            }
+                                            onDeleteTask={(taskId, taskName) =>
+                                                handleDeleteSubtask(
+                                                    smj.id,
+                                                    taskId,
+                                                    taskName,
+                                                )
+                                            }
+                                            onManageDependencies={
+                                                handleOpenDepModal
+                                            }
+                                            onCheck={handleCheck}
+                                            onProgressChange={
+                                                handleProgressChange
+                                            }
+                                            onOpenEvidence={(ev) =>
+                                                setEvidencePreview(ev)
+                                            }
+                                            onOpenUploadEvidence={(task) =>
+                                                setUploadEvidenceTask({ task })
+                                            }
+                                        />
+                                    ))}
+                                    {mj.subMainJobs.length === 0 && (
+                                        <div className="px-10 py-3 text-[12px] text-neutral-400 italic">
+                                            No Sub Tasks yet.{" "}
+                                            {isPIC &&
+                                                "Click 'Add Sub Task' to create one."}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </Card>
                     ))}
-                  </Fragment>
+                </div>
+            ) : (
+                <Card className="overflow-hidden">
+                    <div className="overflow-x-auto scrollbar-thin max-h-[70vh]">
+                        <table className="w-full min-w-[1000px] text-left border-collapse">
+                            <thead className="bg-neutral-100/80 border-b border-neutral-200 sticky top-0 z-10">
+                                <tr className="text-[12px] font-bold text-neutral-600 uppercase tracking-wider">
+                                    <th className="px-4 py-3">WBS Code</th>
+                                    <th className="px-4 py-3">Description</th>
+                                    <th className="px-4 py-3 text-right">
+                                        Weight
+                                    </th>
+                                    <th className="px-4 py-3">Division</th>
+                                    <th className="px-4 py-3">Status</th>
+                                    <th className="px-4 py-3 text-right">
+                                        Progress
+                                    </th>
+                                    <th className="px-4 py-3">Start Date</th>
+                                    <th className="px-4 py-3">Finish Date</th>
+                                    <th className="px-4 py-3 text-right">
+                                        Dur
+                                    </th>
+                                    <th className="px-4 py-3">Pred</th>
+                                    <th className="px-4 py-3 text-center">
+                                        Attachment / Evidence
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-neutral-100 text-[13px]">
+                                {filteredMJs.map((mj) => (
+                                    <Fragment key={mj.id}>
+                                        {/* Main Job Row */}
+                                        <tr className="bg-brand/5 hover:bg-brand/10 transition-colors">
+                                            <td className="px-4 py-3 font-bold text-brand">
+                                                {mj.code}
+                                            </td>
+                                            <td className="px-4 py-3 font-bold text-neutral-900 text-[14px]">
+                                                {mj.name}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-black text-brand text-[13px]">
+                                                {mj.weight}%
+                                            </td>
+                                            <td className="px-4 py-3 text-neutral-500 font-medium">
+                                                —
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <StatusBadge
+                                                    status={mj.status}
+                                                    size="sm"
+                                                />
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-black text-brand text-[14px]">
+                                                {mj.progress}%
+                                            </td>
+                                            <td className="px-4 py-3 text-neutral-600 font-medium">
+                                                {formatDateDisplay(
+                                                    mj.startDate,
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-neutral-600 font-medium">
+                                                {formatDateDisplay(
+                                                    mj.finishDate,
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-neutral-400">
+                                                —
+                                            </td>
+                                            <td className="px-4 py-3 text-neutral-400">
+                                                —
+                                            </td>
+                                            <td className="px-4 py-3 text-center text-neutral-400">
+                                                —
+                                            </td>
+                                        </tr>
+
+                                        {/* Sub Main Job Rows */}
+                                        {mj.subMainJobs.map((smj) => (
+                                            <Fragment key={smj.id}>
+                                                <tr className="bg-neutral-50 hover:bg-neutral-100/70 transition-colors">
+                                                    <td className="px-4 py-2.5 pl-8 font-bold text-neutral-700">
+                                                        {smj.code}
+                                                    </td>
+                                                    <td className="px-4 py-2.5 font-bold text-neutral-800 text-[13.5px]">
+                                                        {smj.name}
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-right font-bold text-neutral-800 text-[12.5px]">
+                                                        {smj.weight}%
+                                                    </td>
+                                                    <td className="px-4 py-2.5">
+                                                        <span className="px-2 py-0.5 bg-white border border-neutral-200 rounded text-[11px] font-bold text-neutral-600">
+                                                            {formatDivisionName(
+                                                                smj.pic,
+                                                            )}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-2.5">
+                                                        <StatusBadge
+                                                            status={smj.status}
+                                                            size="xs"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-right font-black text-neutral-800 text-[13px]">
+                                                        {smj.progress}%
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-neutral-600 font-medium">
+                                                        {formatDateDisplay(
+                                                            smj.startDate,
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-neutral-600 font-medium">
+                                                        {formatDateDisplay(
+                                                            smj.finishDate,
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-right text-neutral-400">
+                                                        —
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-neutral-400">
+                                                        —
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-center text-neutral-400">
+                                                        —
+                                                    </td>
+                                                </tr>
+
+                                                {/* Sub-Subtask Rows */}
+                                                {smj.subtasks.map((st) => {
+                                                    const isDone =
+                                                        st.checked ||
+                                                        st.progress >= 100;
+                                                    const authorized =
+                                                        isAuthorizedToCheck(
+                                                            st.division ||
+                                                                smj.pic,
+                                                        );
+                                                    return (
+                                                        <tr
+                                                            key={st.id}
+                                                            className={`transition-colors ${
+                                                                isDone
+                                                                    ? "bg-emerald-50/70 hover:bg-emerald-100/50"
+                                                                    : "hover:bg-neutral-50/50"
+                                                            }`}
+                                                        >
+                                                            <td className="px-4 py-2 pl-12 font-mono text-[12px] text-neutral-500 font-semibold">
+                                                                {st.code}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-neutral-800 font-medium">
+                                                                <div
+                                                                    className={
+                                                                        isDone
+                                                                            ? "text-neutral-400 font-medium"
+                                                                            : "text-neutral-900 font-medium"
+                                                                    }
+                                                                >
+                                                                    {st.name}
+                                                                </div>
+                                                                {st.completedByName && (
+                                                                    <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium mt-1">
+                                                                        <CheckCircle2
+                                                                            size={
+                                                                                10
+                                                                            }
+                                                                        />{" "}
+                                                                        Completed
+                                                                        by:{" "}
+                                                                        {
+                                                                            st.completedByName
+                                                                        }{" "}
+                                                                        on{" "}
+                                                                        {
+                                                                            st.completedAt
+                                                                        }
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">
+                                                                {st.weight ??
+                                                                    100}
+                                                                %
+                                                            </td>
+                                                            <td className="px-4 py-2 text-neutral-600 text-[11.5px]">
+                                                                {formatDivisionName(
+                                                                    st.division ||
+                                                                        smj.pic,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <StatusBadge
+                                                                    status={
+                                                                        isDone
+                                                                            ? "Completed"
+                                                                            : st.status
+                                                                    }
+                                                                    size="xs"
+                                                                />
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right font-bold text-neutral-800 text-[13px]">
+                                                                <span
+                                                                    className={
+                                                                        isDone
+                                                                            ? "text-emerald-700 font-black"
+                                                                            : ""
+                                                                    }
+                                                                >
+                                                                    {isDone
+                                                                        ? "100"
+                                                                        : st.progress}
+                                                                    %
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2 text-neutral-600">
+                                                                {formatDateDisplay(
+                                                                    st.startDate,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-neutral-600">
+                                                                {formatDateDisplay(
+                                                                    st.finishDate,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right text-neutral-600">
+                                                                {st.duration}d
+                                                            </td>
+                                                            <td className="px-4 py-2 font-mono text-[11.5px] text-neutral-500">
+                                                                {st.dependencies &&
+                                                                st.dependencies
+                                                                    .length >
+                                                                    0 ? (
+                                                                    <div className="flex flex-wrap items-center gap-1">
+                                                                        {st.dependencies.map(
+                                                                            (
+                                                                                dep,
+                                                                            ) => (
+                                                                                <span
+                                                                                    key={
+                                                                                        dep.id
+                                                                                    }
+                                                                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                                                                    title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type})`}
+                                                                                >
+                                                                                    <Link2
+                                                                                        size={
+                                                                                            9
+                                                                                        }
+                                                                                    />
+                                                                                    <span>
+                                                                                        {
+                                                                                            dep.dependency_type
+                                                                                        }
+                                                                                    </span>
+                                                                                </span>
+                                                                            ),
+                                                                        )}
+                                                                        {isPIC && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    handleOpenDepModal(
+                                                                                        st,
+                                                                                    )
+                                                                                }
+                                                                                className="p-0.5 rounded text-neutral-400 hover:text-brand"
+                                                                                title="Manage Dependencies"
+                                                                            >
+                                                                                <Link2
+                                                                                    size={
+                                                                                        11
+                                                                                    }
+                                                                                />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ) : st.predecessor ? (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span>
+                                                                            {
+                                                                                st.predecessor
+                                                                            }{" "}
+                                                                            (
+                                                                            {st.depType ||
+                                                                                "FS"}
+                                                                            {st.lag
+                                                                                ? `+${st.lag}`
+                                                                                : ""}
+                                                                            )
+                                                                        </span>
+                                                                        {isPIC && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    handleOpenDepModal(
+                                                                                        st,
+                                                                                    )
+                                                                                }
+                                                                                className="p-0.5 rounded text-neutral-400 hover:text-brand"
+                                                                                title="Manage Dependencies"
+                                                                            >
+                                                                                <Link2
+                                                                                    size={
+                                                                                        11
+                                                                                    }
+                                                                                />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span>
+                                                                            —
+                                                                        </span>
+                                                                        {isPIC && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    handleOpenDepModal(
+                                                                                        st,
+                                                                                    )
+                                                                                }
+                                                                                className="p-0.5 rounded text-neutral-400 hover:text-brand"
+                                                                                title="Manage Dependencies"
+                                                                            >
+                                                                                <Link2
+                                                                                    size={
+                                                                                        11
+                                                                                    }
+                                                                                />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            {/* Attachment / Evidence Column */}
+                                                            <td className="px-4 py-2 text-center whitespace-nowrap">
+                                                                {st.evidences &&
+                                                                st.evidences
+                                                                    .length >
+                                                                    0 ? (
+                                                                    <div className="inline-flex items-center gap-1 justify-center flex-wrap max-w-[150px]">
+                                                                        {st.evidences.map(
+                                                                            (
+                                                                                ev,
+                                                                                idx,
+                                                                            ) => (
+                                                                                <button
+                                                                                    key={
+                                                                                        idx
+                                                                                    }
+                                                                                    type="button"
+                                                                                    onClick={() =>
+                                                                                        setEvidencePreview(
+                                                                                            ev,
+                                                                                        )
+                                                                                    }
+                                                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-bold hover:bg-emerald-200 transition-colors"
+                                                                                    title={`View evidence: ${ev.name}`}
+                                                                                >
+                                                                                    <Paperclip
+                                                                                        size={
+                                                                                            10
+                                                                                        }
+                                                                                    />
+                                                                                    Evidence{" "}
+                                                                                    {idx +
+                                                                                        1}
+                                                                                </button>
+                                                                            ),
+                                                                        )}
+                                                                        {/* Only workers of assigned division can add more evidence */}
+                                                                        {authorized && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    setUploadEvidenceTask(
+                                                                                        {
+                                                                                            task: st,
+                                                                                        },
+                                                                                    )
+                                                                                }
+                                                                                className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
+                                                                                title="Add evidence file"
+                                                                            >
+                                                                                <Edit2
+                                                                                    size={
+                                                                                        11
+                                                                                    }
+                                                                                />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ) : authorized ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            setUploadEvidenceTask(
+                                                                                {
+                                                                                    task: st,
+                                                                                },
+                                                                            )
+                                                                        }
+                                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
+                                                                        title="Upload completion evidence"
+                                                                    >
+                                                                        <UploadCloud
+                                                                            size={
+                                                                                11
+                                                                            }
+                                                                            className="text-amber-600"
+                                                                        />
+                                                                        <span>
+                                                                            Upload
+                                                                            Evidence
+                                                                        </span>
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="text-neutral-300 text-[12px]">
+                                                                        —
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </Fragment>
+                                        ))}
+                                    </Fragment>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            )}
+
+            {filteredMJs.length === 0 &&
+                (hasFilter ? (
+                    <EmptyState
+                        icon={Search}
+                        title="No tasks match your filter"
+                        description="Try clearing your search keyword or selecting 'All Statuses'."
+                        action={
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    setSearch("");
+                                    setFilterStatus("");
+                                }}
+                            >
+                                Clear Filters
+                            </Button>
+                        }
+                    />
+                ) : !hasProjectTasks ? (
+                    <EmptyState
+                        icon={ListTodo}
+                        title="No Tasks in this Project Yet"
+                        description={
+                            isPIC
+                                ? "This project doesn't have any tasks yet. Click 'Add Main Task' to start creating your WBS structure."
+                                : "This project does not have any tasks recorded yet."
+                        }
+                        action={
+                            isPIC ? (
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    icon={Plus}
+                                    onClick={() =>
+                                        setShowMainJobModal({ mode: "create" })
+                                    }
+                                >
+                                    Add Main Task
+                                </Button>
+                            ) : undefined
+                        }
+                    />
+                ) : isWorker ? (
+                    <EmptyState
+                        icon={Shield}
+                        title="No Tasks Assigned to Your Division"
+                        description={`There are currently no tasks assigned to the "${user?.division || pageProps?.division || "Worker"}" division in this project.`}
+                    />
+                ) : (
+                    <EmptyState
+                        icon={ListTodo}
+                        title="No Tasks Available"
+                        description="There are currently no tasks to display."
+                    />
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
 
-      {filteredMJs.length === 0 && (
-        hasFilter ? (
-          <EmptyState
-            icon={Search}
-            title="No tasks match your filter"
-            description="Try clearing your search keyword or selecting 'All Statuses'."
-            action={
-              <Button variant="outline" size="sm" onClick={() => { setSearch(''); setFilterStatus(''); }}>
-                Clear Filters
-              </Button>
-            }
-          />
-        ) : !hasProjectTasks ? (
-          <EmptyState
-            icon={ListTodo}
-            title="No Tasks in this Project Yet"
-            description={
-              isPIC
-                ? "This project doesn't have any tasks yet. Click 'Add Main Task' to start creating your WBS structure."
-                : "This project does not have any tasks recorded yet."
-            }
-            action={
-              isPIC ? (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={Plus}
-                  onClick={() => setShowMainJobModal({ mode: 'create' })}
+            {/* Modal Add / Edit Main Task (Main Job) */}
+            {showMainJobModal && (
+                <MainJobModal
+                    initialData={
+                        showMainJobModal.mode === "edit"
+                            ? showMainJobModal
+                            : undefined
+                    }
+                    projectStartDate={projectData.startDate}
+                    projectEndDate={projectData.endDate}
+                    onClose={() => setShowMainJobModal(null)}
+                    onSave={(name, weight, start, end) =>
+                        handleSaveMainJob(
+                            name,
+                            weight,
+                            start,
+                            end,
+                            showMainJobModal.mode === "edit"
+                                ? showMainJobModal.id
+                                : undefined,
+                            showMainJobModal.mode === "edit"
+                                ? showMainJobModal.dbId
+                                : undefined,
+                        )
+                    }
+                />
+            )}
+
+            {/* Modal Add Sub Task (Sub Main Job under Main Job) */}
+            {showAddSubMainJobModal && (
+                <AddSubMainJobModal
+                    mjName={showAddSubMainJobModal.mjName}
+                    parentWeight={showAddSubMainJobModal.parentWeight}
+                    currentSubCount={showAddSubMainJobModal.currentSubCount}
+                    onClose={() => setShowAddSubMainJobModal(null)}
+                    onSave={(name) =>
+                        handleSaveSubMainJob(
+                            showAddSubMainJobModal.mjId,
+                            name,
+                            showAddSubMainJobModal.mjDbId,
+                        )
+                    }
+                />
+            )}
+
+            {/* Modal Add / Edit Task (Sub-Subtask) */}
+            {showAddTaskModal && (
+                <AddSubtaskModal
+                    smjId={showAddTaskModal.smjId}
+                    smjDbId={showAddTaskModal.smjDbId}
+                    parentSmj={showAddTaskModal.parentSmj}
+                    mainJobs={projectData.mainJobs}
+                    divisions={divisions}
+                    initialData={showAddTaskModal.task}
+                    onClose={() => setShowAddTaskModal(null)}
+                    onSave={(taskData) =>
+                        handleSaveSubtask(showAddTaskModal.smjId, taskData)
+                    }
+                />
+            )}
+
+            {/* Action Toast Feedback */}
+            {/* Uncheck Confirmation Modal (Requirement 3) */}
+            {uncheckConfirm && (
+                <UncheckConfirmModal
+                    taskName={uncheckConfirm.taskName}
+                    onClose={() => setUncheckConfirm(null)}
+                    onConfirm={confirmUncheck}
+                />
+            )}
+
+            {/* Evidence Preview Modal (Requirement 8) */}
+            {evidencePreview && (
+                <EvidencePreviewModal
+                    evidence={evidencePreview}
+                    onClose={() => setEvidencePreview(null)}
+                />
+            )}
+
+            {/* Upload Evidence Modal */}
+            {uploadEvidenceTask && (
+                <UploadEvidenceModal
+                    task={uploadEvidenceTask.task}
+                    requireComplete={uploadEvidenceTask.requireComplete}
+                    onClose={() => setUploadEvidenceTask(null)}
+                    onSave={handleSaveEvidence}
+                />
+            )}
+
+            {/* Manage Dependencies Modal */}
+            <ManageDependenciesModal
+                isOpen={depModal.isOpen}
+                task={depModal.task}
+                allSubtasks={projectData.mainJobs
+                    .flatMap((mj) => mj.subMainJobs)
+                    .flatMap((smj) => smj.subtasks)}
+                depForm={depForm}
+                setDepForm={setDepForm}
+                onClose={() => setDepModal({ isOpen: false })}
+                onAddDependency={handleAddDependency}
+                onRemoveDependency={handleRemoveDependency}
+                submitting={submitting}
+                actionError={actionError}
+            />
+
+            {/* Delete Confirmation Modal (Moved to end for z-index priority) */}
+            {deleteConfirm && (
+                <Modal
+                    title={deleteConfirm.title}
+                    onClose={() => setDeleteConfirm(null)}
+                    size="sm"
                 >
-                  Add Main Task
-                </Button>
-              ) : undefined
-            }
-          />
-        ) : isWorker ? (
-          <EmptyState
-            icon={Shield}
-            title="No Tasks Assigned to Your Division"
-            description={`There are currently no tasks assigned to the "${user?.division || pageProps?.division || 'Worker'}" division in this project.`}
-          />
-        ) : (
-          <EmptyState
-            icon={ListTodo}
-            title="No Tasks Available"
-            description="There are currently no tasks to display."
-          />
-        )
-      )}
+                    <div className="space-y-4">
+                        <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-900">
+                            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 text-danger shadow-2xs">
+                                <Trash2 size={20} />
+                            </div>
+                            <div className="text-[12.5px] leading-relaxed pt-0.5">
+                                <p className="font-semibold text-neutral-800">
+                                    {deleteConfirm.message}
+                                </p>
+                                <p className="text-[11.5px] text-neutral-500 mt-1">
+                                    This action cannot be undone and will
+                                    permanently delete the data.
+                                </p>
+                            </div>
+                        </div>
 
-      {/* Modal Add / Edit Main Task (Main Job) */}
-      {showMainJobModal && (
-        <MainJobModal
-          initialData={showMainJobModal.mode === 'edit' ? showMainJobModal : undefined}
-          onClose={() => setShowMainJobModal(null)}
-          onSave={(name, weight, start, end) => handleSaveMainJob(
-            name,
-            weight,
-            start,
-            end,
-            showMainJobModal.mode === 'edit' ? showMainJobModal.id : undefined,
-            showMainJobModal.mode === 'edit' ? showMainJobModal.dbId : undefined
-          )}
-        />
-      )}
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeleteConfirm(null)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="danger"
+                                size="sm"
+                                icon={Trash2}
+                                onClick={() => {
+                                    const action = deleteConfirm.onConfirm;
+                                    setDeleteConfirm(null);
+                                    action();
+                                }}
+                            >
+                                Yes, Delete
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
 
-      {/* Modal Add Sub Task (Sub Main Job under Main Job) */}
-      {showAddSubMainJobModal && (
-        <AddSubMainJobModal
-          mjName={showAddSubMainJobModal.mjName}
-          parentWeight={showAddSubMainJobModal.parentWeight}
-          currentSubCount={showAddSubMainJobModal.currentSubCount}
-          onClose={() => setShowAddSubMainJobModal(null)}
-          onSave={(name) => handleSaveSubMainJob(showAddSubMainJobModal.mjId, name, showAddSubMainJobModal.mjDbId)}
-        />
-      )}
-
-      {/* Modal Add / Edit Task (Sub-Subtask) */}
-      {showAddTaskModal && (
-        <AddSubtaskModal
-          smjId={showAddTaskModal.smjId}
-          smjDbId={showAddTaskModal.smjDbId}
-          parentSmj={showAddTaskModal.parentSmj}
-          mainJobs={projectData.mainJobs}
-          divisions={divisions}
-          initialData={showAddTaskModal.task}
-          onClose={() => setShowAddTaskModal(null)}
-          onSave={(taskData) => handleSaveSubtask(showAddTaskModal.smjId, taskData)}
-        />
-      )}
-
-      {/* Action Toast Feedback */}
-      {/* Uncheck Confirmation Modal (Requirement 3) */}
-      {uncheckConfirm && (
-        <UncheckConfirmModal
-          taskName={uncheckConfirm.taskName}
-          onClose={() => setUncheckConfirm(null)}
-          onConfirm={confirmUncheck}
-        />
-      )}
-
-      {/* Evidence Preview Modal (Requirement 8) */}
-      {evidencePreview && (
-        <EvidencePreviewModal
-          evidence={evidencePreview}
-          onClose={() => setEvidencePreview(null)}
-        />
-      )}
-
-      {/* Upload Evidence Modal */}
-      {uploadEvidenceTask && (
-        <UploadEvidenceModal
-          task={uploadEvidenceTask.task}
-          requireComplete={uploadEvidenceTask.requireComplete}
-          onClose={() => setUploadEvidenceTask(null)}
-          onSave={handleSaveEvidence}
-        />
-      )}
-
-      {/* Manage Dependencies Modal */}
-      <ManageDependenciesModal
-        isOpen={depModal.isOpen}
-        task={depModal.task}
-        allSubtasks={projectData.mainJobs.flatMap(mj => mj.subMainJobs).flatMap(smj => smj.subtasks)}
-        depForm={depForm}
-        setDepForm={setDepForm}
-        onClose={() => setDepModal({ isOpen: false })}
-        onAddDependency={handleAddDependency}
-        onRemoveDependency={handleRemoveDependency}
-        submitting={submitting}
-        actionError={actionError}
-      />
-
-      {/* Delete Confirmation Modal (Moved to end for z-index priority) */}
-      {deleteConfirm && (
-        <Modal
-          title={deleteConfirm.title}
-          onClose={() => setDeleteConfirm(null)}
-          size="sm"
-        >
-          <div className="space-y-4">
-            <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-900">
-              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 text-danger shadow-2xs">
-                <Trash2 size={20} />
-              </div>
-              <div className="text-[12.5px] leading-relaxed pt-0.5">
-                <p className="font-semibold text-neutral-800">
-                  {deleteConfirm.message}
-                </p>
-                <p className="text-[11.5px] text-neutral-500 mt-1">
-                  Tindakan ini tidak dapat dibatalkan dan akan menghapus data secara permanen.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setDeleteConfirm(null)}
-              >
-                Batal
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                icon={Trash2}
-                onClick={() => {
-                  const action = deleteConfirm.onConfirm;
-                  setDeleteConfirm(null);
-                  action();
-                }}
-              >
-                Ya, Hapus
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Action Toast Feedback */}
-      {toastMsg && (
-        <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
-      )}
-    </div>
-  );
+            {/* Action Toast Feedback */}
+            {toastMsg && (
+                <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
+            )}
+        </div>
+    );
 }
 
 function TodayTaskCard({
-  st,
-  parentSmj,
-  timingStatus,
-  canCheck,
-  onProgressChange,
-  onOpenEvidence,
-  onOpenUploadEvidence
+    st,
+    parentSmj,
+    timingStatus,
+    canCheck,
+    onProgressChange,
+    onOpenEvidence,
+    onOpenUploadEvidence,
 }: {
-  st: SubSubtask;
-  parentSmj: SubMainJob;
-  timingStatus: 'active' | 'starting' | 'due' | 'overdue';
-  canCheck: boolean;
-  onProgressChange: (val: number, commit?: boolean) => void;
-  onOpenEvidence: (evidence: any) => void;
-  onOpenUploadEvidence?: (task: SubSubtask) => void;
+    st: SubSubtask;
+    parentSmj: SubMainJob;
+    timingStatus: "active" | "starting" | "due" | "overdue";
+    canCheck: boolean;
+    onProgressChange: (val: number, commit?: boolean) => void;
+    onOpenEvidence: (evidence: any) => void;
+    onOpenUploadEvidence?: (task: SubSubtask) => void;
 }) {
-  const isChecked = st.checked || st.progress >= 100;
+    const isChecked = st.checked || st.progress >= 100;
 
-  return (
-    <div className={`p-3.5 rounded-xl border transition-all ${
-      isChecked
-        ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/20 shadow-xs'
-        : 'bg-white border-neutral-200 hover:border-neutral-300 shadow-xs'
-    }`}>
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-          <span className="font-mono text-[11.5px] font-bold text-neutral-500">{st.code}</span>
-          <span className="px-2 py-0.5 rounded bg-neutral-100 text-neutral-700 text-[10.5px] font-bold">
-            {formatDivisionName(st.division || parentSmj.pic)}
-          </span>
-          {timingStatus === 'overdue' && (
-            <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10.5px] font-bold">
-              Overdue
-            </span>
-          )}
-          {timingStatus === 'due' && (
-            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10.5px] font-bold">
-              Due Today
-            </span>
-          )}
-          {timingStatus === 'starting' && (
-            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10.5px] font-bold">
-              Starts Today
-            </span>
-          )}
-          <span className="px-1.5 py-0.5 rounded text-[10.5px] font-semibold text-blue-700 bg-blue-50 border border-blue-200">
-            Weight {st.weight ?? 100}%
-          </span>
-        </div>
-        <StatusBadge status={isChecked ? 'Completed' : st.status} size="xs" />
-      </div>
-
-      <h4 className={`text-[13.5px] font-bold mb-2.5 leading-snug break-words ${
-        isChecked ? 'text-neutral-500' : 'text-neutral-900'
-      }`}>
-        {st.name}
-      </h4>
-
-      {/* Progress Slider */}
-      <div className="space-y-2 pt-2 border-t border-neutral-100">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 flex-1">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={st.progress}
-              disabled={!canCheck}
-              onChange={(e) => onProgressChange(parseInt(e.target.value), false)}
-              onMouseUp={(e) => onProgressChange(parseInt((e.target as HTMLInputElement).value), true)}
-              onTouchEnd={(e) => onProgressChange(parseInt((e.target as HTMLInputElement).value), true)}
-              className={`w-full h-2 rounded-lg cursor-pointer bg-neutral-200 accent-brand ${
-                !canCheck ? 'opacity-40 cursor-not-allowed' : 'hover:accent-blue-700'
-              }`}
-            />
-          </div>
-          <EditableProgress 
-            value={st.progress} 
-            disabled={!canCheck} 
-            onSave={(val) => onProgressChange(val, true)} 
-            isChecked={isChecked} 
-          />
-        </div>
-
-        {/* Evidence badge & details */}
-        <div className="flex items-center justify-between text-[11px] pt-1 text-neutral-500">
-          <span>{formatDateDisplay(st.startDate)} – {formatDateDisplay(st.finishDate)}</span>
-          {(st.evidences && st.evidences.length > 0) ? (
-            <div className="flex items-center gap-2">
-                {st.evidences.map((ev, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => onOpenEvidence(ev)}
-                      className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline"
-                    >
-                      <Paperclip size={12} />
-                      Bukti {idx+1}
-                    </button>
-                ))}
+    return (
+        <div
+            className={`p-3.5 rounded-xl border transition-all ${
+                isChecked
+                    ? "bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/20 shadow-xs"
+                    : "bg-white border-neutral-200 hover:border-neutral-300 shadow-xs"
+            }`}
+        >
+            <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                    <span className="font-mono text-[11.5px] font-bold text-neutral-500">
+                        {st.code}
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-neutral-100 text-neutral-700 text-[10.5px] font-bold">
+                        {formatDivisionName(st.division || parentSmj.pic)}
+                    </span>
+                    {timingStatus === "overdue" && (
+                        <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10.5px] font-bold">
+                            Overdue
+                        </span>
+                    )}
+                    {timingStatus === "due" && (
+                        <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10.5px] font-bold">
+                            Due Today
+                        </span>
+                    )}
+                    {timingStatus === "starting" && (
+                        <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10.5px] font-bold">
+                            Starts Today
+                        </span>
+                    )}
+                    <span className="px-1.5 py-0.5 rounded text-[10.5px] font-semibold text-blue-700 bg-blue-50 border border-blue-200">
+                        Weight {st.weight ?? 100}%
+                    </span>
+                </div>
+                <StatusBadge
+                    status={isChecked ? "Completed" : st.status}
+                    size="xs"
+                />
             </div>
-          ) : (
-            canCheck && onOpenUploadEvidence && (
-              <button
-                type="button"
-                onClick={() => onOpenUploadEvidence(st)}
-                className="inline-flex items-center gap-1 text-amber-700 font-bold hover:underline"
-              >
-                <UploadCloud size={12} />
-                Upload Bukti
-              </button>
-            )
-          )}
+
+            <h4
+                className={`text-[13.5px] font-bold mb-2.5 leading-snug break-words ${
+                    isChecked ? "text-neutral-500" : "text-neutral-900"
+                }`}
+            >
+                {st.name}
+            </h4>
+
+            {/* Progress Slider */}
+            <div className="space-y-2 pt-2 border-t border-neutral-100">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 flex-1">
+                        <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={st.progress}
+                            disabled={!canCheck}
+                            onChange={(e) =>
+                                onProgressChange(
+                                    parseInt(e.target.value),
+                                    false,
+                                )
+                            }
+                            onMouseUp={(e) =>
+                                onProgressChange(
+                                    parseInt(
+                                        (e.target as HTMLInputElement).value,
+                                    ),
+                                    true,
+                                )
+                            }
+                            onTouchEnd={(e) =>
+                                onProgressChange(
+                                    parseInt(
+                                        (e.target as HTMLInputElement).value,
+                                    ),
+                                    true,
+                                )
+                            }
+                            className={`w-full h-2 rounded-lg cursor-pointer bg-neutral-200 accent-brand ${
+                                !canCheck
+                                    ? "opacity-40 cursor-not-allowed"
+                                    : "hover:accent-blue-700"
+                            }`}
+                        />
+                    </div>
+                    <EditableProgress
+                        value={st.progress}
+                        disabled={!canCheck}
+                        onSave={(val) => onProgressChange(val, true)}
+                        isChecked={isChecked}
+                    />
+                </div>
+
+                {/* Evidence badge & details */}
+                <div className="flex items-center justify-between text-[11px] pt-1 text-neutral-500">
+                    <span>
+                        {formatDateDisplay(st.startDate)} –{" "}
+                        {formatDateDisplay(st.finishDate)}
+                    </span>
+                    {st.evidences && st.evidences.length > 0 ? (
+                        <div className="flex items-center gap-2">
+                            {st.evidences.map((ev, idx) => (
+                                <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => onOpenEvidence(ev)}
+                                    className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline"
+                                >
+                                    <Paperclip size={12} />
+                                    Evidence {idx + 1}
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        canCheck &&
+                        onOpenUploadEvidence && (
+                            <button
+                                type="button"
+                                onClick={() => onOpenUploadEvidence(st)}
+                                className="inline-flex items-center gap-1 text-amber-700 font-bold hover:underline"
+                            >
+                                <UploadCloud size={12} />
+                                Upload Evidence
+                            </button>
+                        )
+                    )}
+                </div>
+                {st.completedByName && (
+                    <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium pt-1 mt-1 border-t border-emerald-100">
+                        <CheckCircle2 size={10} /> Completed by:{" "}
+                        {st.completedByName} on {st.completedAt}
+                    </div>
+                )}
+            </div>
         </div>
-        {st.completedByName && (
-          <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium pt-1 mt-1 border-t border-emerald-100">
-            <CheckCircle2 size={10} /> Diselesaikan oleh: {st.completedByName} pada {st.completedAt}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    );
 }
 
 function SubMainJobSection({
-  mainJobs, smj, expanded, onToggle, isAuthorizedToCheck, isPIC, isAdmin, onOpenAddModal, onOpenEditModal, onDeleteSubMainJob, onDeleteTask, onManageDependencies, onCheck, onProgressChange, onOpenEvidence, onOpenUploadEvidence
+    mainJobs,
+    smj,
+    expanded,
+    onToggle,
+    isAuthorizedToCheck,
+    isPIC,
+    isAdmin,
+    onOpenAddModal,
+    onOpenEditModal,
+    onDeleteSubMainJob,
+    onDeleteTask,
+    onManageDependencies,
+    onCheck,
+    onProgressChange,
+    onOpenEvidence,
+    onOpenUploadEvidence,
 }: {
-  mainJobs: MainJob[];
-  smj: SubMainJob;
-  expanded: boolean;
-  onToggle: () => void;
-  isAuthorizedToCheck: (taskDivisi: string) => boolean;
-  isPIC: boolean;
-  isAdmin: boolean;
-  onOpenAddModal: () => void;
-  onOpenEditModal: (task: SubSubtask) => void;
-  onDeleteSubMainJob: () => void;
-  onDeleteTask: (taskId: string, taskName: string) => void;
-  onManageDependencies: (task: SubSubtask) => void;
-  onCheck: (id: string, auth: boolean, name: string) => void;
-  onProgressChange: (id: string, progress: number, auth: boolean, name: string, commit?: boolean) => void;
-  onOpenEvidence: (evidence: any) => void;
-  onOpenUploadEvidence: (task: SubSubtask) => void;
+    mainJobs: MainJob[];
+    smj: SubMainJob;
+    expanded: boolean;
+    onToggle: () => void;
+    isAuthorizedToCheck: (taskDivisi: string) => boolean;
+    isPIC: boolean;
+    isAdmin: boolean;
+    onOpenAddModal: () => void;
+    onOpenEditModal: (task: SubSubtask) => void;
+    onDeleteSubMainJob: () => void;
+    onDeleteTask: (taskId: string, taskName: string) => void;
+    onManageDependencies: (task: SubSubtask) => void;
+    onCheck: (id: string, auth: boolean, name: string) => void;
+    onProgressChange: (
+        id: string,
+        progress: number,
+        auth: boolean,
+        name: string,
+        commit?: boolean,
+    ) => void;
+    onOpenEvidence: (evidence: any) => void;
+    onOpenUploadEvidence: (task: SubSubtask) => void;
 }) {
-  return (
-    <div className="transition-colors">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pl-6 sm:pl-9 pr-4 py-3 hover:bg-neutral-50/80 transition-colors">
-        <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-          <button onClick={onToggle} className="text-neutral-400 hover:text-neutral-600 flex-shrink-0 mt-0.5 sm:mt-0">
-            {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-          </button>
-          <div className="w-5 h-5 rounded bg-neutral-200/80 flex items-center justify-center flex-shrink-0 mt-0.5 sm:mt-0">
-            <span className="text-[10px] font-bold text-neutral-700">{smj.code}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[14px] sm:text-[15px] font-bold text-neutral-900 break-words leading-snug">{smj.name}</span>
-            </div>
-            <div className="flex items-center gap-2 mt-0.5 text-[12px] text-neutral-600 font-semibold flex-wrap">
-              <span>Sub Task (Sub Main Job) · Weight: {smj.weight}%</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center flex-wrap gap-2.5 flex-shrink-0 self-start sm:self-center pl-8 sm:pl-0">
-          <StatusBadge status={smj.status} size="sm" />
-          <span className="text-[13px] sm:text-[14px] font-black text-neutral-800 tabular-nums">{smj.progress}%</span>
-          
-          {/* Only PIC can add tasks / delete sub tasks */}
-          {isPIC && (
-            <div className="flex items-center gap-1.5 ml-1 flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenAddModal}
-                className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300 flex-shrink-0"
-                icon={Plus}
-              >
-                Add Task
-              </Button>
-              <button
-                type="button"
-                onClick={onDeleteSubMainJob}
-                className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
-                title="Delete Sub Task"
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+    return (
+        <div className="transition-colors">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pl-6 sm:pl-9 pr-4 py-3 hover:bg-neutral-50/80 transition-colors">
+                <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+                    <button
+                        onClick={onToggle}
+                        className="text-neutral-400 hover:text-neutral-600 flex-shrink-0 mt-0.5 sm:mt-0"
+                    >
+                        {expanded ? (
+                            <ChevronDown size={15} />
+                        ) : (
+                            <ChevronRight size={15} />
+                        )}
+                    </button>
+                    <div className="w-5 h-5 rounded bg-neutral-200/80 flex items-center justify-center flex-shrink-0 mt-0.5 sm:mt-0">
+                        <span className="text-[10px] font-bold text-neutral-700">
+                            {smj.code}
+                        </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[14px] sm:text-[15px] font-bold text-neutral-900 break-words leading-snug">
+                                {smj.name}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[12px] text-neutral-600 font-semibold flex-wrap">
+                            <span>
+                                Sub Task (Sub Main Job) · Weight: {smj.weight}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center flex-wrap gap-2.5 flex-shrink-0 self-start sm:self-center pl-8 sm:pl-0">
+                    <StatusBadge status={smj.status} size="sm" />
+                    <span className="text-[13px] sm:text-[14px] font-black text-neutral-800 tabular-nums">
+                        {smj.progress}%
+                    </span>
 
-      {/* Level 3: Sub-Subtasks (Tasks) */}
-      {expanded && (
-        <div className="pl-6 sm:pl-16 pr-4 pb-3 pt-1 space-y-2">
-          {smj.subtasks.length === 0 ? (
-            <div className="py-2 text-[12.5px] text-neutral-400 italic">
-              No tasks yet.{isPIC && " Click 'Add Task' to add task items."}
+                    {/* Only PIC can add tasks / delete sub tasks */}
+                    {isPIC && (
+                        <div className="flex items-center gap-1.5 ml-1 flex-wrap">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={onOpenAddModal}
+                                className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300 flex-shrink-0"
+                                icon={Plus}
+                            >
+                                Add Task
+                            </Button>
+                            <button
+                                type="button"
+                                onClick={onDeleteSubMainJob}
+                                className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
+                                title="Delete Sub Task"
+                            >
+                                <Trash2 size={13} />
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
-          ) : (
-            smj.subtasks.map(st => {
-              const authorized = isAuthorizedToCheck(st.division || smj.pic);
-              
-              const predCompleted = canStartTask(st, mainJobs);
 
-              const effectivelyAuthorized = authorized && predCompleted;
+            {/* Level 3: Sub-Subtasks (Tasks) */}
+            {expanded && (
+                <div className="pl-6 sm:pl-16 pr-4 pb-3 pt-1 space-y-2">
+                    {smj.subtasks.length === 0 ? (
+                        <div className="py-2 text-[12.5px] text-neutral-400 italic">
+                            No tasks yet.
+                            {isPIC && " Click 'Add Task' to add task items."}
+                        </div>
+                    ) : (
+                        smj.subtasks.map((st) => {
+                            const authorized = isAuthorizedToCheck(
+                                st.division || smj.pic,
+                            );
 
-              return (
-                <SubtaskRow
-                  key={st.id}
-                  st={st}
-                  divisi={st.division || smj.pic}
-                  isChecked={st.checked || st.progress >= 100}
-                  canCheck={effectivelyAuthorized}
-                  lockedByPred={authorized && !predCompleted}
-                  canEdit={isPIC}
-                  onProgressChange={(val, commit) => onProgressChange(st.id, val, authorized, st.name, commit)}
-                  onEdit={() => onOpenEditModal(st)}
-                  onManageDependencies={() => onManageDependencies(st)}
-                  onDelete={() => onDeleteTask(st.id, st.name)}
-                  onOpenEvidence={onOpenEvidence}
-                  onOpenUploadEvidence={() => onOpenUploadEvidence(st)}
-                />
-              );
-            })
-          )}
+                            const predCompleted = canStartTask(st, mainJobs);
+
+                            const effectivelyAuthorized =
+                                authorized && predCompleted;
+
+                            return (
+                                <SubtaskRow
+                                    key={st.id}
+                                    st={st}
+                                    divisi={st.division || smj.pic}
+                                    isChecked={st.checked || st.progress >= 100}
+                                    canCheck={effectivelyAuthorized}
+                                    lockedByPred={authorized && !predCompleted}
+                                    canEdit={isPIC}
+                                    onProgressChange={(val, commit) =>
+                                        onProgressChange(
+                                            st.id,
+                                            val,
+                                            authorized,
+                                            st.name,
+                                            commit,
+                                        )
+                                    }
+                                    onEdit={() => onOpenEditModal(st)}
+                                    onManageDependencies={() =>
+                                        onManageDependencies(st)
+                                    }
+                                    onDelete={() =>
+                                        onDeleteTask(st.id, st.name)
+                                    }
+                                    onOpenEvidence={onOpenEvidence}
+                                    onOpenUploadEvidence={() =>
+                                        onOpenUploadEvidence(st)
+                                    }
+                                />
+                            );
+                        })
+                    )}
+                </div>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 }
 
 function SubtaskRow({
-  st, divisi, isChecked, canCheck, lockedByPred, canEdit, onProgressChange, onEdit, onManageDependencies, onDelete, onOpenEvidence, onOpenUploadEvidence
+    st,
+    divisi,
+    isChecked,
+    canCheck,
+    lockedByPred,
+    canEdit,
+    onProgressChange,
+    onEdit,
+    onManageDependencies,
+    onDelete,
+    onOpenEvidence,
+    onOpenUploadEvidence,
 }: {
-  st: SubSubtask;
-  divisi: string;
-  isChecked: boolean;
-  canCheck: boolean;
-  lockedByPred?: boolean;
-  canEdit: boolean;
-  onProgressChange: (val: number, commit?: boolean) => void;
-  onEdit: () => void;
-  onManageDependencies: () => void;
-  onDelete: () => void;
-  onOpenEvidence: (evidence: any) => void;
-  onOpenUploadEvidence: () => void;
+    st: SubSubtask;
+    divisi: string;
+    isChecked: boolean;
+    canCheck: boolean;
+    lockedByPred?: boolean;
+    canEdit: boolean;
+    onProgressChange: (val: number, commit?: boolean) => void;
+    onEdit: () => void;
+    onManageDependencies: () => void;
+    onDelete: () => void;
+    onOpenEvidence: (evidence: any) => void;
+    onOpenUploadEvidence: () => void;
 }) {
-  return (
-    <div
-      className={`group flex flex-col sm:flex-row sm:items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all ${
-        isChecked
-          ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/20 shadow-xs'
-          : 'bg-white border-neutral-200/80 hover:border-neutral-300 shadow-xs'
-      }`}
-    >
-      <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[12px] font-bold text-neutral-500 font-mono">{st.code}</span>
-            <span className={`text-[13.5px] sm:text-[14.5px] font-semibold break-words ${isChecked ? 'text-emerald-950 font-bold' : 'text-neutral-900'}`}>
-              {st.name}
-            </span>
-            <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
-              Weight {st.weight ?? 100}%
-            </span>
-            {!canCheck && !lockedByPred && (
-              <span className="relative group cursor-help">
-                <Lock size={12} className="text-neutral-300" />
-                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
-                  Anda tidak memiliki otoritas untuk mengubah progres task ini.
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
-                </div>
-              </span>
-            )}
-            {lockedByPred && (
-              <span className="relative group cursor-help">
-                <Lock size={12} className="text-amber-500" />
-                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
-                  Terkunci: Pekerjaan sebelumnya (Predecessor) belum selesai 100%.
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
-                </div>
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
-              <Shield size={10} />
-              Division: {formatDivisionName(divisi)}
-            </span>
-            <span className="inline-flex items-center gap-1 font-semibold text-neutral-700 bg-neutral-50 px-2 py-0.5 rounded border border-neutral-200">
-              <Calendar size={12} className="text-brand" />
-              Schedule: {formatDateDisplay(st.startDate)} to {formatDateDisplay(st.finishDate)}
-            </span>
-            <span className="text-neutral-600 font-medium">Duration: {st.duration} days</span>
-            {st.daysLeft !== undefined && st.daysLeft > 0 && !isChecked && (
-              <span className="text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px]">
-                {st.daysLeft} days left
-              </span>
-            )}
-            {st.dependencies && st.dependencies.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-1">
-                {st.dependencies.map(dep => (
-                  <span
-                    key={dep.id}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
-                    title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type}, Lag: ${dep.lag_days}d)`}
-                  >
-                    <Link2 size={10} />
-                    <span>{dep.predecessor_name} ({dep.dependency_type})</span>
-                  </span>
-                ))}
-              </div>
-            ) : st.predecessor ? (
-              <span className="font-medium text-neutral-600">
-                Pred: {st.predecessor} ({st.depType || 'FS'}
-                {st.lag ? ` +${st.lag}d lag` : ''}
-                {st.lead ? ` -${st.lead}d lead` : ''})
-              </span>
-            ) : null}
-
-            {/* Evidence attachment indicator & upload button */}
-            {(st.evidences && st.evidences.length > 0) ? (
-              <div className="inline-flex items-center gap-1 flex-wrap">
-                {st.evidences.map((ev, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => onOpenEvidence(ev)}
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-bold hover:bg-emerald-200 transition-colors shadow-2xs"
-                    title={`Lihat bukti: ${ev.name}`}
-                  >
-                    <Paperclip size={11} className="text-emerald-700" />
-                    Bukti {idx + 1}
-                  </button>
-                ))}
-                {canCheck && (
-                  <button
-                    type="button"
-                    onClick={onOpenUploadEvidence}
-                    className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
-                    title="Tambah berkas bukti"
-                  >
-                    <Edit2 size={11} />
-                  </button>
-                )}
-              </div>
-            ) : (
-              canCheck && (
-                <button
-                  type="button"
-                  onClick={onOpenUploadEvidence}
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
-                  title="Upload bukti penyelesaian"
-                >
-                  <UploadCloud size={11} className="text-amber-600" />
-                  <span>Upload Bukti</span>
-                </button>
-              )
-            )}
-            
-            {st.completedByName && (
-              <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                <CheckCircle2 size={12} className="text-emerald-500" />
-                Diselesaikan oleh {st.completedByName} pada {st.completedAt}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Progress Slider (0–100%) & Status Badges */}
-      <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 self-stretch sm:self-center border-t sm:border-t-0 border-neutral-100 pt-2 sm:pt-0">
-        {/* Progress Slider */}
-        <div className="flex items-center gap-2 flex-1 sm:flex-initial">
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={st.progress}
-            disabled={!canCheck}
-            onChange={(e) => onProgressChange(parseInt(e.target.value), false)}
-            onMouseUp={(e) => onProgressChange(parseInt((e.target as HTMLInputElement).value), true)}
-            onTouchEnd={(e) => onProgressChange(parseInt((e.target as HTMLInputElement).value), true)}
-            className={`w-28 sm:w-32 h-2 rounded-lg cursor-pointer bg-neutral-200 accent-brand ${
-              !canCheck ? 'opacity-40 cursor-not-allowed' : 'hover:accent-blue-700'
+    return (
+        <div
+            className={`group flex flex-col sm:flex-row sm:items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all ${
+                isChecked
+                    ? "bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/20 shadow-xs"
+                    : "bg-white border-neutral-200/80 hover:border-neutral-300 shadow-xs"
             }`}
-            title={`Adjust task progress (Current: ${st.progress}%)`}
-          />
-          <EditableProgress 
-            value={st.progress} 
-            disabled={!canCheck} 
-            onSave={(val) => onProgressChange(val, true)} 
-            isChecked={isChecked} 
-          />
+        >
+            <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[12px] font-bold text-neutral-500 font-mono">
+                            {st.code}
+                        </span>
+                        <span
+                            className={`text-[13.5px] sm:text-[14.5px] font-semibold break-words ${isChecked ? "text-emerald-950 font-bold" : "text-neutral-900"}`}
+                        >
+                            {st.name}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
+                            Weight {st.weight ?? 100}%
+                        </span>
+                        {!canCheck && !lockedByPred && (
+                            <span className="relative group cursor-help">
+                                <Lock size={12} className="text-neutral-300" />
+                                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
+                                    You do not have permission to update progress for this task.
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
+                                </div>
+                            </span>
+                        )}
+                        {lockedByPred && (
+                            <span className="relative group cursor-help">
+                                <Lock size={12} className="text-amber-500" />
+                                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 opacity-0 group-hover:opacity-100 transition-opacity z-10 p-2 bg-neutral-800 text-white text-[11px] rounded-lg shadow-lg text-center leading-tight">
+                                    Locked: Predecessor task is not 100% complete yet.
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-800" />
+                                </div>
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[11.5px] text-neutral-500">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[11px] font-semibold text-neutral-700">
+                            <Shield size={10} />
+                            Division: {formatDivisionName(divisi)}
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-semibold text-neutral-700 bg-neutral-50 px-2 py-0.5 rounded border border-neutral-200">
+                            <Calendar size={12} className="text-brand" />
+                            Schedule: {formatDateDisplay(st.startDate)} to{" "}
+                            {formatDateDisplay(st.finishDate)}
+                        </span>
+                        <span className="text-neutral-600 font-medium">
+                            Duration: {st.duration} days
+                        </span>
+                        {st.daysLeft !== undefined &&
+                            st.daysLeft > 0 &&
+                            !isChecked && (
+                                <span className="text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px]">
+                                    {st.daysLeft} days left
+                                </span>
+                            )}
+                        {st.dependencies && st.dependencies.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-1">
+                                {st.dependencies.map((dep) => (
+                                    <span
+                                        key={dep.id}
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                        title={`Predecessor: ${dep.predecessor_name} (${dep.dependency_type}, Lag: ${dep.lag_days}d)`}
+                                    >
+                                        <Link2 size={10} />
+                                        <span>
+                                            {dep.predecessor_name} (
+                                            {dep.dependency_type})
+                                        </span>
+                                    </span>
+                                ))}
+                            </div>
+                        ) : st.predecessor ? (
+                            <span className="font-medium text-neutral-600">
+                                Pred: {st.predecessor} ({st.depType || "FS"}
+                                {st.lag ? ` +${st.lag}d lag` : ""}
+                                {st.lead ? ` -${st.lead}d lead` : ""})
+                            </span>
+                        ) : null}
+
+                        {/* Evidence attachment indicator & upload button */}
+                        {st.evidences && st.evidences.length > 0 ? (
+                            <div className="inline-flex items-center gap-1 flex-wrap">
+                                {st.evidences.map((ev, idx) => (
+                                    <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => onOpenEvidence(ev)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-bold hover:bg-emerald-200 transition-colors shadow-2xs"
+                                        title={`View evidence: ${ev.name}`}
+                                    >
+                                        <Paperclip
+                                            size={11}
+                                            className="text-emerald-700"
+                                        />
+                                        Evidence {idx + 1}
+                                    </button>
+                                ))}
+                                {canCheck && (
+                                    <button
+                                        type="button"
+                                        onClick={onOpenUploadEvidence}
+                                        className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
+                                        title="Add evidence file"
+                                    >
+                                        <Edit2 size={11} />
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
+                            canCheck && (
+                                <button
+                                    type="button"
+                                    onClick={onOpenUploadEvidence}
+                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
+                                    title="Upload completion evidence"
+                                >
+                                    <UploadCloud
+                                        size={11}
+                                        className="text-amber-600"
+                                    />
+                                    <span>Upload Evidence</span>
+                                </button>
+                            )
+                        )}
+
+                        {st.completedByName && (
+                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                <CheckCircle2
+                                    size={12}
+                                    className="text-emerald-500"
+                                />
+                                Completed by {st.completedByName} on{" "}
+                                {st.completedAt}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Progress Slider (0–100%) & Status Badges */}
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 self-stretch sm:self-center border-t sm:border-t-0 border-neutral-100 pt-2 sm:pt-0">
+                {/* Progress Slider */}
+                <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+                    <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={st.progress}
+                        disabled={!canCheck}
+                        onChange={(e) =>
+                            onProgressChange(parseInt(e.target.value), false)
+                        }
+                        onMouseUp={(e) =>
+                            onProgressChange(
+                                parseInt((e.target as HTMLInputElement).value),
+                                true,
+                            )
+                        }
+                        onTouchEnd={(e) =>
+                            onProgressChange(
+                                parseInt((e.target as HTMLInputElement).value),
+                                true,
+                            )
+                        }
+                        className={`w-28 sm:w-32 h-2 rounded-lg cursor-pointer bg-neutral-200 accent-brand ${
+                            !canCheck
+                                ? "opacity-40 cursor-not-allowed"
+                                : "hover:accent-blue-700"
+                        }`}
+                        title={`Adjust task progress (Current: ${st.progress}%)`}
+                    />
+                    <EditableProgress
+                        value={st.progress}
+                        disabled={!canCheck}
+                        onSave={(val) => onProgressChange(val, true)}
+                        isChecked={isChecked}
+                    />
+                </div>
+
+                <StatusBadge
+                    status={isChecked ? "Completed" : st.status}
+                    size="sm"
+                />
+
+                {/* Edit / Delete: PIC only */}
+                {canEdit && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                        <button
+                            onClick={onManageDependencies}
+                            className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs"
+                            title="Manage Dependencies (Predecessor)"
+                        >
+                            <Link2 size={14} />
+                        </button>
+                        <button
+                            onClick={onEdit}
+                            className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs"
+                            title="Edit Task (Name & Weight)"
+                        >
+                            <Edit2 size={14} />
+                        </button>
+                        <button
+                            onClick={onDelete}
+                            className="p-1.5 text-neutral-500 hover:text-danger bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs"
+                            title="Delete Task"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    </div>
+                )}
+            </div>
         </div>
-
-
-        <StatusBadge status={isChecked ? 'Completed' : st.status} size="sm" />
-
-        {/* Edit / Delete: PIC only */}
-        {canEdit && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
-            <button onClick={onManageDependencies} className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Kelola Ketergantungan (Predecessor)">
-              <Link2 size={14} />
-            </button>
-            <button onClick={onEdit} className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Edit Task (Name & Weight)">
-              <Edit2 size={14} />
-            </button>
-            <button onClick={onDelete} className="p-1.5 text-neutral-500 hover:text-danger bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs" title="Delete Task">
-              <Trash2 size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    );
 }
 
 function UncheckConfirmModal({
-  taskName,
-  onClose,
-  onConfirm
+    taskName,
+    onClose,
+    onConfirm,
 }: {
-  taskName: string;
-  onClose: () => void;
-  onConfirm: () => void;
+    taskName: string;
+    onClose: () => void;
+    onConfirm: () => void;
 }) {
-  return (
-    <Modal
-      title="Uncheck Task?"
-      subtitle="Confirm marking task as incomplete"
-      onClose={onClose}
-      size="sm"
-    >
-      <div className="space-y-4">
-        <div className="flex items-start gap-3 p-3.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-amber-900">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-700 shadow-2xs">
-            <AlertTriangle size={20} />
-          </div>
-          <div className="text-[12.5px] leading-relaxed pt-0.5">
-            <p className="font-semibold text-neutral-800">
-              Are you sure you want to mark this task as incomplete?
-            </p>
-            <p className="font-bold text-neutral-900 mt-1">
-              "{taskName}"
-            </p>
-            <p className="text-[11.5px] text-neutral-500 mt-1">
-              This will unmark the task from 100% completion. Progress will be restored to in-progress.
-            </p>
-          </div>
-        </div>
+    return (
+        <Modal
+            title="Uncheck Task?"
+            subtitle="Confirm marking task as incomplete"
+            onClose={onClose}
+            size="sm"
+        >
+            <div className="space-y-4">
+                <div className="flex items-start gap-3 p-3.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-amber-900">
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-700 shadow-2xs">
+                        <AlertTriangle size={20} />
+                    </div>
+                    <div className="text-[12.5px] leading-relaxed pt-0.5">
+                        <p className="font-semibold text-neutral-800">
+                            Are you sure you want to mark this task as
+                            incomplete?
+                        </p>
+                        <p className="font-bold text-neutral-900 mt-1">
+                            "{taskName}"
+                        </p>
+                        <p className="text-[11.5px] text-neutral-500 mt-1">
+                            This will unmark the task from 100% completion.
+                            Progress will be restored to in-progress.
+                        </p>
+                    </div>
+                </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={onConfirm}
-            className="bg-amber-600 hover:bg-amber-700 border-amber-600 text-white"
-          >
-            Uncheck
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={onClose}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        onClick={onConfirm}
+                        className="bg-amber-600 hover:bg-amber-700 border-amber-600 text-white"
+                    >
+                        Uncheck
+                    </Button>
+                </div>
+            </div>
+        </Modal>
+    );
 }
 
 function UploadEvidenceModal({
-  task,
-  requireComplete = false,
-  onClose,
-  onSave,
+    task,
+    requireComplete = false,
+    onClose,
+    onSave,
 }: {
-  task: SubSubtask;
-  requireComplete?: boolean;
-  onClose: () => void;
-  onSave: (taskId: string, evidences: EvidenceItem[], completeTo100: boolean, rawFiles?: File[]) => void;
+    task: SubSubtask;
+    requireComplete?: boolean;
+    onClose: () => void;
+    onSave: (
+        taskId: string,
+        evidences: EvidenceItem[],
+        completeTo100: boolean,
+        rawFiles?: File[],
+    ) => void;
 }) {
-  const [files, setFiles] = useState<File[]>([]);
-  const [completeChecked, setCompleteChecked] = useState(requireComplete || task.progress === 100);
-  const [fileError, setFileError] = useState<string | null>(null);
+    const [files, setFiles] = useState<File[]>([]);
+    const [completeChecked, setCompleteChecked] = useState(
+        requireComplete || task.progress === 100,
+    );
+    const [fileError, setFileError] = useState<string | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFileError(null);
-    const selected = Array.from(e.target.files || []);
-    const validFiles: File[] = [];
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFileError(null);
+        const selected = Array.from(e.target.files || []);
+        const validFiles: File[] = [];
 
-    for (const file of selected) {
-      const ext = file.name.split('.').pop()?.toLowerCase();
-      if (!ext || !['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
-        setFileError(`Format berkas "${file.name}" tidak diizinkan. Hanya berkas PDF, JPG, atau PNG yang diperbolehkan.`);
-        return;
-      }
+        for (const file of selected) {
+            const ext = file.name.split(".").pop()?.toLowerCase();
+            if (!ext || !["pdf", "jpg", "jpeg", "png"].includes(ext)) {
+                setFileError(
+                    `File format "${file.name}" is not supported. Only PDF, JPG, or PNG files are allowed.`,
+                );
+                return;
+            }
 
-      if (ext === 'pdf' && file.size > 20 * 1024 * 1024) {
-        setFileError(`Ukuran berkas PDF "${file.name}" melebihi batas maksimal 20 MB.`);
-        return;
-      }
+            if (ext === "pdf" && file.size > 20 * 1024 * 1024) {
+                setFileError(
+                    `PDF file size "${file.name}" exceeds the maximum limit of 20 MB.`,
+                );
+                return;
+            }
 
-      if (['jpg', 'jpeg', 'png'].includes(ext) && file.size > 10 * 1024 * 1024) {
-        setFileError(`Ukuran berkas gambar "${file.name}" melebihi batas maksimal 10 MB.`);
-        return;
-      }
+            if (
+                ["jpg", "jpeg", "png"].includes(ext) &&
+                file.size > 10 * 1024 * 1024
+            ) {
+                setFileError(
+                    `Image file size "${file.name}" exceeds the maximum limit of 10 MB.`,
+                );
+                return;
+            }
 
-      validFiles.push(file);
-    }
+            validFiles.push(file);
+        }
 
-    if (validFiles.length > 0) {
-      setFiles(prev => [...prev, ...validFiles]);
-    }
-  };
+        if (validFiles.length > 0) {
+            setFiles((prev) => [...prev, ...validFiles]);
+        }
+    };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const hasExisting = task.evidences && task.evidences.length > 0;
-    if (files.length === 0 && !hasExisting) return;
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const hasExisting = task.evidences && task.evidences.length > 0;
+        if (files.length === 0 && !hasExisting) return;
 
-    const newEvidences: EvidenceItem[] = files.map(file => {
-      const isImg = file.type.startsWith('image/');
-      return {
-        name: file.name,
-        size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
-        type: file.type,
-        previewUrl: isImg ? URL.createObjectURL(file) : undefined,
-      };
-    });
+        const newEvidences: EvidenceItem[] = files.map((file) => {
+            const isImg = file.type.startsWith("image/");
+            return {
+                name: file.name,
+                size: (file.size / (1024 * 1024)).toFixed(2) + " MB",
+                type: file.type,
+                previewUrl: isImg ? URL.createObjectURL(file) : undefined,
+            };
+        });
 
-    onSave(task.id, newEvidences, completeChecked, files.length > 0 ? files : undefined);
-  };
+        onSave(
+            task.id,
+            newEvidences,
+            completeChecked,
+            files.length > 0 ? files : undefined,
+        );
+    };
 
-  return (
-    <Modal
-      title="Upload Bukti Penyelesaian (Evidence)"
-      subtitle={`${task.code} — ${task.name}`}
-      onClose={onClose}
-      size="md"
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {fileError && (
-          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
-            <AlertCircle size={16} className="text-red-600 flex-shrink-0" />
-            <span>{fileError}</span>
-          </div>
-        )}
+    return (
+        <Modal
+            title="Upload Completion Evidence"
+            subtitle={`${task.code} — ${task.name}`}
+            onClose={onClose}
+            size="md"
+        >
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {fileError && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+                        <AlertCircle
+                            size={16}
+                            className="text-red-600 flex-shrink-0"
+                        />
+                        <span>{fileError}</span>
+                    </div>
+                )}
 
-        {/* Required Notice Alert */}
-        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12px] leading-relaxed">
-          <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <strong className="font-bold">Ketentuan Berkas Bukti:</strong> Hanya format <strong>PDF (maksimal 20 MB)</strong> atau <strong>Foto JPG/PNG (maksimal 10 MB)</strong> yang diperbolehkan untuk diunggah.
-          </div>
-        </div>
-
-        {/* Existing / Selected Evidence Display */}
-        <div className="space-y-2">
-            {(task.evidences || []).map((ev, i) => (
-                <div key={'ext-'+i} className="p-2 rounded-lg border border-neutral-200 bg-neutral-50 flex items-center gap-3">
-                    <FileText size={20} className="text-neutral-500" />
-                    <span className="text-[12px] font-bold text-neutral-800 truncate flex-1">{ev.name} (Tersimpan)</span>
+                {/* Required Notice Alert */}
+                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12px] leading-relaxed">
+                    <AlertCircle
+                        size={18}
+                        className="text-amber-600 flex-shrink-0 mt-0.5"
+                    />
+                    <div>
+                        <strong className="font-bold">
+                            Evidence File Requirements:
+                        </strong>{" "}
+                        Only <strong>PDF (max. 20 MB)</strong> or{" "}
+                        <strong>JPG/PNG photos (max. 10 MB)</strong> formats are
+                        allowed.
+                    </div>
                 </div>
-            ))}
-            {files.map((f, i) => (
-                <div key={'new-'+i} className="p-2 rounded-lg border border-brand/20 bg-brand/5 flex items-center gap-3">
-                    <FileText size={20} className="text-brand" />
-                    <span className="text-[12px] font-bold text-brand truncate flex-1">{f.name} (Siap diunggah)</span>
-                    <button type="button" onClick={() => setFiles(files.filter((_, idx) => idx !== i))} className="text-red-500 font-bold px-2 py-1 hover:bg-red-50 rounded">X</button>
+
+                {/* Existing / Selected Evidence Display */}
+                <div className="space-y-2">
+                    {(task.evidences || []).map((ev, i) => (
+                        <div
+                            key={"ext-" + i}
+                            className="p-2 rounded-lg border border-neutral-200 bg-neutral-50 flex items-center gap-3"
+                        >
+                            <FileText size={20} className="text-neutral-500" />
+                            <span className="text-[12px] font-bold text-neutral-800 truncate flex-1">
+                                {ev.name} (Saved)
+                            </span>
+                        </div>
+                    ))}
+                    {files.map((f, i) => (
+                        <div
+                            key={"new-" + i}
+                            className="p-2 rounded-lg border border-brand/20 bg-brand/5 flex items-center gap-3"
+                        >
+                            <FileText size={20} className="text-brand" />
+                            <span className="text-[12px] font-bold text-brand truncate flex-1">
+                                {f.name} (Ready to upload)
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setFiles(
+                                        files.filter((_, idx) => idx !== i),
+                                    )
+                                }
+                                className="text-red-500 font-bold px-2 py-1 hover:bg-red-50 rounded"
+                            >
+                                X
+                            </button>
+                        </div>
+                    ))}
                 </div>
-            ))}
-        </div>
-        
-        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-neutral-300 hover:border-brand rounded-xl cursor-pointer bg-neutral-50/50 hover:bg-brand/5 transition-all text-center">
-            <UploadCloud size={32} className="text-brand mb-2" />
-            <span className="text-[13.5px] font-bold text-neutral-800">
-              Pilih atau seret berkas bukti (evidence) ke sini
-            </span>
-            <span className="text-[11.5px] text-neutral-400 mt-1">
-              Hanya format PDF (maks. 20 MB) atau Foto JPG/PNG (maks. 10 MB)
-            </span>
-            <input
-              type="file"
-              multiple
-              required={(!task.evidences || task.evidences.length === 0) && files.length === 0}
-              accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-        </label>
 
-        {/* Completion checkbox option */}
-        <div className="pt-2 border-t border-neutral-100 flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="markCompleteCheck"
-            checked={completeChecked}
-            onChange={(e) => setCompleteChecked(e.target.checked)}
-            className="w-4 h-4 rounded text-brand focus:ring-brand border-neutral-300 accent-brand cursor-pointer"
-          />
-          <label htmlFor="markCompleteCheck" className="text-[12.5px] font-semibold text-neutral-800 cursor-pointer">
-            Langsung tandai task ini selesai 100% (berubah menjadi Hijau)
-          </label>
-        </div>
+                <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-neutral-300 hover:border-brand rounded-xl cursor-pointer bg-neutral-50/50 hover:bg-brand/5 transition-all text-center">
+                    <UploadCloud size={32} className="text-brand mb-2" />
+                    <span className="text-[13.5px] font-bold text-neutral-800">
+                        Select or drag evidence files here
+                    </span>
+                    <span className="text-[11.5px] text-neutral-400 mt-1">
+                        PDF format only (max. 20 MB) or JPG/PNG photos (max. 10
+                        MB)
+                    </span>
+                    <input
+                        type="file"
+                        multiple
+                        required={
+                            (!task.evidences || task.evidences.length === 0) &&
+                            files.length === 0
+                        }
+                        accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
+                        className="hidden"
+                        onChange={handleFileChange}
+                    />
+                </label>
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
-          <Button variant="outline" size="sm" type="button" onClick={onClose}>
-            Batal
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            type="submit"
-            disabled={(!task.evidences || task.evidences.length === 0) && files.length === 0}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-          >
-            {completeChecked ? 'Upload Bukti & Selesaikan (100%)' : 'Simpan Bukti'}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
+                {/* Completion checkbox option */}
+                <div className="pt-2 border-t border-neutral-100 flex items-center gap-2">
+                    <input
+                        type="checkbox"
+                        id="markCompleteCheck"
+                        checked={completeChecked}
+                        onChange={(e) => setCompleteChecked(e.target.checked)}
+                        className="w-4 h-4 rounded text-brand focus:ring-brand border-neutral-300 accent-brand cursor-pointer"
+                    />
+                    <label
+                        htmlFor="markCompleteCheck"
+                        className="text-[12.5px] font-semibold text-neutral-800 cursor-pointer"
+                    >
+                        Immediately mark this task 100% complete
+                    </label>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        onClick={onClose}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        type="submit"
+                        disabled={
+                            (!task.evidences || task.evidences.length === 0) &&
+                            files.length === 0
+                        }
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                    >
+                        {completeChecked
+                            ? "Upload Evidence & Complete (100%)"
+                            : "Save Evidence"}
+                    </Button>
+                </div>
+            </form>
+        </Modal>
+    );
 }
 
 function EvidencePreviewModal({
-  evidence,
-  onClose
+    evidence,
+    onClose,
 }: {
-  evidence: EvidenceItem;
-  onClose: () => void;
+    evidence: EvidenceItem;
+    onClose: () => void;
 }) {
-  const displayUrl = evidence.previewUrl;
-  return (
-    <Modal
-      title="Task Evidence Preview"
-      subtitle={evidence.name}
-      onClose={onClose}
-      size="md"
-    >
-      <div className="space-y-4">
-        {displayUrl ? (
-          <div className="rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900 flex items-center justify-center max-h-[70vh] w-full relative">
-            {evidence.name.toLowerCase().endsWith('.pdf') ? (
-               <iframe src={displayUrl} className="w-full h-[70vh] bg-white border-0" title={evidence.name} />
-            ) : (
-               <img src={displayUrl} alt={evidence.name} className="max-w-full max-h-[70vh] object-contain" />
-            )}
-          </div>
-        ) : (
-          <div className="p-8 rounded-xl border border-neutral-200 bg-neutral-50 text-center">
-            <FileText size={48} className="mx-auto text-brand mb-2" />
-            <h4 className="font-bold text-neutral-800 text-[14px]">{evidence.name}</h4>
-            <p className="text-[12px] text-neutral-500 mt-1">{evidence.size || 'Attached file'}</p>
-          </div>
-        )}
-        <div className="flex justify-end pt-2 border-t border-neutral-100">
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
+    const displayUrl = evidence.previewUrl;
+    return (
+        <Modal
+            title="Task Evidence Preview"
+            subtitle={evidence.name}
+            onClose={onClose}
+            size="md"
+        >
+            <div className="space-y-4">
+                {displayUrl ? (
+                    <div className="rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900 flex items-center justify-center max-h-[70vh] w-full relative">
+                        {evidence.name.toLowerCase().endsWith(".pdf") ? (
+                            <iframe
+                                src={displayUrl}
+                                className="w-full h-[70vh] bg-white border-0"
+                                title={evidence.name}
+                            />
+                        ) : (
+                            <img
+                                src={displayUrl}
+                                alt={evidence.name}
+                                className="max-w-full max-h-[70vh] object-contain"
+                            />
+                        )}
+                    </div>
+                ) : (
+                    <div className="p-8 rounded-xl border border-neutral-200 bg-neutral-50 text-center">
+                        <FileText
+                            size={48}
+                            className="mx-auto text-brand mb-2"
+                        />
+                        <h4 className="font-bold text-neutral-800 text-[14px]">
+                            {evidence.name}
+                        </h4>
+                        <p className="text-[12px] text-neutral-500 mt-1">
+                            {evidence.size || "Attached file"}
+                        </p>
+                    </div>
+                )}
+                <div className="flex justify-end pt-2 border-t border-neutral-100">
+                    <Button variant="ghost" size="sm" onClick={onClose}>
+                        Close
+                    </Button>
+                </div>
+            </div>
+        </Modal>
+    );
 }
 
 function SearchablePredecessorSelect({
-  value,
-  onChange,
-  availableSubMainJobs,
-  currentTaskId,
-  currentTaskCode
+    value,
+    onChange,
+    availableSubMainJobs,
+    currentTaskId,
+    currentTaskCode,
 }: {
-  value: string;
-  onChange: (val: string) => void;
-  availableSubMainJobs: SubMainJob[];
-  currentTaskId?: string;
-  currentTaskCode?: string;
+    value: string;
+    onChange: (val: string) => void;
+    availableSubMainJobs: SubMainJob[];
+    currentTaskId?: string;
+    currentTaskCode?: string;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const containerRef = useRef<HTMLDivElement>(null);
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState("");
+    const containerRef = useRef<HTMLDivElement>(null);
 
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+    const [expandedGroups, setExpandedGroups] = useState<
+        Record<string, boolean>
+    >({});
 
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const query = search.trim().toLowerCase();
-
-  useEffect(() => {
-    if (query) {
-      const newExpanded = { ...expandedGroups };
-      availableSubMainJobs.forEach(smj => {
-        const matchingTasks = (smj.subtasks || []).filter(st => {
-          if (st.id === currentTaskId || st.code === currentTaskCode) return false;
-          return st.name.toLowerCase().includes(query) ||
-                 st.code.toLowerCase().includes(query) ||
-                 (st.division && st.division.toLowerCase().includes(query));
-        });
-        if (matchingTasks.length > 0) {
-          newExpanded[smj.id] = true;
-        }
-      });
-      setExpandedGroups(newExpanded);
-    }
-  }, [query, availableSubMainJobs]);
-
-  // Find currently selected label
-  let selectedLabel = value ? `Unknown Predecessor (${value})` : 'None (No Predecessor)';
-  if (value) {
-    for (const smj of availableSubMainJobs) {
-      if (smj.id === value || smj.code === value) {
-        selectedLabel = `${smj.code} - ${smj.name} (Sub Task)`;
-        break;
-      }
-      const st = (smj.subtasks || []).find(s => s.id === value || s.code === value);
-      if (st) {
-        selectedLabel = `${st.code} - ${st.name}`;
-        break;
-      }
-    }
-  }
-
-  // Filter tasks
-  const filteredGroups = availableSubMainJobs.map(smj => {
-    const smjMatches = !query || smj.name.toLowerCase().includes(query) || smj.code.toLowerCase().includes(query);
-    const matchingTasks = (smj.subtasks || []).filter(st => {
-      if (st.id === currentTaskId || st.code === currentTaskCode) return false;
-      if (!query) return true;
-      return st.name.toLowerCase().includes(query) ||
-             st.code.toLowerCase().includes(query) ||
-             (st.division && st.division.toLowerCase().includes(query));
-    });
-
-    return {
-      smj,
-      matchingTasks,
-      visible: smjMatches || matchingTasks.length > 0,
-    };
-  }).filter(g => g.visible);
-
-  return (
-    <div ref={containerRef} className="relative w-full">
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] bg-white cursor-pointer flex items-center justify-between hover:border-neutral-300 focus:border-brand"
-      >
-        <span className={`truncate ${value ? 'font-bold text-neutral-800' : 'text-neutral-400'}`}>
-          {selectedLabel}
-        </span>
-        <ChevronDown size={14} className={`text-neutral-400 transform transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </div>
-
-      {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white rounded-xl border border-neutral-200 shadow-xl max-h-64 flex flex-col overflow-hidden">
-          {/* Search box inside dropdown */}
-          <div className="p-2 border-b border-neutral-100 bg-neutral-50 flex items-center gap-1.5">
-            <Search size={14} className="text-neutral-400 ml-1" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search predecessor by name or code (e.g. civil, WBS)..."
-              className="w-full px-2 py-1 text-[12px] bg-transparent outline-none font-medium"
-              autoFocus
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="text-neutral-400 hover:text-neutral-600 p-1"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-
-          <div className="overflow-y-auto divide-y divide-neutral-100 flex-1 p-1">
-            {/* None Option */}
-            <button
-              type="button"
-              onClick={() => {
-                onChange('');
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (
+                containerRef.current &&
+                !containerRef.current.contains(e.target as Node)
+            ) {
                 setIsOpen(false);
-              }}
-              className={`w-full text-left px-3 py-2 text-[12.5px] rounded-lg transition-colors font-medium ${
-                !value ? 'bg-brand/10 text-brand font-bold' : 'text-neutral-600 hover:bg-neutral-50'
-              }`}
-            >
-              None (No Predecessor)
-            </button>
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () =>
+            document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
-            {filteredGroups.length === 0 ? (
-              <div className="py-4 text-center text-[12px] text-neutral-400 italic">
-                No matching tasks found for "{search}"
-              </div>
-            ) : (
-              filteredGroups.map(({ smj, matchingTasks }) => {
-                const isExpanded = expandedGroups[smj.id] || false;
-                
+    const query = search.trim().toLowerCase();
+
+    useEffect(() => {
+        if (query) {
+            const newExpanded = { ...expandedGroups };
+            availableSubMainJobs.forEach((smj) => {
+                const matchingTasks = (smj.subtasks || []).filter((st) => {
+                    if (st.id === currentTaskId || st.code === currentTaskCode)
+                        return false;
+                    return (
+                        st.name.toLowerCase().includes(query) ||
+                        st.code.toLowerCase().includes(query) ||
+                        (st.division &&
+                            st.division.toLowerCase().includes(query))
+                    );
+                });
+                if (matchingTasks.length > 0) {
+                    newExpanded[smj.id] = true;
+                }
+            });
+            setExpandedGroups(newExpanded);
+        }
+    }, [query, availableSubMainJobs]);
+
+    // Find currently selected label
+    let selectedLabel = value
+        ? `Unknown Predecessor (${value})`
+        : "None (No Predecessor)";
+    if (value) {
+        for (const smj of availableSubMainJobs) {
+            if (smj.id === value || smj.code === value) {
+                selectedLabel = `${smj.code} - ${smj.name} (Sub Task)`;
+                break;
+            }
+            const st = (smj.subtasks || []).find(
+                (s) => s.id === value || s.code === value,
+            );
+            if (st) {
+                selectedLabel = `${st.code} - ${st.name}`;
+                break;
+            }
+        }
+    }
+
+    // Filter tasks
+    const filteredGroups = availableSubMainJobs
+        .map((smj) => {
+            const smjMatches =
+                !query ||
+                smj.name.toLowerCase().includes(query) ||
+                smj.code.toLowerCase().includes(query);
+            const matchingTasks = (smj.subtasks || []).filter((st) => {
+                if (st.id === currentTaskId || st.code === currentTaskCode)
+                    return false;
+                if (!query) return true;
                 return (
-                  <div key={smj.id || smj.code} className="pt-1.5 pb-1">
-                    <div className="px-3 py-1 text-[11px] font-black text-neutral-400 uppercase tracking-wider">
-                      {smj.code} · {smj.name}
-                    </div>
-                    {/* Sub-Task label (Clickable to expand/collapse) */}
-                    <div 
-                      onClick={() => setExpandedGroups(prev => ({ ...prev, [smj.id]: !prev[smj.id] }))}
-                      className="w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg flex items-center justify-between text-neutral-800 bg-neutral-100/50 mb-1 cursor-pointer hover:bg-neutral-200/50 transition-colors"
-                    >
-                      <span className="truncate font-medium flex items-center gap-1.5">
-                        <ChevronRight size={14} className={`text-neutral-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                        <strong>{smj.code}</strong> - {smj.name}
-                      </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-neutral-200/80 text-neutral-500 uppercase flex-shrink-0 ml-2">
-                        Sub-Task Group
-                      </span>
+                    st.name.toLowerCase().includes(query) ||
+                    st.code.toLowerCase().includes(query) ||
+                    (st.division && st.division.toLowerCase().includes(query))
+                );
+            });
+
+            return {
+                smj,
+                matchingTasks,
+                visible: smjMatches || matchingTasks.length > 0,
+            };
+        })
+        .filter((g) => g.visible);
+
+    return (
+        <div ref={containerRef} className="relative w-full">
+            <div
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] bg-white cursor-pointer flex items-center justify-between hover:border-neutral-300 focus:border-brand"
+            >
+                <span
+                    className={`truncate ${value ? "font-bold text-neutral-800" : "text-neutral-400"}`}
+                >
+                    {selectedLabel}
+                </span>
+                <ChevronDown
+                    size={14}
+                    className={`text-neutral-400 transform transition-transform ${isOpen ? "rotate-180" : ""}`}
+                />
+            </div>
+
+            {isOpen && (
+                <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white rounded-xl border border-neutral-200 shadow-xl max-h-64 flex flex-col overflow-hidden">
+                    {/* Search box inside dropdown */}
+                    <div className="p-2 border-b border-neutral-100 bg-neutral-50 flex items-center gap-1.5">
+                        <Search size={14} className="text-neutral-400 ml-1" />
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search predecessor by name or code (e.g. civil, WBS)..."
+                            className="w-full px-2 py-1 text-[12px] bg-transparent outline-none font-medium"
+                            autoFocus
+                        />
+                        {search && (
+                            <button
+                                type="button"
+                                onClick={() => setSearch("")}
+                                className="text-neutral-400 hover:text-neutral-600 p-1"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
                     </div>
 
-                    {/* Specific Task items */}
-                    {isExpanded && matchingTasks.map(st => (
-                      <button
-                        key={st.id || st.code}
-                        type="button"
-                        onClick={() => {
-                          onChange(st.id);
-                          setIsOpen(false);
-                        }}
-                        className={`w-full text-left pl-8 pr-3 py-1.5 text-[12px] rounded-lg transition-colors flex items-center justify-between ${
-                          value === st.id ? 'bg-brand text-white font-bold' : 'text-neutral-700 hover:bg-neutral-50'
-                        }`}
-                      >
-                        <span className="truncate">
-                          <strong>{st.code}</strong> - {st.name}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })
+                    <div className="overflow-y-auto divide-y divide-neutral-100 flex-1 p-1">
+                        {/* None Option */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onChange("");
+                                setIsOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-[12.5px] rounded-lg transition-colors font-medium ${
+                                !value
+                                    ? "bg-brand/10 text-brand font-bold"
+                                    : "text-neutral-600 hover:bg-neutral-50"
+                            }`}
+                        >
+                            None (No Predecessor)
+                        </button>
+
+                        {filteredGroups.length === 0 ? (
+                            <div className="py-4 text-center text-[12px] text-neutral-400 italic">
+                                No matching tasks found for "{search}"
+                            </div>
+                        ) : (
+                            filteredGroups.map(({ smj, matchingTasks }) => {
+                                const isExpanded =
+                                    expandedGroups[smj.id] || false;
+
+                                return (
+                                    <div
+                                        key={smj.id || smj.code}
+                                        className="pt-1.5 pb-1"
+                                    >
+                                        <div className="px-3 py-1 text-[11px] font-black text-neutral-400 uppercase tracking-wider">
+                                            {smj.code} · {smj.name}
+                                        </div>
+                                        {/* Sub-Task label (Clickable to expand/collapse) */}
+                                        <div
+                                            onClick={() =>
+                                                setExpandedGroups((prev) => ({
+                                                    ...prev,
+                                                    [smj.id]: !prev[smj.id],
+                                                }))
+                                            }
+                                            className="w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg flex items-center justify-between text-neutral-800 bg-neutral-100/50 mb-1 cursor-pointer hover:bg-neutral-200/50 transition-colors"
+                                        >
+                                            <span className="truncate font-medium flex items-center gap-1.5">
+                                                <ChevronRight
+                                                    size={14}
+                                                    className={`text-neutral-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                                                />
+                                                <strong>{smj.code}</strong> -{" "}
+                                                {smj.name}
+                                            </span>
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-neutral-200/80 text-neutral-500 uppercase flex-shrink-0 ml-2">
+                                                Sub-Task Group
+                                            </span>
+                                        </div>
+
+                                        {/* Specific Task items */}
+                                        {isExpanded &&
+                                            matchingTasks.map((st) => (
+                                                <button
+                                                    key={st.id || st.code}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        onChange(st.id);
+                                                        setIsOpen(false);
+                                                    }}
+                                                    className={`w-full text-left pl-8 pr-3 py-1.5 text-[12px] rounded-lg transition-colors flex items-center justify-between ${
+                                                        value === st.id
+                                                            ? "bg-brand text-white font-bold"
+                                                            : "text-neutral-700 hover:bg-neutral-50"
+                                                    }`}
+                                                >
+                                                    <span className="truncate">
+                                                        <strong>
+                                                            {st.code}
+                                                        </strong>{" "}
+                                                        - {st.name}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
             )}
-          </div>
         </div>
-      )}
-    </div>
-  );
+    );
 }
 
 function AddSubMainJobModal({
-  mjName,
-  parentWeight = 0,
-  currentSubCount = 0,
-  onClose,
-  onSave
+    mjName,
+    parentWeight = 0,
+    currentSubCount = 0,
+    onClose,
+    onSave,
 }: {
-  mjName: string;
-  parentWeight?: number;
-  currentSubCount?: number;
-  onClose: () => void;
-  onSave: (name: string) => void;
+    mjName: string;
+    parentWeight?: number;
+    currentSubCount?: number;
+    onClose: () => void;
+    onSave: (name: string) => void;
 }) {
-  const [name, setName] = useState('');
+    const [name, setName] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    onSave(name.trim());
-  };
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        onSave(name.trim());
+    };
 
-  return (
-    <Modal
-      title="Add New Sub Task (Sub Main Job)"
-      subtitle={`Under WBS Group: ${mjName}`}
-      onClose={onClose}
-      size="sm"
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Sub Task Name <span className="text-danger">*</span>
-          </label>
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="e.g. DOCUMENT REVIEW & PERMITS"
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
-            autoFocus
-          />
-        </div>
+    return (
+        <Modal
+            title="Add New Sub Task (Sub Main Job)"
+            subtitle={`Under WBS Group: ${mjName}`}
+            onClose={onClose}
+            size="sm"
+        >
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                        Sub Task Name <span className="text-danger">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        required
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="e.g. DOCUMENT REVIEW & PERMITS"
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
+                        autoFocus
+                    />
+                </div>
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
-          <Button variant="ghost" size="sm" type="button" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" size="sm" type="submit" disabled={!name.trim()}>
-            Save Sub Task
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
+                <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        onClick={onClose}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        type="submit"
+                        disabled={!name.trim()}
+                    >
+                        Save Sub Task
+                    </Button>
+                </div>
+            </form>
+        </Modal>
+    );
 }
 
 function MainJobModal({
-  initialData,
-  onClose,
-  onSave
+    initialData,
+    projectStartDate,
+    projectEndDate,
+    onClose,
+    onSave,
 }: {
-  initialData?: {
-    id?: string;
-    dbId?: number;
-    name?: string;
-    weight?: number;
-    startDate?: string;
-    finishDate?: string;
-  };
-  onClose: () => void;
-  onSave: (name: string, weight: number, start?: string, end?: string) => void;
+    initialData?: {
+        id?: string;
+        dbId?: number;
+        name?: string;
+        weight?: number;
+        startDate?: string;
+        finishDate?: string;
+    };
+    projectStartDate?: string;
+    projectEndDate?: string;
+    onClose: () => void;
+    onSave: (
+        name: string,
+        weight: number,
+        start?: string,
+        end?: string,
+    ) => void;
 }) {
-  const isEdit = !!initialData?.id;
-  const [name, setName] = useState(initialData?.name || '');
-  const [weight, setWeight] = useState(initialData?.weight !== undefined ? initialData.weight.toString() : '5');
-  const [startDate, setStartDate] = useState(initialData?.startDate || new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(initialData?.finishDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
+    const isEdit = !!initialData?.id;
+    const [name, setName] = useState(initialData?.name || "");
+    const [weight, setWeight] = useState(
+        initialData?.weight !== undefined ? initialData.weight.toString() : "5",
+    );
+    const [startDate, setStartDate] = useState(
+        initialData?.startDate ||
+            projectStartDate ||
+            new Date().toISOString().slice(0, 10),
+    );
+    const [endDate, setEndDate] = useState(() => {
+        if (initialData?.finishDate) return initialData.finishDate;
+        if (projectEndDate) return projectEndDate;
+        return new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    });
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    onSave(name.trim(), parseFloat(weight) || 0, startDate, endDate);
-  };
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
 
-  return (
-    <Modal
-      title={isEdit ? "Edit Main Task (Primary WBS Group)" : "Add New Main Task (Primary WBS Group)"}
-      subtitle={isEdit ? `Modify Level 1 primary job group: ${initialData?.name}` : "Add a Level 1 primary job group to the project"}
-      onClose={onClose}
-      size="sm"
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Main Task Name <span className="text-danger">*</span>
-          </label>
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="e.g. COMMISSIONING & HANDOVER"
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
-            autoFocus
-          />
-        </div>
+        if (projectStartDate && startDate && startDate < projectStartDate) {
+            setErrorMsg(
+                `Start date cannot be earlier than project Start Date (${formatDateDisplay(projectStartDate)}).`,
+            );
+            return;
+        }
+        if (projectEndDate && endDate && endDate > projectEndDate) {
+            setErrorMsg(
+                `Finish date cannot exceed project Target Finish Date (${formatDateDisplay(projectEndDate)}).`,
+            );
+            return;
+        }
+        if (startDate && endDate && endDate <= startDate) {
+            setErrorMsg(
+                "Finish date must be after Start date (at least +1 day later).",
+            );
+            return;
+        }
 
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Weight Allocation (%) <span className="text-danger">*</span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.01"
-            required
-            value={weight}
-            onChange={e => setWeight(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-bold"
-          />
-          <span className="text-[11px] text-neutral-400 mt-1 block">
-            This weight will be automatically divided equally across all Sub Tasks inside it.
-          </span>
-        </div>
+        onSave(name.trim(), parseFloat(weight) || 0, startDate, endDate);
+    };
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            />
-          </div>
-          <div>
-            <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">Finish Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            />
-          </div>
-        </div>
+    return (
+        <Modal
+            title={
+                isEdit
+                    ? "Edit Main Task (Primary WBS Group)"
+                    : "Add New Main Task (Primary WBS Group)"
+            }
+            subtitle={
+                isEdit
+                    ? `Modify Level 1 primary job group: ${initialData?.name}`
+                    : "Add a Level 1 primary job group to the project"
+            }
+            onClose={onClose}
+            size="sm"
+        >
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {errorMsg && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold">
+                        {errorMsg}
+                    </div>
+                )}
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
-          <Button variant="ghost" size="sm" type="button" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" size="sm" type="submit" disabled={!name.trim()}>
-            {isEdit ? "Update Main Task" : "Save Main Task"}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
+                <div>
+                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                        Main Task Name <span className="text-danger">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        required
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="e.g. COMMISSIONING & HANDOVER"
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
+                        autoFocus
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                        Weight Allocation (%){" "}
+                        <span className="text-danger">*</span>
+                    </label>
+                    <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        required
+                        value={weight}
+                        onChange={(e) => setWeight(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-bold"
+                    />
+                    <span className="text-[11px] text-neutral-400 mt-1 block">
+                        This weight will be automatically divided equally across
+                        all Sub Tasks inside it.
+                    </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
+                            Start Date
+                        </label>
+                        <input
+                            type="date"
+                            value={startDate}
+                            min={projectStartDate || undefined}
+                            max={endDate || projectEndDate || undefined}
+                            onChange={(e) => {
+                                let val = e.target.value;
+                                if (
+                                    projectStartDate &&
+                                    val &&
+                                    val < projectStartDate
+                                )
+                                    val = projectStartDate;
+                                if (
+                                    projectEndDate &&
+                                    val &&
+                                    val > projectEndDate
+                                )
+                                    val = projectEndDate;
+                                setStartDate(val);
+                                setErrorMsg(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
+                            Finish Date
+                        </label>
+                        <input
+                            type="date"
+                            value={endDate}
+                            min={startDate || projectStartDate || undefined}
+                            max={projectEndDate || undefined}
+                            onChange={(e) => {
+                                let val = e.target.value;
+                                if (
+                                    projectEndDate &&
+                                    val &&
+                                    val > projectEndDate
+                                )
+                                    val = projectEndDate;
+                                setEndDate(val);
+                                setErrorMsg(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                        />
+                    </div>
+                    {projectEndDate && (
+                        <div className="col-span-2 text-[11px] text-amber-900 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-center justify-between">
+                            <span className="font-medium">
+                                Project Target Limit:{" "}
+                                <strong>
+                                    {formatDateDisplay(projectEndDate)}
+                                </strong>
+                            </span>
+                            {/* <span className="text-[10px] font-bold text-amber-800 bg-amber-200/60 px-1.5 py-0.5 rounded border border-amber-300">
+                Mentok: {formatDateDisplay(projectEndDate)}
+              </span> */}
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        onClick={onClose}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        type="submit"
+                        disabled={!name.trim()}
+                    >
+                        {isEdit ? "Update Main Task" : "Save Main Task"}
+                    </Button>
+                </div>
+            </form>
+        </Modal>
+    );
 }
 
 function AddSubtaskModal({
-  smjId,
-  smjDbId,
-  parentSmj,
-  mainJobs = [],
-  divisions,
-  onClose,
-  onSave,
-  initialData
+    smjId,
+    smjDbId,
+    parentSmj,
+    mainJobs = [],
+    divisions,
+    onClose,
+    onSave,
+    initialData,
 }: {
-  smjId: string;
-  smjDbId?: number;
-  parentSmj?: SubMainJob;
-  mainJobs?: MainJob[];
-  divisions: { id: number; divisi: string }[];
-  onClose: () => void;
-  onSave: (taskData: Partial<SubSubtask> & { smjDbId?: number; divisionId?: number }) => void;
-  initialData?: SubSubtask;
+    smjId: string;
+    smjDbId?: number;
+    parentSmj?: SubMainJob;
+    mainJobs?: MainJob[];
+    divisions: { id: number; divisi: string }[];
+    onClose: () => void;
+    onSave: (
+        taskData: Partial<SubSubtask> & {
+            smjDbId?: number;
+            divisionId?: number;
+        },
+    ) => void;
+    initialData?: SubSubtask;
 }) {
-  const isEdit = !!initialData?.id;
-  const [name, setName] = useState(initialData?.name || '');
-  const [weight, setWeight] = useState(initialData?.weight !== undefined ? initialData.weight.toString() : '100');
-  const [startDate, setStartDate] = useState(initialData?.startDate || new Date().toISOString().slice(0, 10));
-  const [duration, setDuration] = useState(initialData?.duration?.toString() || '5');
-  const [divisionId, setDivisionId] = useState<string>(
-    initialData?.division
-      ? (divisions.find((d: any) => d.divisi?.toLowerCase() === initialData.division?.toLowerCase())?.id?.toString() || divisions[0]?.id?.toString() || '')
-      : (divisions[0]?.id?.toString() || '')
-  );
-  
-  const [dependencies, setDependencies] = useState<Array<{
-    id: string;
-    predecessor: string;
-    depType: DependencyType;
-    lag: string;
-    lead: string;
-  }>>(isEdit ? [] : [{
-    id: 'dep-1',
-    predecessor: initialData?.predecessor || '',
-    depType: initialData?.depType || 'FS',
-    lag: initialData?.lag ? initialData.lag.toString() : '0',
-    lead: initialData?.lead ? initialData.lead.toString() : '0'
-  }]);
-  const [requiresEvidence, setRequiresEvidence] = useState(initialData?.requiresEvidence ?? false);
+    const isEdit = !!initialData?.id;
+    const allTasks =
+        mainJobs?.flatMap(
+            (mj) => mj.subMainJobs?.flatMap((smj) => smj.subtasks || []) || [],
+        ) || [];
+    const isFirstTask = isEdit
+        ? allTasks.length > 0 &&
+          String(allTasks[0].id) === String(initialData?.id)
+        : allTasks.length === 0;
+    const lastTask = allTasks.length > 0 ? allTasks[allTasks.length - 1] : null;
 
-  // Available SubMainJobs across the project
-  const availableSubMainJobs = (mainJobs && mainJobs.length > 0)
-    ? mainJobs.flatMap(mj => mj.subMainJobs || [])
-    : (parentSmj ? [parentSmj] : []);
-
-  const allTasks = mainJobs?.flatMap(mj => mj.subMainJobs?.flatMap(smj => smj.subtasks || []) || []) || [];
-
-  // Find predecessor task to calculate automatic start date
-  useEffect(() => {
-    let maxStart: Date | null = null;
-    let hasValidDep = false;
-
-    dependencies.forEach(dep => {
-      if (!dep.predecessor || dep.predecessor === '-') return;
-      
-      let predTask = null;
-      for (const mj of mainJobs) {
-        for (const smj of (mj.subMainJobs || [])) {
-          const found = smj.subtasks?.find(st => st.id === dep.predecessor || st.code === dep.predecessor);
-          if (found) {
-            predTask = found;
-            break;
-          }
+    const [name, setName] = useState(initialData?.name || "");
+    const [weight, setWeight] = useState(
+        initialData?.weight !== undefined
+            ? initialData.weight.toString()
+            : "100",
+    );
+    const [startDate, setStartDate] = useState(() => {
+        if (initialData?.startDate) return initialData.startDate;
+        if (!isFirstTask && lastTask) {
+            return (
+                lastTask.finishDate ||
+                lastTask.startDate ||
+                new Date().toISOString().slice(0, 10)
+            );
         }
-        if (predTask) break;
-      }
-      
-      if (predTask) {
-        hasValidDep = true;
-        const pStart = new Date(predTask.startDate);
-        const pEnd = new Date(predTask.finishDate);
-        const lagDays = parseInt(dep.lag) || 0;
-        const leadDays = parseInt(dep.lead) || 0;
-        const offset = leadDays - lagDays;
-        
-        let newStart = new Date();
-        if (dep.depType === 'FS') {
-          newStart = new Date(pEnd);
-          newStart.setDate(newStart.getDate() + offset);
-        } else if (dep.depType === 'SS') {
-          newStart = new Date(pStart);
-          newStart.setDate(newStart.getDate() + offset);
-        } else if (dep.depType === 'FF') {
-          const newEnd = new Date(pEnd);
-          newEnd.setDate(newEnd.getDate() + offset);
-          newStart = new Date(newEnd);
-          newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
-        } else if (dep.depType === 'SF') {
-          const newEnd = new Date(pStart);
-          newEnd.setDate(newEnd.getDate() + offset);
-          newStart = new Date(newEnd);
-          newStart.setDate(newStart.getDate() - (parseInt(duration) || 1));
-        }
-        
-        if (!maxStart || newStart > maxStart) {
-          maxStart = newStart;
-        }
-      }
+        return new Date().toISOString().slice(0, 10);
     });
+    const [duration, setDuration] = useState(
+        initialData?.duration?.toString() || "5",
+    );
+    const [divisionId, setDivisionId] = useState<string>(
+        initialData?.division
+            ? divisions
+                  .find(
+                      (d: any) =>
+                          d.divisi?.toLowerCase() ===
+                          initialData.division?.toLowerCase(),
+                  )
+                  ?.id?.toString() ||
+                  divisions[0]?.id?.toString() ||
+                  ""
+            : divisions[0]?.id?.toString() || "",
+    );
 
-    if (hasValidDep && maxStart) {
-      setStartDate(maxStart.toISOString().slice(0, 10));
-    }
-  }, [dependencies, duration, mainJobs]);
-
-  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setStartDate(val);
-    
-    setDependencies(prevDeps => prevDeps.map(dep => {
-      if (!dep.predecessor || dep.predecessor === '-') return dep;
-
-      let predTask = null;
-      for (const mj of mainJobs) {
-        for (const smj of (mj.subMainJobs || [])) {
-          const found = smj.subtasks?.find(st => st.id === dep.predecessor || st.code === dep.predecessor);
-          if (found) {
-            predTask = found;
-            break;
-          }
+    const [dependencies, setDependencies] = useState<
+        Array<{
+            id: string;
+            predecessor: string;
+            depType: DependencyType;
+            lag: string;
+            lead: string;
+        }>
+    >(() => {
+        if (isEdit) return [];
+        if (!isFirstTask && lastTask) {
+            return [
+                {
+                    id: "dep-1",
+                    predecessor: lastTask.id || lastTask.code || "",
+                    depType: "FS",
+                    lag: "0",
+                    lead: "0",
+                },
+            ];
         }
-        if (predTask) break;
-      }
-
-      if (!predTask) return dep;
-
-      const pStart = new Date(predTask.startDate);
-      const pEnd = new Date(predTask.finishDate);
-      const d = new Date(val);
-
-      pStart.setHours(0,0,0,0);
-      pEnd.setHours(0,0,0,0);
-      d.setHours(0,0,0,0);
-
-      const diffDays = (d1: Date, d2: Date) => Math.round((d1.getTime() - d2.getTime()) / (1000 * 3600 * 24));
-      
-      let offset = 0;
-      if (dep.depType === 'FS') {
-        offset = diffDays(d, pEnd);
-      } else if (dep.depType === 'SS') {
-        offset = diffDays(d, pStart);
-      } else if (dep.depType === 'FF') {
-        const dEnd = new Date(d);
-        dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
-        offset = diffDays(dEnd, pEnd);
-      } else if (dep.depType === 'SF') {
-        const dEnd = new Date(d);
-        dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
-        offset = diffDays(dEnd, pStart);
-      }
-
-      return {
-        ...dep,
-        lead: offset > 0 ? offset.toString() : '0',
-        lag: offset < 0 ? Math.abs(offset).toString() : '0'
-      };
-    }));
-  };
-
-  // Calculate finish date preview - strictly after start date (min. +1 day: e.g. start 28 -> end 29)
-  const finishDatePreview = useMemo(() => {
-    try {
-      const d = new Date(startDate);
-      const dur = Math.max(1, parseInt(duration) || 1);
-      d.setDate(d.getDate() + dur);
-      return d.toISOString().slice(0, 10);
-    } catch {
-      return startDate;
-    }
-  }, [startDate, duration]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
-    onSave({
-      id: initialData?.id,
-      smjDbId,
-      name: name.trim(),
-      weight: parseFloat(weight) || 100,
-      divisionId: divisionId ? parseInt(divisionId) : undefined,
-      startDate,
-      finishDate: finishDatePreview,
-      duration: parseInt(duration) || 1,
-      predecessor: undefined,
-      depType: 'FS',
-      lag: 0,
-      lead: 0,
-      predecessors: dependencies.filter(d => d.predecessor && d.predecessor !== '-').map(d => ({
-        predecessor: d.predecessor,
-        dep_type: d.depType,
-        lag: parseInt(d.lag) || 0,
-        lead: parseInt(d.lead) || 0,
-      })),
-      requiresEvidence,
+        return [
+            {
+                id: "dep-1",
+                predecessor: initialData?.predecessor || "",
+                depType: initialData?.depType || "FS",
+                lag: initialData?.lag ? initialData.lag.toString() : "0",
+                lead: initialData?.lead ? initialData.lead.toString() : "0",
+            },
+        ];
     });
-  };
+    const [requiresEvidence, setRequiresEvidence] = useState(
+        initialData?.requiresEvidence ?? false,
+    );
 
-  return (
-    <Modal
-      title={isEdit ? "Edit Task (Sub-task Item)" : "Add New Task (Sub-task Item)"}
-      subtitle={isEdit ? `Editing: ${initialData?.code} — ${initialData?.name}` : "Add specific project task breakdown item"}
-      onClose={onClose}
-      size="md"
-    >
-      <form onSubmit={handleSubmit} className="flex flex-col">
-        <div className="space-y-4 pr-1">
-          {/* Task Name */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Task Description <span className="text-danger">*</span>
-          </label>
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="e.g. Preparation and review of vendor documents..."
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
-            autoFocus
-          />
-        </div>
+    // Available SubMainJobs across the project
+    const availableSubMainJobs =
+        mainJobs && mainJobs.length > 0
+            ? mainJobs.flatMap((mj) => mj.subMainJobs || [])
+            : parentSmj
+              ? [parentSmj]
+              : [];
 
-        {/* Division */}
-        <div>
-          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-            Responsible Division <span className="text-danger">*</span>
-          </label>
-          <select
-            value={divisionId}
-            onChange={e => setDivisionId(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
-          >
-            {divisions.map(d => (
-              <option key={d.id} value={d.id}>{formatDivisionName(d.divisi)}</option>
-            ))}
-          </select>
-        </div>
+    // Find predecessor task to calculate automatic start date
+    useEffect(() => {
+        let maxStart: Date | null = null;
+        let hasValidDep = false;
 
-        {/* Duration and Start Date */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Duration (Days) <span className="text-danger">*</span>
-            </label>
-            <input
-              type="number"
-              min="1"
-              required
-              value={duration}
-              onChange={e => setDuration(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
-            />
-          </div>
-          <div>
-            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-              Start Date <span className="text-danger">*</span>
-            </label>
-            <input
-              type="date"
-              required
-              value={startDate}
-              onChange={handleStartDateChange}
-              className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-            />
-          </div>
-        </div>
+        dependencies.forEach((dep) => {
+            if (!dep.predecessor || dep.predecessor === "-") return;
 
-        {/* Predecessors (Only shown if NOT edit mode, or if they want to manage them) */}
-        {!isEdit && (
-          <div className="space-y-3 pt-2 border-t border-neutral-100">
-            <div className="flex items-center justify-between">
-              <label className="block text-[12px] font-bold text-neutral-700">
-                Predecessors (WBS Task)
-              </label>
-              <button
-                type="button"
-                onClick={() => setDependencies(d => [...d, { id: `dep-${Date.now()}`, predecessor: '', depType: 'FS', lag: '0', lead: '0' }])}
-                className="text-[11px] font-bold text-brand hover:text-brand-dark px-2 py-1 bg-brand/5 rounded-lg transition-colors flex items-center gap-1"
-              >
-                <Plus size={12} /> Add Predecessor
-              </button>
-            </div>
+            let predTask = null;
+            for (const mj of mainJobs) {
+                for (const smj of mj.subMainJobs || []) {
+                    const found = smj.subtasks?.find(
+                        (st) =>
+                            st.id === dep.predecessor ||
+                            st.code === dep.predecessor,
+                    );
+                    if (found) {
+                        predTask = found;
+                        break;
+                    }
+                }
+                if (predTask) break;
+            }
 
-            {dependencies.length === 0 ? (
-              <div className="text-[12px] text-neutral-500 italic p-3 bg-neutral-50 rounded-lg text-center border border-neutral-200">
-                No predecessors added. Task will start according to its own schedule.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {dependencies.map((dep, index) => (
-                  <div key={dep.id} className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 relative group">
-                    <button
-                      type="button"
-                      onClick={() => setDependencies(d => d.filter(x => x.id !== dep.id))}
-                      className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity border border-red-200 hover:bg-red-200 z-10"
-                      title="Remove Dependency"
-                    >
-                      <X size={12} />
-                    </button>
-                    
-                    <div className="space-y-2">
-                      <SearchablePredecessorSelect
-                        value={dep.predecessor}
-                        onChange={v => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, predecessor: v } : x))}
-                        availableSubMainJobs={availableSubMainJobs}
-                        currentTaskId={initialData?.id}
-                        currentTaskCode={initialData?.code}
-                      />
+            if (predTask) {
+                hasValidDep = true;
+                const pStart = new Date(predTask.startDate);
+                const pEnd = new Date(predTask.finishDate);
+                const lagDays = parseInt(dep.lag) || 0;
+                const leadDays = parseInt(dep.lead) || 0;
+                const offset = lagDays - leadDays;
 
-                      <div className="grid grid-cols-[2fr_1fr_1fr] gap-2">
-                        <div>
-                          <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">Type</label>
-                          <select
-                            value={dep.depType}
-                            onChange={e => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, depType: e.target.value as any } : x))}
-                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] outline-none focus:border-brand bg-white font-medium"
-                          >
-                            <option value="FS">Finish-to-Start</option>
-                            <option value="SS">Start-to-Start</option>
-                            <option value="FF">Finish-to-Finish</option>
-                            <option value="SF">Start-to-Finish</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">Lag</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={dep.lag}
-                            onChange={e => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, lag: e.target.value } : x))}
-                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">Lead</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={dep.lead}
-                            onChange={e => setDependencies(d => d.map(x => x.id === dep.id ? { ...x, lead: e.target.value } : x))}
-                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
-                          />
-                        </div>
-                      </div>
+                let newStart = new Date();
+                if (dep.depType === "FS") {
+                    newStart = new Date(pEnd);
+                    newStart.setDate(newStart.getDate() + offset);
+                } else if (dep.depType === "SS") {
+                    newStart = new Date(pStart);
+                    newStart.setDate(newStart.getDate() + offset);
+                } else if (dep.depType === "FF") {
+                    const newEnd = new Date(pEnd);
+                    newEnd.setDate(newEnd.getDate() + offset);
+                    newStart = new Date(newEnd);
+                    newStart.setDate(
+                        newStart.getDate() - (parseInt(duration) || 1),
+                    );
+                } else if (dep.depType === "SF") {
+                    const newEnd = new Date(pStart);
+                    newEnd.setDate(newEnd.getDate() + offset);
+                    newStart = new Date(newEnd);
+                    newStart.setDate(
+                        newStart.getDate() - (parseInt(duration) || 1),
+                    );
+                }
+
+                if (!maxStart || newStart > maxStart) {
+                    maxStart = newStart;
+                }
+            }
+        });
+
+        let parentMj: MainJob | undefined;
+        for (const mj of mainJobs) {
+            if (
+                mj.subMainJobs?.some(
+                    (smj) =>
+                        String(smj.id) === String(smjId) ||
+                        smj.id === smjDbId ||
+                        String(smj.id) === String(parentSmj?.id),
+                )
+            ) {
+                parentMj = mj;
+                break;
+            }
+        }
+
+        if (hasValidDep && maxStart && !isFirstTask) {
+            let clampedStart = maxStart;
+            if (parentMj?.startDate) {
+                const pMjStart = new Date(parentMj.startDate);
+                if (clampedStart < pMjStart) clampedStart = pMjStart;
+            }
+            if (parentMj?.finishDate) {
+                const pMjEnd = new Date(parentMj.finishDate);
+                if (clampedStart > pMjEnd) clampedStart = pMjEnd;
+            }
+            setStartDate(clampedStart.toISOString().slice(0, 10));
+        }
+    }, [
+        dependencies,
+        duration,
+        mainJobs,
+        isFirstTask,
+        smjId,
+        smjDbId,
+        parentSmj,
+    ]);
+
+    const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setStartDate(val);
+
+        setDependencies((prevDeps) =>
+            prevDeps.map((dep) => {
+                if (!dep.predecessor || dep.predecessor === "-") return dep;
+
+                let predTask = null;
+                for (const mj of mainJobs) {
+                    for (const smj of mj.subMainJobs || []) {
+                        const found = smj.subtasks?.find(
+                            (st) =>
+                                st.id === dep.predecessor ||
+                                st.code === dep.predecessor,
+                        );
+                        if (found) {
+                            predTask = found;
+                            break;
+                        }
+                    }
+                    if (predTask) break;
+                }
+
+                if (!predTask) return dep;
+
+                const pStart = new Date(predTask.startDate);
+                const pEnd = new Date(predTask.finishDate);
+                const d = new Date(val);
+
+                pStart.setHours(0, 0, 0, 0);
+                pEnd.setHours(0, 0, 0, 0);
+                d.setHours(0, 0, 0, 0);
+
+                const diffDays = (d1: Date, d2: Date) =>
+                    Math.round(
+                        (d1.getTime() - d2.getTime()) / (1000 * 3600 * 24),
+                    );
+
+                let offset = 0;
+                if (dep.depType === "FS") {
+                    offset = diffDays(d, pEnd);
+                } else if (dep.depType === "SS") {
+                    offset = diffDays(d, pStart);
+                } else if (dep.depType === "FF") {
+                    const dEnd = new Date(d);
+                    dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
+                    offset = diffDays(dEnd, pEnd);
+                } else if (dep.depType === "SF") {
+                    const dEnd = new Date(d);
+                    dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
+                    offset = diffDays(dEnd, pStart);
+                }
+
+                return {
+                    ...dep,
+                    lag: offset > 0 ? offset.toString() : "0",
+                    lead: offset < 0 ? Math.abs(offset).toString() : "0",
+                };
+            }),
+        );
+    };
+
+    // Calculate finish date preview - strictly after start date (min. +1 day: e.g. start 28 -> end 29)
+    const finishDatePreview = useMemo(() => {
+        try {
+            const d = new Date(startDate);
+            const dur = Math.max(1, parseInt(duration) || 1);
+            d.setDate(d.getDate() + dur);
+            return d.toISOString().slice(0, 10);
+        } catch {
+            return startDate;
+        }
+    }, [startDate, duration]);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+
+        if (!isFirstTask && !isEdit) {
+            const validDeps = dependencies.filter(
+                (d) => d.predecessor && d.predecessor !== "-",
+            );
+            if (validDeps.length === 0) {
+                alert(
+                    "Tasks other than the first task must have a Predecessor to determine their start date.",
+                );
+                return;
+            }
+        }
+
+        onSave({
+            id: initialData?.id,
+            smjDbId,
+            name: name.trim(),
+            weight: parseFloat(weight) || 100,
+            divisionId: divisionId ? parseInt(divisionId) : undefined,
+            startDate,
+            finishDate: finishDatePreview,
+            duration: parseInt(duration) || 1,
+            predecessor: undefined,
+            depType: "FS",
+            lag: 0,
+            lead: 0,
+            predecessors: dependencies
+                .filter((d) => d.predecessor && d.predecessor !== "-")
+                .map((d) => ({
+                    predecessor: d.predecessor,
+                    dep_type: d.depType,
+                    lag: parseInt(d.lag) || 0,
+                    lead: parseInt(d.lead) || 0,
+                })),
+            requiresEvidence,
+        });
+    };
+
+    return (
+        <Modal
+            title={
+                isEdit
+                    ? "Edit Task (Sub-task Item)"
+                    : "Add New Task (Sub-task Item)"
+            }
+            subtitle={
+                isEdit
+                    ? `Editing: ${initialData?.code} — ${initialData?.name}`
+                    : "Add specific project task breakdown item"
+            }
+            onClose={onClose}
+            size="md"
+        >
+            <form onSubmit={handleSubmit} className="flex flex-col">
+                <div className="space-y-4 pr-1">
+                    {/* Task Name */}
+                    <div>
+                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                            Task Description{" "}
+                            <span className="text-danger">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            required
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="e.g. Preparation and review of vendor documents..."
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
+                            autoFocus
+                        />
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {isEdit && (
-          <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-start gap-2.5">
-            <Info size={14} className="text-blue-500 mt-0.5 flex-shrink-0" />
-            <p className="text-[11.5px] text-blue-800 font-medium leading-relaxed">
-              To add or manage task dependencies for this existing task, use the <strong className="text-blue-900">"Kelola Ketergantungan"</strong> button on the task row.
-            </p>
-          </div>
-        )}
 
-        {/* Evidence Requirement */}
-        <div className="pt-2 border-t border-neutral-100">
-           <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 transition-colors">
-             <input 
-               type="checkbox" 
-               checked={requiresEvidence} 
-               onChange={e => setRequiresEvidence(e.target.checked)} 
-               className="w-4 h-4 rounded text-brand border-neutral-300 focus:ring-brand" 
-             />
-             <div className="flex flex-col">
-               <span className="text-[13px] font-bold text-neutral-800">Requires Evidence for Completion</span>
-               <span className="text-[11.5px] text-neutral-500">Workers must upload a file/photo to mark this task 100% complete.</span>
-             </div>
-           </label>
-        </div>
+                    {/* Division */}
+                    <div>
+                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                            Responsible Division{" "}
+                            <span className="text-danger">*</span>
+                        </label>
+                        <select
+                            value={divisionId}
+                            onChange={(e) => setDivisionId(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
+                        >
+                            {divisions.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                    {formatDivisionName(d.divisi)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
-        </div>
+                    {/* Duration and Start Date */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                                Duration (Days){" "}
+                                <span className="text-danger">*</span>
+                            </label>
+                            <input
+                                type="number"
+                                min="1"
+                                required
+                                value={duration}
+                                onChange={(e) => setDuration(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
+                            />
+                        </div>
+                        <div>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-[12px] font-bold text-neutral-700">
+                                    Start Date{" "}
+                                    <span className="text-danger">*</span>
+                                </label>
+                                {isFirstTask ? (
+                                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                        <Sparkles size={11} /> First Task
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                        <Lock size={11} /> Locked
+                                    </span>
+                                )}
+                            </div>
+                            <input
+                                type="date"
+                                required
+                                value={startDate}
+                                readOnly={!isFirstTask}
+                                tabIndex={!isFirstTask ? -1 : 0}
+                                onChange={(e) => {
+                                    if (isFirstTask) {
+                                        handleStartDateChange(e);
+                                    }
+                                }}
+                                className={`w-full px-3 py-2 rounded-lg border text-[13px] outline-none ${
+                                    !isFirstTask
+                                        ? "bg-neutral-100 text-neutral-600 border-neutral-200 cursor-not-allowed select-none"
+                                        : "border-neutral-200 text-neutral-900 focus:border-brand bg-white"
+                                }`}
+                            />
+                        </div>
+                    </div>
 
-        {/* Action Buttons */}
-        <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-neutral-100 shrink-0">
-          <Button variant="outline" size="sm" type="button" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            type="submit"
-            disabled={!name.trim()}
-          >
-            {isEdit ? "Update Task" : "Save Task"}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
+                    {/* Predecessors (Only shown if NOT edit mode, or if they want to manage them) */}
+                    {!isEdit && (
+                        <div className="space-y-3 pt-2 border-t border-neutral-100">
+                            <div className="flex items-center justify-between">
+                                <label className="block text-[12px] font-bold text-neutral-700">
+                                    Predecessors (WBS Task)
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setDependencies((d) => [
+                                            ...d,
+                                            {
+                                                id: `dep-${Date.now()}`,
+                                                predecessor: "",
+                                                depType: "FS",
+                                                lag: "0",
+                                                lead: "0",
+                                            },
+                                        ])
+                                    }
+                                    className="text-[11px] font-bold text-brand hover:text-brand-dark px-2 py-1 bg-brand/5 rounded-lg transition-colors flex items-center gap-1"
+                                >
+                                    <Plus size={12} /> Add Predecessor
+                                </button>
+                            </div>
+
+                            {dependencies.length === 0 ? (
+                                <div className="text-[12px] text-neutral-500 italic p-3 bg-neutral-50 rounded-lg text-center border border-neutral-200">
+                                    No predecessors added. Task will start
+                                    according to its own schedule.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {dependencies.map((dep, index) => (
+                                        <div
+                                            key={dep.id}
+                                            className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 relative group"
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setDependencies((d) =>
+                                                        d.filter(
+                                                            (x) =>
+                                                                x.id !== dep.id,
+                                                        ),
+                                                    )
+                                                }
+                                                className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity border border-red-200 hover:bg-red-200 z-10"
+                                                title="Remove Dependency"
+                                            >
+                                                <X size={12} />
+                                            </button>
+
+                                            <div className="space-y-2">
+                                                <SearchablePredecessorSelect
+                                                    value={dep.predecessor}
+                                                    onChange={(v) =>
+                                                        setDependencies((d) =>
+                                                            d.map((x) =>
+                                                                x.id === dep.id
+                                                                    ? {
+                                                                          ...x,
+                                                                          predecessor:
+                                                                              v,
+                                                                      }
+                                                                    : x,
+                                                            ),
+                                                        )
+                                                    }
+                                                    availableSubMainJobs={
+                                                        availableSubMainJobs
+                                                    }
+                                                    currentTaskId={
+                                                        initialData?.id
+                                                    }
+                                                    currentTaskCode={
+                                                        initialData?.code
+                                                    }
+                                                />
+
+                                                <div className="grid grid-cols-[2fr_1fr_1fr] gap-2">
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">
+                                                            Type
+                                                        </label>
+                                                        <select
+                                                            value={dep.depType}
+                                                            onChange={(e) =>
+                                                                setDependencies(
+                                                                    (d) =>
+                                                                        d.map(
+                                                                            (
+                                                                                x,
+                                                                            ) =>
+                                                                                x.id ===
+                                                                                dep.id
+                                                                                    ? {
+                                                                                          ...x,
+                                                                                          depType:
+                                                                                              e
+                                                                                                  .target
+                                                                                                  .value as any,
+                                                                                      }
+                                                                                    : x,
+                                                                        ),
+                                                                )
+                                                            }
+                                                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] outline-none focus:border-brand bg-white font-medium"
+                                                        >
+                                                            <option value="FS">
+                                                                Finish-to-Start
+                                                            </option>
+                                                            <option value="SS">
+                                                                Start-to-Start
+                                                            </option>
+                                                            <option value="FF">
+                                                                Finish-to-Finish
+                                                            </option>
+                                                            <option value="SF">
+                                                                Start-to-Finish
+                                                            </option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">
+                                                            Lag
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={dep.lag}
+                                                            onChange={(e) =>
+                                                                setDependencies(
+                                                                    (d) =>
+                                                                        d.map(
+                                                                            (
+                                                                                x,
+                                                                            ) =>
+                                                                                x.id ===
+                                                                                dep.id
+                                                                                    ? {
+                                                                                          ...x,
+                                                                                          lag: e
+                                                                                              .target
+                                                                                              .value,
+                                                                                      }
+                                                                                    : x,
+                                                                        ),
+                                                                )
+                                                            }
+                                                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">
+                                                            Lead
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={dep.lead}
+                                                            onChange={(e) =>
+                                                                setDependencies(
+                                                                    (d) =>
+                                                                        d.map(
+                                                                            (
+                                                                                x,
+                                                                            ) =>
+                                                                                x.id ===
+                                                                                dep.id
+                                                                                    ? {
+                                                                                          ...x,
+                                                                                          lead: e
+                                                                                              .target
+                                                                                              .value,
+                                                                                      }
+                                                                                    : x,
+                                                                        ),
+                                                                )
+                                                            }
+                                                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {isEdit && (
+                        <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-start gap-2.5">
+                            <Info
+                                size={14}
+                                className="text-blue-500 mt-0.5 flex-shrink-0"
+                            />
+                            <p className="text-[11.5px] text-blue-800 font-medium leading-relaxed">
+                                To add or manage task dependencies for this
+                                existing task, use the{" "}
+                                <strong className="text-blue-900">
+                                    "Manage Dependencies"
+                                </strong>{" "}
+                                button on the task row.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Evidence Requirement */}
+                    <div className="pt-2 border-t border-neutral-100">
+                        <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 transition-colors">
+                            <input
+                                type="checkbox"
+                                checked={requiresEvidence}
+                                onChange={(e) =>
+                                    setRequiresEvidence(e.target.checked)
+                                }
+                                className="w-4 h-4 rounded text-brand border-neutral-300 focus:ring-brand"
+                            />
+                            <div className="flex flex-col">
+                                <span className="text-[13px] font-bold text-neutral-800">
+                                    Requires Evidence for Completion
+                                </span>
+                                <span className="text-[11.5px] text-neutral-500">
+                                    Workers must upload a file/photo to mark
+                                    this task 100% complete.
+                                </span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-neutral-100 shrink-0">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        onClick={onClose}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        type="submit"
+                        disabled={!name.trim()}
+                    >
+                        {isEdit ? "Update Task" : "Save Task"}
+                    </Button>
+                </div>
+            </form>
+        </Modal>
+    );
 }
 
 function ManageDependenciesModal({
-  isOpen,
-  task,
-  allSubtasks,
-  depForm,
-  setDepForm,
-  onClose,
-  onAddDependency,
-  onRemoveDependency,
-  submitting,
-  actionError
+    isOpen,
+    task,
+    allSubtasks,
+    depForm,
+    setDepForm,
+    onClose,
+    onAddDependency,
+    onRemoveDependency,
+    submitting,
+    actionError,
 }: {
-  isOpen: boolean;
-  task?: SubSubtask;
-  allSubtasks: SubSubtask[];
-  depForm: any;
-  setDepForm: (val: any) => void;
-  onClose: () => void;
-  onAddDependency: (e: React.FormEvent) => void;
-  onRemoveDependency: (depId: number) => void;
-  submitting: boolean;
-  actionError: string;
+    isOpen: boolean;
+    task?: SubSubtask;
+    allSubtasks: SubSubtask[];
+    depForm: any;
+    setDepForm: (val: any) => void;
+    onClose: () => void;
+    onAddDependency: (e: React.FormEvent) => void;
+    onRemoveDependency: (depId: number) => void;
+    submitting: boolean;
+    actionError: string;
 }) {
-  const [searchDep, setSearchDep] = useState('');
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+    const [searchDep, setSearchDep] = useState("");
+    const [expandedGroups, setExpandedGroups] = useState<
+        Record<string, boolean>
+    >({});
 
-  if (!isOpen || !task) return null;
+    if (!isOpen || !task) return null;
 
-  const dependencyGroups = (task.dependencies ?? []).reduce((groups, dependency) => {
-    const key = dependency.dependency_group_id ?? `dependency-${dependency.id}`;
-    const group = groups.get(key) ?? [];
-    group.push(dependency);
-    groups.set(key, group);
-    return groups;
-  }, new Map<number | string, NonNullable<typeof task.dependencies>>());
+    const dependencyGroups = (task.dependencies ?? []).reduce(
+        (groups, dependency) => {
+            const key =
+                dependency.dependency_group_id ?? `dependency-${dependency.id}`;
+            const group = groups.get(key) ?? [];
+            group.push(dependency);
+            groups.set(key, group);
+            return groups;
+        },
+        new Map<number | string, NonNullable<typeof task.dependencies>>(),
+    );
 
-  const availableTasks = allSubtasks
-    .filter(t => t.id !== task.id)
-    .filter(t => !task.dependencies?.some(dep => String(dep.predecessor_wbs_id) === String(t.id)));
+    const availableTasks = allSubtasks
+        .filter((t) => t.id !== task.id)
+        .filter(
+            (t) =>
+                !task.dependencies?.some(
+                    (dep) => String(dep.predecessor_wbs_id) === String(t.id),
+                ),
+        );
 
-  const filteredTasks = availableTasks.filter(t => 
-    (t.code + ' ' + t.name).toLowerCase().includes(searchDep.toLowerCase())
-  );
+    const filteredTasks = availableTasks.filter((t) =>
+        (t.code + " " + t.name).toLowerCase().includes(searchDep.toLowerCase()),
+    );
 
-  const groupedAvailableTasks = filteredTasks.reduce((acc, t) => {
-    const parts = t.code.split('.');
-    const prefix = parts.length > 1 ? parts.slice(0, parts.length - 1).join('.') : t.code;
-    if (!acc[prefix]) acc[prefix] = [];
-    acc[prefix].push(t);
-    return acc;
-  }, {} as Record<string, SubSubtask[]>);
+    const groupedAvailableTasks = filteredTasks.reduce(
+        (acc, t) => {
+            const parts = t.code.split(".");
+            const prefix =
+                parts.length > 1
+                    ? parts.slice(0, parts.length - 1).join(".")
+                    : t.code;
+            if (!acc[prefix]) acc[prefix] = [];
+            acc[prefix].push(t);
+            return acc;
+        },
+        {} as Record<string, SubSubtask[]>,
+    );
 
-  return (
-    <Modal
-      title={`Kelola Ketergantungan: ${task.name}`}
-      onClose={onClose}
-      size="lg"
-    >
-      <div className="space-y-5">
-        {/* Task Info Header */}
-        <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200 text-[12.5px] flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <span className="text-neutral-500 font-medium">Task ID / Code:</span>{' '}
-            <strong className="font-mono text-neutral-900">{task.code}</strong>
-          </div>
-          <div>
-            <span className="text-neutral-500 font-medium">Jadwal:</span>{' '}
-            <strong>{task.startDate ? formatDateDisplay(task.startDate) : '-'} → {task.finishDate ? formatDateDisplay(task.finishDate) : '-'}</strong>
-          </div>
-          <div>
-            <span className="text-neutral-500 font-medium">Durasi:</span>{' '}
-            <strong>{task.duration} hari</strong>
-          </div>
-        </div>
-
-        {actionError && (
-          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold">
-            {actionError}
-          </div>
-        )}
-
-        {/* List of existing dependencies */}
-        <div>
-          <h4 className="text-[13px] font-bold text-neutral-900 mb-2 flex items-center gap-1.5">
-            <Link2 size={15} className="text-brand" />
-            Predecessor Terhubung ({task.dependencies?.length || 0})
-          </h4>
-
-          {(!task.dependencies || task.dependencies.length === 0) ? (
-            <div className="p-4 text-center rounded-xl bg-neutral-50 border border-neutral-200 text-neutral-500 text-[12.5px] italic">
-              Belum ada predecessor yang terhubung dengan task ini.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {[...dependencyGroups.entries()].map(([groupId, dependencies]) => {
-                const type = dependencies[0].dependency_type;
-                const typeDescription = {
-                  FS: 'Finish-to-Start (Task ini mulai setelah predecessor selesai)',
-                  SS: 'Start-to-Start (Task ini mulai setelah predecessor mulai)',
-                  FF: 'Finish-to-Finish (Task ini selesai setelah predecessor selesai)',
-                  SF: 'Start-to-Finish (Task ini selesai setelah predecessor mulai)',
-                }[type];
-
-                return (
-                  <div key={groupId} className="p-3 rounded-xl bg-white border border-neutral-200 shadow-2xs">
-                    <div className="mb-2 flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-mono font-black bg-indigo-100 text-indigo-800">
-                        {type}
-                      </span>
-                      <span className="text-[11.5px] text-neutral-500">
-                        {dependencies.length > 1 ? `Semua ${dependencies.length} predecessor wajib terpenuhi` : typeDescription}
-                      </span>
+    return (
+        <Modal
+            title={`Manage Dependencies: ${task.name}`}
+            onClose={onClose}
+            size="lg"
+        >
+            <div className="space-y-5">
+                {/* Task Info Header */}
+                <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200 text-[12.5px] flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <span className="text-neutral-500 font-medium">
+                            Task ID / Code:
+                        </span>{" "}
+                        <strong className="font-mono text-neutral-900">
+                            {task.code}
+                        </strong>
                     </div>
-                    <div className="space-y-1.5">
-                      {dependencies.map(dep => (
-                        <div key={dep.id} className="flex items-center justify-between gap-3">
-                          <div>
-                            <strong className="text-[13px] text-neutral-900">{dep.predecessor_name}</strong>
-                            {dep.lag_days !== 0 && (
-                              <span className="ml-2 text-[11px] text-neutral-500">
-                                Jeda: {dep.lag_days > 0 ? `+${dep.lag_days}` : dep.lag_days} hari
-                              </span>
+                    <div>
+                        <span className="text-neutral-500 font-medium">
+                            Jadwal:
+                        </span>{" "}
+                        <strong>
+                            {task.startDate
+                                ? formatDateDisplay(task.startDate)
+                                : "-"}{" "}
+                            →{" "}
+                            {task.finishDate
+                                ? formatDateDisplay(task.finishDate)
+                                : "-"}
+                        </strong>
+                    </div>
+                    <div>
+                        <span className="text-neutral-500 font-medium">
+                            Duration:
+                        </span>{" "}
+                        <strong>{task.duration} days</strong>
+                    </div>
+                </div>
+
+                {actionError && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold">
+                        {actionError}
+                    </div>
+                )}
+
+                {/* List of existing dependencies */}
+                <div>
+                    <h4 className="text-[13px] font-bold text-neutral-900 mb-2 flex items-center gap-1.5">
+                        <Link2 size={15} className="text-brand" />
+                        Connected Predecessors ({task.dependencies?.length || 0})
+                    </h4>
+
+                    {!task.dependencies || task.dependencies.length === 0 ? (
+                        <div className="p-4 text-center rounded-xl bg-neutral-50 border border-neutral-200 text-neutral-500 text-[12.5px] italic">
+                            No predecessors connected to this task yet.
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {[...dependencyGroups.entries()].map(
+                                ([groupId, dependencies]) => {
+                                    const type =
+                                        dependencies[0].dependency_type;
+                                    const typeDescription = {
+                                        FS: "Finish-to-Start (Task starts after predecessor finishes)",
+                                        SS: "Start-to-Start (Task starts after predecessor starts)",
+                                        FF: "Finish-to-Finish (Task finishes after predecessor finishes)",
+                                        SF: "Start-to-Finish (Task finishes after predecessor starts)",
+                                    }[type];
+
+                                    return (
+                                        <div
+                                            key={groupId}
+                                            className="p-3 rounded-xl bg-white border border-neutral-200 shadow-2xs"
+                                        >
+                                            <div className="mb-2 flex items-center gap-2">
+                                                <span className="px-2 py-0.5 rounded text-[11px] font-mono font-black bg-indigo-100 text-indigo-800">
+                                                    {type}
+                                                </span>
+                                                <span className="text-[11.5px] text-neutral-500">
+                                                    {dependencies.length > 1
+                                                        ? `All ${dependencies.length} predecessors must be satisfied`
+                                                        : typeDescription}
+                                                </span>
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                {dependencies.map((dep) => (
+                                                    <div
+                                                        key={dep.id}
+                                                        className="flex items-center justify-between gap-3"
+                                                    >
+                                                        <div>
+                                                            <strong className="text-[13px] text-neutral-900">
+                                                                {
+                                                                    dep.predecessor_name
+                                                                }
+                                                            </strong>
+                                                            {dep.lag_days !==
+                                                                0 && (
+                                                                <span className="ml-2 text-[11px] text-neutral-500">
+                                                                    Lag:{" "}
+                                                                    {dep.lag_days >
+                                                                    0
+                                                                        ? `+${dep.lag_days}`
+                                                                        : dep.lag_days}{" "}
+                                                                    days
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                onRemoveDependency(
+                                                                    dep.id,
+                                                                )
+                                                            }
+                                                            className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                                            title="Remove Dependency"
+                                                        >
+                                                            <Trash2 size={15} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                },
                             )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => onRemoveDependency(dep.id)}
-                            className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            title="Hapus Ketergantungan"
-                          >
-                            <Trash2 size={15} />
-                          </button>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Add New Dependency Form */}
-        <form onSubmit={onAddDependency} className="p-4 rounded-xl bg-neutral-50/80 border border-neutral-200 space-y-3">
-          <h5 className="text-[12.5px] font-bold text-neutral-900">
-            + Tambah Ketergantungan Baru
-          </h5>
-
-          <div>
-            <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
-              Pilih Task Predecessor (bisa lebih dari satu) <span className="text-red-500">*</span>
-            </label>
-            
-            {/* Search Input */}
-            <div className="relative mb-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={14} />
-              <input
-                type="text"
-                placeholder="Cari berdasarkan kode atau nama task..."
-                value={searchDep}
-                onChange={e => setSearchDep(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-white border border-neutral-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand"
-              />
-            </div>
-
-            <div className="max-h-[220px] overflow-y-auto border border-neutral-200 rounded-lg bg-white p-2 space-y-1 custom-scrollbar">
-              {Object.keys(groupedAvailableTasks).length === 0 ? (
-                <div className="text-[11.5px] text-neutral-500 italic text-center py-4">
-                  Tidak ada task yang tersedia atau cocok dengan pencarian.
+                    )}
                 </div>
-              ) : (
-                Object.entries(groupedAvailableTasks).map(([prefix, tasks]) => {
-                  const isExpanded = expandedGroups[prefix] ?? true; // expanded by default
-                  
-                  return (
-                    <div key={prefix} className="mb-2 last:mb-0">
-                      {/* Group Header */}
-                      <div 
-                        onClick={() => setExpandedGroups(prev => ({ ...prev, [prefix]: !isExpanded }))}
-                        className="flex items-center gap-2 px-2 py-1.5 bg-neutral-100 rounded-lg cursor-pointer hover:bg-neutral-200/60 transition-colors mb-1"
-                      >
-                        <ChevronRight size={14} className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                        <span className="text-[11px] font-black text-neutral-700 uppercase tracking-wider">
-                          WBS Group: {prefix} ({tasks.length})
-                        </span>
-                      </div>
-                      
-                      {/* Group Items */}
-                      {isExpanded && (
-                        <div className="space-y-1 pl-1">
-                          {tasks.map(t => (
-                            <label key={t.id} className={`flex items-start gap-2.5 px-2.5 py-2 hover:bg-neutral-50 rounded-lg cursor-pointer transition-colors border ${depForm.predecessor_wbs_ids.includes(t.id) ? 'border-brand/30 bg-brand/5' : 'border-transparent'}`}>
-                              <input 
-                                type="checkbox"
-                                checked={depForm.predecessor_wbs_ids.includes(t.id)}
-                                onChange={(e) => {
-                                  const newIds = e.target.checked 
-                                    ? [...depForm.predecessor_wbs_ids, t.id]
-                                    : depForm.predecessor_wbs_ids.filter(id => id !== t.id);
-                                  setDepForm({ ...depForm, predecessor_wbs_ids: newIds });
-                                }}
-                                className="mt-0.5 text-brand focus:ring-brand rounded border-neutral-300 cursor-pointer"
-                              />
-                              <div className="flex flex-col flex-1 min-w-0">
-                                <span className="text-[12px] font-bold text-neutral-800 line-clamp-1">{t.code} - {t.name}</span>
-                                <span className="text-[10.5px] text-neutral-500">
-                                  {t.startDate ? formatDateDisplay(t.startDate) : '-'} s/d {t.finishDate ? formatDateDisplay(t.finishDate) : '-'}
-                                </span>
-                              </div>
+
+                {/* Add New Dependency Form */}
+                <form
+                    onSubmit={onAddDependency}
+                    className="p-4 rounded-xl bg-neutral-50/80 border border-neutral-200 space-y-3"
+                >
+                    <h5 className="text-[12.5px] font-bold text-neutral-900">
+                        + Add New Dependency
+                    </h5>
+
+                    <div>
+                        <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
+                            Select Predecessor Task(s){" "}
+                            <span className="text-red-500">*</span>
+                        </label>
+
+                        {/* Search Input */}
+                        <div className="relative mb-2">
+                            <Search
+                                className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                                size={14}
+                            />
+                            <input
+                                type="text"
+                                placeholder="Search by task code or name..."
+                                value={searchDep}
+                                onChange={(e) => setSearchDep(e.target.value)}
+                                className="w-full pl-9 pr-3 py-2 bg-white border border-neutral-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand"
+                            />
+                        </div>
+
+                        <div className="max-h-[220px] overflow-y-auto border border-neutral-200 rounded-lg bg-white p-2 space-y-1 custom-scrollbar">
+                            {Object.keys(groupedAvailableTasks).length === 0 ? (
+                                <div className="text-[11.5px] text-neutral-500 italic text-center py-4">
+                                    No tasks available or matching the search.
+                                </div>
+                            ) : (
+                                Object.entries(groupedAvailableTasks).map(
+                                    ([prefix, tasks]) => {
+                                        const isExpanded =
+                                            expandedGroups[prefix] ?? true; // expanded by default
+
+                                        return (
+                                            <div
+                                                key={prefix}
+                                                className="mb-2 last:mb-0"
+                                            >
+                                                {/* Group Header */}
+                                                <div
+                                                    onClick={() =>
+                                                        setExpandedGroups(
+                                                            (prev) => ({
+                                                                ...prev,
+                                                                [prefix]:
+                                                                    !isExpanded,
+                                                            }),
+                                                        )
+                                                    }
+                                                    className="flex items-center gap-2 px-2 py-1.5 bg-neutral-100 rounded-lg cursor-pointer hover:bg-neutral-200/60 transition-colors mb-1"
+                                                >
+                                                    <ChevronRight
+                                                        size={14}
+                                                        className={`text-neutral-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                                                    />
+                                                    <span className="text-[11px] font-black text-neutral-700 uppercase tracking-wider">
+                                                        WBS Group: {prefix} (
+                                                        {tasks.length})
+                                                    </span>
+                                                </div>
+
+                                                {/* Group Items */}
+                                                {isExpanded && (
+                                                    <div className="space-y-1 pl-1">
+                                                        {tasks.map((t) => (
+                                                            <label
+                                                                key={t.id}
+                                                                className={`flex items-start gap-2.5 px-2.5 py-2 hover:bg-neutral-50 rounded-lg cursor-pointer transition-colors border ${depForm.predecessor_wbs_ids.includes(t.id) ? "border-brand/30 bg-brand/5" : "border-transparent"}`}
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={depForm.predecessor_wbs_ids.includes(
+                                                                        t.id,
+                                                                    )}
+                                                                    onChange={(
+                                                                        e,
+                                                                    ) => {
+                                                                        const newIds =
+                                                                            e
+                                                                                .target
+                                                                                .checked
+                                                                                ? [
+                                                                                      ...depForm.predecessor_wbs_ids,
+                                                                                      t.id,
+                                                                                  ]
+                                                                                : depForm.predecessor_wbs_ids.filter(
+                                                                                      (
+                                                                                          id,
+                                                                                      ) =>
+                                                                                          id !==
+                                                                                          t.id,
+                                                                                  );
+                                                                        setDepForm(
+                                                                            {
+                                                                                ...depForm,
+                                                                                predecessor_wbs_ids:
+                                                                                    newIds,
+                                                                            },
+                                                                        );
+                                                                    }}
+                                                                    className="mt-0.5 text-brand focus:ring-brand rounded border-neutral-300 cursor-pointer"
+                                                                />
+                                                                <div className="flex flex-col flex-1 min-w-0">
+                                                                    <span className="text-[12px] font-bold text-neutral-800 line-clamp-1">
+                                                                        {t.code}{" "}
+                                                                        -{" "}
+                                                                        {t.name}
+                                                                    </span>
+                                                                    <span className="text-[10.5px] text-neutral-500">
+                                                                        {t.startDate
+                                                                            ? formatDateDisplay(
+                                                                                  t.startDate,
+                                                                              )
+                                                                            : "-"}{" "}
+                                                                        to{" "}
+                                                                        {t.finishDate
+                                                                            ? formatDateDisplay(
+                                                                                  t.finishDate,
+                                                                              )
+                                                                            : "-"}
+                                                                    </span>
+                                                                </div>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    },
+                                )
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-[11.5px] font-bold text-neutral-700">
+                                    Dependency Type{" "}
+                                    <span className="text-red-500">*</span>
+                                </label>
+                                <div className="relative group">
+                                    <Info
+                                        size={14}
+                                        className="text-brand cursor-help"
+                                    />
+                                    <div className="pointer-events-none absolute bottom-full right-[-10px] mb-2 w-[280px] opacity-0 group-hover:opacity-100 transition-opacity z-10 p-3 bg-neutral-800 text-white text-[11px] rounded-xl shadow-xl leading-relaxed">
+                                        <div className="font-bold text-[12px] mb-2 border-b border-neutral-600 pb-1">
+                                            Dependency Guide
+                                        </div>
+                                        <ul className="space-y-2">
+                                            <li>
+                                                <strong className="text-emerald-400">
+                                                    FS (Finish-to-Start):
+                                                </strong>{" "}
+                                                Task B starts after Task A
+                                                finishes.
+                                            </li>
+                                            <li>
+                                                <strong className="text-blue-400">
+                                                    SS (Start-to-Start):
+                                                </strong>{" "}
+                                                Task B starts along with Task A.
+                                            </li>
+                                            <li>
+                                                <strong className="text-purple-400">
+                                                    FF (Finish-to-Finish):
+                                                </strong>{" "}
+                                                Task B finishes along with Task
+                                                A.
+                                            </li>
+                                            <li>
+                                                <strong className="text-orange-400">
+                                                    SF (Start-to-Finish):
+                                                </strong>{" "}
+                                                Task B finishes after Task A
+                                                starts.
+                                            </li>
+                                        </ul>
+                                        <div className="mt-2 pt-2 border-t border-neutral-600">
+                                            <strong className="text-yellow-400">
+                                                Lag / Lead:
+                                            </strong>{" "}
+                                            Wait time (days).
+                                            <br />
+                                            <span className="text-neutral-400 text-[10px]">
+                                                Positive (+) = delay start,
+                                                Negative (-) = start earlier (lead).
+                                            </span>
+                                        </div>
+                                        <div className="absolute top-full right-3 border-4 border-transparent border-t-neutral-800" />
+                                    </div>
+                                </div>
+                            </div>
+                            <select
+                                value={depForm.dependency_type}
+                                onChange={(e) =>
+                                    setDepForm({
+                                        ...depForm,
+                                        dependency_type: e.target.value as any,
+                                    })
+                                }
+                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
+                            >
+                                <option value="FS">
+                                    FS: Finish-to-Start (Standard)
+                                </option>
+                                <option value="SS">SS: Start-to-Start</option>
+                                <option value="FF">FF: Finish-to-Finish</option>
+                                <option value="SF">SF: Start-to-Finish</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
+                                Lag (Days)
                             </label>
-                          ))}
+                            <input
+                                type="number"
+                                value={depForm.lag_days}
+                                onChange={(e) =>
+                                    setDepForm({
+                                        ...depForm,
+                                        lag_days: parseInt(e.target.value) || 0,
+                                    })
+                                }
+                                placeholder="0"
+                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                            />
+                            <span className="text-[10.5px] text-neutral-500 mt-0.5 block">
+                                Positive value (+) = lag days, negative (-) =
+                                acceleration (lead time).
+                            </span>
                         </div>
-                      )}
                     </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-[11.5px] font-bold text-neutral-700">
-                  Tipe Ketergantungan <span className="text-red-500">*</span>
-                </label>
-                <div className="relative group">
-                  <Info size={14} className="text-brand cursor-help" />
-                  <div className="pointer-events-none absolute bottom-full right-[-10px] mb-2 w-[280px] opacity-0 group-hover:opacity-100 transition-opacity z-10 p-3 bg-neutral-800 text-white text-[11px] rounded-xl shadow-xl leading-relaxed">
-                    <div className="font-bold text-[12px] mb-2 border-b border-neutral-600 pb-1">Panduan Relasi (Dependency)</div>
-                    <ul className="space-y-2">
-                      <li><strong className="text-emerald-400">FS (Finish-to-Start):</strong> Task B mulai setelah Task A selesai.</li>
-                      <li><strong className="text-blue-400">SS (Start-to-Start):</strong> Task B mulai bersamaan dengan Task A.</li>
-                      <li><strong className="text-purple-400">FF (Finish-to-Finish):</strong> Task B selesai bersamaan dengan Task A.</li>
-                      <li><strong className="text-orange-400">SF (Start-to-Finish):</strong> Task B selesai setelah Task A mulai.</li>
-                    </ul>
-                    <div className="mt-2 pt-2 border-t border-neutral-600">
-                      <strong className="text-yellow-400">Jeda (Lag):</strong> Waktu tunggu (hari).<br/>
-                      <span className="text-neutral-400 text-[10px]">Positif (+) = menunda mulai, Negatif (-) = mulai lebih awal.</span>
+                    <div className="flex justify-end pt-2">
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            type="submit"
+                            disabled={
+                                submitting ||
+                                depForm.predecessor_wbs_ids.length === 0
+                            }
+                            icon={Link2}
+                        >
+                            {submitting
+                                ? "Connecting..."
+                                : "Connect Predecessor"}
+                        </Button>
                     </div>
-                    <div className="absolute top-full right-3 border-4 border-transparent border-t-neutral-800" />
-                  </div>
-                </div>
-              </div>
-              <select
-                value={depForm.dependency_type}
-                onChange={e => setDepForm({ ...depForm, dependency_type: e.target.value as any })}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
-              >
-                <option value="FS">FS: Finish-to-Start (Standar)</option>
-                <option value="SS">SS: Start-to-Start</option>
-                <option value="FF">FF: Finish-to-Finish</option>
-                <option value="SF">SF: Start-to-Finish</option>
-              </select>
+                </form>
             </div>
-            <div>
-              <label className="block text-[11.5px] font-bold text-neutral-700 mb-1">
-                Jeda / Lag (Hari)
-              </label>
-              <input
-                type="number"
-                value={depForm.lag_days}
-                onChange={e => setDepForm({ ...depForm, lag_days: parseInt(e.target.value) || 0 })}
-                placeholder="0"
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
-              />
-              <span className="text-[10.5px] text-neutral-500 mt-0.5 block">
-                Nilai positif (+) = jeda hari, negatif (-) = percepatan (lead time).
-              </span>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <Button
-              variant="primary"
-              size="sm"
-              type="submit"
-              disabled={submitting || depForm.predecessor_wbs_ids.length === 0}
-              icon={Link2}
-            >
-              {submitting ? 'Menyambungkan...' : 'Hubungkan Predecessor'}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </Modal>
-  );
+        </Modal>
+    );
 }

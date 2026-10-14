@@ -352,7 +352,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                   <Link
                     href={targetUrl}
                     onClick={handleClick}
-                    title={sidebarCollapsed ? (isLocked ? `${label} (Terkunci — Selesaikan WBS Setup)` : label) : undefined}
+                    title={sidebarCollapsed ? (isLocked ? `${label} (Locked — Complete WBS Setup)` : label) : undefined}
                     className={`flex items-center rounded-lg transition-all duration-150 ${
                       sidebarCollapsed
                         ? `w-10 h-10 mx-auto justify-center ${allProjectsStyle}`
@@ -550,15 +550,15 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
       <Modal
         isOpen={showLockedModal}
         onClose={() => setShowLockedModal(false)}
-        title="Halaman Terkunci (Setup Mode)"
-        subtitle="Konfigurasi WBS Proyek Sedang Berjalan"
+        title="Page Locked (Setup Mode)"
+        subtitle="Project WBS Configuration in Progress"
         size="sm"
       >
         <div className="space-y-4">
           <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[12.5px] leading-relaxed flex items-start gap-2.5">
             <Lock size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
-              Proyek ini baru dibuat dan saat ini masih dalam tahap <strong>WBS Setup Mode</strong>. Seluruh halaman lain terkunci sampai PIC menyelesaikan dan mengaktifkan proyek.
+              This project is newly created and currently in <strong>WBS Setup Mode</strong>. All other pages remain locked until the PIC completes setup and activates the project.
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
@@ -567,7 +567,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
               size="sm"
               onClick={() => setShowLockedModal(false)}
             >
-              Tutup
+              Close
             </Button>
             <Button
               variant="primary"
@@ -577,7 +577,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                 if (activeProjectId) router.visit(`/projects/${activeProjectId}/setup`);
               }}
             >
-              Buka Halaman Setup
+              Open Setup Page
             </Button>
           </div>
         </div>

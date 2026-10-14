@@ -46,7 +46,7 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
       onSuccess: () => {
         reset();
         onClose();
-        setToastMessage('Password berhasil diubah.');
+        setToastMessage('Password changed successfully.');
         setShowToast(true);
       },
     });
@@ -61,13 +61,13 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
           clearErrors();
           onClose();
         }}
-        title="Ganti Password"
-        subtitle="Perbarui password akun Anda"
+        title="Change Password"
+        subtitle="Update your account password"
         size="md"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <InputField
-            label="Password Saat Ini"
+            label="Current Password"
             type="password"
             value={data.current_password}
             onChange={(e: any) => setData('current_password', e.target.value)}
@@ -77,7 +77,7 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
           
           <div>
             <InputField
-              label="Password Baru"
+              label="New Password"
               type="password"
               value={data.password}
               onChange={(e: any) => setData('password', e.target.value)}
@@ -91,12 +91,12 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
                 {isPasswordValid ? (
                   <>
                     <div className="w-3 h-3 rounded-full bg-emerald-100 flex items-center justify-center">✓</div>
-                    <span>Password sudah memenuhi syarat (min. 8 karakter, huruf & angka)</span>
+                    <span>Password requirements met (min. 8 characters, letters & numbers)</span>
                   </>
                 ) : (
                   <>
                     <div className="w-3 h-3 rounded-full bg-red-100 flex items-center justify-center">!</div>
-                    <span>Password harus berisi minimal 8 karakter, huruf, dan angka.</span>
+                    <span>Password must contain at least 8 characters, letters, and numbers.</span>
                   </>
                 )}
               </div>
@@ -105,7 +105,7 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
 
           <div>
             <InputField
-              label="Konfirmasi Password Baru"
+              label="Confirm New Password"
               type="password"
               value={data.password_confirmation}
               onChange={(e: any) => setData('password_confirmation', e.target.value)}
@@ -119,12 +119,12 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
                 {isPasswordMatch ? (
                   <>
                     <div className="w-3 h-3 rounded-full bg-emerald-100 flex items-center justify-center">✓</div>
-                    <span>Password cocok</span>
+                    <span>Passwords match</span>
                   </>
                 ) : (
                   <>
                     <div className="w-3 h-3 rounded-full bg-red-100 flex items-center justify-center">!</div>
-                    <span>Password tidak cocok</span>
+                    <span>Passwords do not match</span>
                   </>
                 )}
               </div>
@@ -142,14 +142,14 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
               }}
               disabled={processing}
             >
-              Batal
+              Cancel
             </Button>
             <Button
               type="submit"
               variant="primary"
               disabled={processing || data.password.length === 0 || !isPasswordValid || !isPasswordMatch}
             >
-              {processing ? 'Menyimpan...' : 'Simpan Password'}
+              {processing ? 'Saving...' : 'Save Password'}
             </Button>
           </div>
         </form>

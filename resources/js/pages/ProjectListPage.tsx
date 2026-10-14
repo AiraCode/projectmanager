@@ -50,7 +50,7 @@ export default function ProjectListPage() {
     }
 
     if (endDate <= startDate) {
-      setErrorMsg('Target Finish Date harus setelah Start Date (minimal 1 hari setelahnya).');
+      setErrorMsg('Target Finish Date must be after Start Date (at least 1 day later).');
       return;
     }
 
@@ -170,7 +170,7 @@ function getProjectTitleClasses(title: string) {
                 onClick={(e) => {
                   if (isPending && (isWorker || isAdminProgres)) {
                     e.preventDefault();
-                    alert('Proyek ini masih dalam tahap konfigurasi WBS (setup) oleh PIC dan belum dapat diakses.');
+                    alert('This project is currently in WBS setup mode by the PIC and cannot be accessed yet.');
                   }
                 }}
                 className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-2xl"
@@ -206,7 +206,7 @@ function getProjectTitleClasses(title: string) {
                       <div className="mb-2">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
                           <Lock size={12} className="text-amber-600" />
-                          Setup Mode (Terkunci)
+                          Setup Mode (Locked)
                         </span>
                       </div>
                     )}
@@ -391,7 +391,7 @@ function getProjectTitleClasses(title: string) {
             </div>
             {startDate && endDate && endDate <= startDate && (
               <p className="text-[11.5px] text-red-600 font-semibold mt-1">
-                Target Finish Date harus setelah Start Date (minimal 1 hari setelahnya).
+                Target Finish Date must be after Start Date (at least 1 day later).
               </p>
             )}
 
