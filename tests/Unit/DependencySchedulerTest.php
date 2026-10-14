@@ -140,7 +140,7 @@ class DependencySchedulerTest extends BaseTestCase
         (new DependencyScheduler())->recalculateTaskDates($successor);
 
         $successor = $successor->fresh();
-        $this->assertSame('2026-01-04', $successor->start->toDateString());
+        $this->assertSame('2026-01-05', $successor->start->toDateString());
         $this->assertSame('2026-01-07', $successor->end->toDateString());
         $this->assertSame(3, $successor->duration_days);
     }
@@ -163,6 +163,28 @@ class DependencySchedulerTest extends BaseTestCase
         $predecessor->update(['progress' => 1]);
         $this->assertNull($scheduler->validateCanStart($ssSuccessor));
         $this->assertNull($scheduler->validateCanComplete($sfSuccessor));
+    }
+
+    public function test_end_date_formula_is_start_plus_duration_minus_one(): void
+    {
+        $scheduler = new DependencyScheduler();
+
+        // Task with duration 6 days: Start + 6 - 1 = End
+        $pred = $this->createTask('PRED_1', 0, '2026-10-01', '2026-10-06', 6);
+        $this->assertSame('2026-10-01', $pred->start->toDateString());
+        $this->assertSame('2026-10-06', $pred->end->toDateString());
+
+        $task = $this->createTask('TASK_6D', 0, '2026-10-01', '2026-10-10', 6);
+        $group = $this->createGroup($task, 'SS');
+        $this->attachPredecessors($group, $task, [$pred]);
+
+        $scheduler->recalculateTaskDates($task);
+
+        $fresh = $task->fresh();
+        $this->assertSame('2026-10-01', $fresh->start->toDateString());
+        // Start (Oct 1) + 6 - 1 = Oct 6
+        $this->assertSame('2026-10-06', $fresh->end->toDateString());
+        $this->assertSame(6, $fresh->duration_days);
     }
 
     private function createTask(

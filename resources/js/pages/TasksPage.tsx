@@ -3740,14 +3740,14 @@ function AddSubtaskModal({
                     newEnd.setDate(newEnd.getDate() + offset);
                     newStart = new Date(newEnd);
                     newStart.setDate(
-                        newStart.getDate() - (parseInt(duration) || 1),
+                        newStart.getDate() - (Math.max(1, parseInt(duration) || 1) - 1),
                     );
                 } else if (dep.depType === "SF") {
                     const newEnd = new Date(pStart);
                     newEnd.setDate(newEnd.getDate() + offset);
                     newStart = new Date(newEnd);
                     newStart.setDate(
-                        newStart.getDate() - (parseInt(duration) || 1),
+                        newStart.getDate() - (Math.max(1, parseInt(duration) || 1) - 1),
                     );
                 }
 
@@ -3840,11 +3840,13 @@ function AddSubtaskModal({
                     offset = diffDays(d, pStart);
                 } else if (dep.depType === "FF") {
                     const dEnd = new Date(d);
-                    dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
+                    const dur = Math.max(1, parseInt(duration) || 1);
+                    dEnd.setDate(dEnd.getDate() + (dur - 1));
                     offset = diffDays(dEnd, pEnd);
                 } else if (dep.depType === "SF") {
                     const dEnd = new Date(d);
-                    dEnd.setDate(dEnd.getDate() + (parseInt(duration) || 1));
+                    const dur = Math.max(1, parseInt(duration) || 1);
+                    dEnd.setDate(dEnd.getDate() + (dur - 1));
                     offset = diffDays(dEnd, pStart);
                 }
 
@@ -3857,12 +3859,24 @@ function AddSubtaskModal({
         );
     };
 
-    // Calculate finish date preview - strictly after start date (min. +1 day: e.g. start 28 -> end 29)
+    // Calculate finish date preview: End = Start + Duration - 1
     const finishDatePreview = useMemo(() => {
         try {
+            const parts = startDate.slice(0, 10).split("-");
+            if (parts.length === 3) {
+                const y = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10) - 1;
+                const day = parseInt(parts[2], 10);
+                const dur = Math.max(1, parseInt(duration) || 1);
+                const d = new Date(y, m, day + (dur - 1));
+                const resY = d.getFullYear();
+                const resM = String(d.getMonth() + 1).padStart(2, "0");
+                const resD = String(d.getDate()).padStart(2, "0");
+                return `${resY}-${resM}-${resD}`;
+            }
             const d = new Date(startDate);
             const dur = Math.max(1, parseInt(duration) || 1);
-            d.setDate(d.getDate() + dur);
+            d.setDate(d.getDate() + (dur - 1));
             return d.toISOString().slice(0, 10);
         } catch {
             return startDate;

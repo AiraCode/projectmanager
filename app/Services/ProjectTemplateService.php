@@ -307,7 +307,7 @@ class ProjectTemplateService
                     // Buat tanggal chronological (Maju berurutan)
                     $baseStart = $project->start ? clone $project->start : Carbon::now();
                     $taskStart = $baseStart->addDays(($taskCounter - 1) * 7); // Setiap task mulai 7 hari setelah task sebelumnya
-                    $taskEnd = (clone $taskStart)->addDays(5); // Durasi 5 hari
+                    $taskEnd = (clone $taskStart)->addDays(4); // Durasi 5 hari: End = Start + 5 - 1
 
                     Wbs::withTrashed()->updateOrCreate(
                         ['id' => $wbsId],

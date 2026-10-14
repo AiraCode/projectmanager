@@ -42,7 +42,7 @@ class ScheduleService
                     // Duration in days based on current start/end, default 1 if empty
                     $duration = 1;
                     if ($newStart && $newEnd) {
-                        $duration = $newStart->diffInDays($newEnd);
+                        $duration = max(1, $newStart->diffInDays($newEnd) + 1);
                     }
 
                     if ($st->predecessor && isset($taskMap[$st->predecessor])) {
@@ -56,16 +56,16 @@ class ScheduleService
 
                             if ($depType === 'FS') {
                                 $newStart = $predEnd->copy()->subDays($lag);
-                                $newEnd = $newStart->copy()->addDays($duration);
+                                $newEnd = $newStart->copy()->addDays(max(0, $duration - 1));
                             } elseif ($depType === 'SS') {
                                 $newStart = $predStart->copy()->subDays($lag);
-                                $newEnd = $newStart->copy()->addDays($duration);
+                                $newEnd = $newStart->copy()->addDays(max(0, $duration - 1));
                             } elseif ($depType === 'FF') {
                                 $newEnd = $predEnd->copy()->subDays($lag);
-                                $newStart = $newEnd->copy()->subDays($duration);
+                                $newStart = $newEnd->copy()->subDays(max(0, $duration - 1));
                             } elseif ($depType === 'SF') {
                                 $newEnd = $predStart->copy()->subDays($lag);
-                                $newStart = $newEnd->copy()->subDays($duration);
+                                $newStart = $newEnd->copy()->subDays(max(0, $duration - 1));
                             }
                         }
                     }

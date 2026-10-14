@@ -612,10 +612,10 @@ export default function ProjectSetupPage() {
         if (depType === "FS") calculatedStart = addDaysSafe(pEnd, lag);
         // SS: this task starts when predecessor starts (+ lag)
         else if (depType === "SS") calculatedStart = addDaysSafe(pStart, lag);
-        // FF: this task finishes when predecessor finishes → start = predEnd + lag - duration
-        else if (depType === "FF") calculatedStart = addDaysSafe(pEnd, lag - dur);
-        // SF: this task finishes when predecessor starts → start = predStart + lag - duration
-        else if (depType === "SF") calculatedStart = addDaysSafe(pStart, lag - dur);
+        // FF: this task finishes when predecessor finishes → start = predEnd + lag - (duration - 1)
+        else if (depType === "FF") calculatedStart = addDaysSafe(pEnd, lag - (dur - 1));
+        // SF: this task finishes when predecessor starts → start = predStart + lag - (duration - 1)
+        else if (depType === "SF") calculatedStart = addDaysSafe(pStart, lag - (dur - 1));
 
         // Clamping: Tanggal tidak boleh lebih awal dari batas mulai proyek / Main Task (misal: 14/10)
         if (minBound && calculatedStart < minBound) {
@@ -630,10 +630,10 @@ export default function ProjectSetupPage() {
         return calculatedStart;
     };
 
-    // Helper: compute end date from start + duration
+    // Helper: compute end date from start + duration - 1
     const calcEndDate = (start: string, duration: number): string => {
         if (!start) return "";
-        return addDaysSafe(start, Math.max(1, duration));
+        return addDaysSafe(start, Math.max(1, duration) - 1);
     };
 
     useEffect(() => {

@@ -75,10 +75,10 @@ export function recalculateSchedule(project: Project): Project {
                   requiredDate = addDays(pred.startDate, lag);
                   break;
                 case 'FF':
-                  requiredDate = addDays(pred.finishDate, lag - duration);
+                  requiredDate = addDays(pred.finishDate, lag - (duration - 1));
                   break;
                 case 'SF':
-                  requiredDate = addDays(pred.startDate, lag - duration);
+                  requiredDate = addDays(pred.startDate, lag - (duration - 1));
                   break;
               }
 
@@ -88,12 +88,12 @@ export function recalculateSchedule(project: Project): Project {
             }
 
             newStart = requiredStart;
-            newFinish = addDays(newStart, duration);
+            newFinish = addDays(newStart, Math.max(0, duration - 1));
           } else {
             // No predecessor: Start date remains as user-entered.
-            // Just ensure finish date is consistent with duration.
-            const duration = st.duration || 1;
-            newFinish = addDays(st.startDate, duration);
+            // Just ensure finish date is consistent with duration: End = Start + Duration - 1
+            const duration = Math.max(1, st.duration || 1);
+            newFinish = addDays(st.startDate, duration - 1);
           }
 
           if (newStart !== st.startDate || newFinish !== st.finishDate) {

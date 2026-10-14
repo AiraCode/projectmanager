@@ -1345,11 +1345,11 @@ class ProjectController extends Controller
 
         $startDate = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($minLimit ?? Carbon::now()->startOfDay());
         $duration  = max(1, (int) ($validated['duration'] ?? 1));
-        $endDate   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : $startDate->copy()->addDays($duration);
+        $endDate   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : $startDate->copy()->addDays(max(0, $duration - 1));
 
-        // Strict Date Validation: End must be strictly after start (at least 1 day)
-        if ($endDate->lte($startDate)) {
-            $endDate = $startDate->copy()->addDays(max(1, $duration));
+        // Strict Date Validation: End must not be before start
+        if ($endDate->lt($startDate)) {
+            $endDate = $startDate->copy()->addDays(max(0, $duration - 1));
         }
 
         if ($minLimit && $startDate->lt($minLimit)) {
@@ -1393,7 +1393,7 @@ class ProjectController extends Controller
             'vendor'       => $validated['vendor'] ?? 'INTERNAL',
             'start'        => $startDate,
             'end'          => $endDate,
-            'duration_days'=> max(1, $startDate->diffInDays($endDate)),
+            'duration_days'=> max(1, $startDate->diffInDays($endDate) + 1),
             'is_completed' => false,
             'status'       => 'Open',
             'predecessor'  => $primaryPredecessor,
@@ -1504,8 +1504,8 @@ class ProjectController extends Controller
             }
         }
 
-        if ($newStart && $newEnd && $newEnd->lte($newStart)) {
-            return back()->withErrors(['end' => 'End date Task harus setelah Start date (minimal 1 hari setelahnya).']);
+        if ($newStart && $newEnd && $newEnd->lt($newStart)) {
+            return back()->withErrors(['end' => 'End date Task tidak boleh lebih awal dari Start date.']);
         }
 
         if ($newStart) {
@@ -1515,7 +1515,7 @@ class ProjectController extends Controller
             $task->end = $newEnd;
         }
         if ($task->start && $task->end) {
-            $task->duration_days = max(1, $task->start->diffInDays($task->end));
+            $task->duration_days = !empty($validated['duration']) ? (int) $validated['duration'] : max(1, $task->start->diffInDays($task->end) + 1);
         }
 
         if (array_key_exists('predecessor', $validated)) {
@@ -1988,7 +1988,7 @@ class ProjectController extends Controller
                         'id'          => $st->id,
                         'code'        => $smjCode . '.' . ($stIdx + 1),
                         'name'        => $st->name,
-                        'duration'    => $st->start && $st->end ? $st->start->diffInDays($st->end) : 0,
+                        'duration'    => $st->duration_days ?: ($st->start && $st->end ? $st->start->diffInDays($st->end) + 1 : 0),
                         'daysLeft'    => $st->end && Carbon::now()->lessThan($st->end) ? Carbon::now()->diffInDays($st->end) : 0,
                         'startDate'   => $st->start ? $st->start->format('Y-m-d') : '',
                         'finishDate'  => $st->end ? $st->end->format('Y-m-d') : '',

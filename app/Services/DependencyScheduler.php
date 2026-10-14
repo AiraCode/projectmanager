@@ -133,10 +133,10 @@ class DependencyScheduler
         $currentStart = Carbon::parse($task->start);
         $currentEnd   = Carbon::parse($task->end);
 
-        // Compute current duration (minimum 1 day)
+        // Compute current duration (minimum 1 day: diff + 1)
         $durationDays = $task->duration_days;
         if (!$durationDays || $durationDays <= 0) {
-            $durationDays = max(1, $currentStart->diffInDays($currentEnd));
+            $durationDays = max(1, $currentStart->diffInDays($currentEnd) + 1);
         }
 
         $newStart = null;
@@ -163,11 +163,13 @@ class DependencyScheduler
                     break;
                 case 'FF':
                     // Preserve task duration while enforcing the finish-date constraint.
-                    $reqStart = $predEnd->copy()->subDays($lag + $durationDays);
+                    // End = predEnd - lag => Start = End - (durationDays - 1)
+                    $reqStart = $predEnd->copy()->subDays($lag + ($durationDays - 1));
                     break;
                 case 'SF':
                     // Preserve task duration while enforcing the finish-date constraint.
-                    $reqStart = $predStart->copy()->subDays($lag + $durationDays);
+                    // End = predStart - lag => Start = End - (durationDays - 1)
+                    $reqStart = $predStart->copy()->subDays($lag + ($durationDays - 1));
                     break;
             }
 
@@ -197,14 +199,15 @@ class DependencyScheduler
             $newStart = $maxLimit->copy();
         }
 
-        $newEnd = $newStart->copy()->addDays($durationDays);
+        // End = Start + Duration - 1
+        $newEnd = $newStart->copy()->addDays(max(0, $durationDays - 1));
 
-        // Guarantee end is strictly after start (at least 1 day)
-        if ($newEnd->lte($newStart)) {
-            $newEnd = $newStart->copy()->addDays(1);
+        // Guarantee end is not earlier than start
+        if ($newEnd->lt($newStart)) {
+            $newEnd = $newStart->copy();
         }
 
-        $diffDays = max(1, $newStart->diffInDays($newEnd));
+        $diffDays = max(1, $newStart->diffInDays($newEnd) + 1);
 
         // Check if changed
         $hasChanged = !$currentStart->equalTo($newStart) || !$currentEnd->equalTo($newEnd);

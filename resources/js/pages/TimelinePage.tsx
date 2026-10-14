@@ -115,7 +115,7 @@ export default function TimelinePage() {
     if (!start || !end) return 1.5;
     const s = dayOffset(start);
     const e = dayOffset(end);
-    const diff = e - s;
+    const diff = e - s + 1;
     if (isNaN(diff) || diff <= 0) return 1.5;
     return Math.max(1.2, Math.min(100, (diff / TOTAL_DAYS) * 100));
   }
@@ -491,7 +491,7 @@ export default function TimelinePage() {
                                       subtitle: `Phase: ${mj.name}`,
                                       details: [
                                         `Schedule: ${formatDateDisplay(itemStart)} to ${formatDateDisplay(itemEnd)}`,
-                                        `Duration: ${item.duration || Math.max(1, dayOffset(itemEnd) - dayOffset(itemStart))} days`,
+                                        `Duration: ${item.duration || Math.max(1, dayOffset(itemEnd) - dayOffset(itemStart) + 1)} days`,
                                         `PIC / Division: ${item.pic || 'Internal'}`,
                                         `Progress: ${item.progress || 0}% (${item.status || 'Open'})`,
                                       ],
@@ -768,7 +768,7 @@ function GanttTreeMJ({
                 sub: `Main Project Phase`,
                 details: [
                   `Schedule: ${formatDateDisplay(mj.startDate)} to ${formatDateDisplay(mj.finishDate)}`,
-                  `Duration: ${mj.duration || Math.max(1, dayOffset(mj.finishDate) - dayOffset(mj.startDate))} days`,
+                  `Duration: ${mj.duration || Math.max(1, dayOffset(mj.finishDate) - dayOffset(mj.startDate) + 1)} days`,
                   `Total Progress: ${mj.progress}% completed`,
                 ],
               })
