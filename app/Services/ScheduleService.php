@@ -55,7 +55,8 @@ class ScheduleService
                             $predEnd = Carbon::parse($pred->end);
 
                             if ($depType === 'FS') {
-                                $newStart = $predEnd->copy()->addDays(1 + $lag);
+                                // Lag 0 => mulai di hari yang sama dengan selesai predecessor
+                                $newStart = $predEnd->copy()->addDays($lag);
                                 $newEnd = $newStart->copy()->addDays(max(0, $duration - 1));
                             } elseif ($depType === 'SS') {
                                 $newStart = $predStart->copy()->addDays($lag);

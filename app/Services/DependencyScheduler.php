@@ -156,10 +156,10 @@ class DependencyScheduler
             $reqStart = null;
             switch ($dep->effectiveDependencyType()) {
                 case 'FS':
-                    // Finish-to-Start standar:
-                    // Jika Predecessor selesai hari H dan Lag = 0, Successor mulai H + 1 hari.
-                    // Jika ingin ketika Lag = 0 mulai di hari yang sama (H), ubah (1 + $lag) menjadi ($lag).
-                    $reqStart = $predEnd->copy()->addDays(1 + $lag);
+                    // Finish-to-Start (konvensi proyek ini):
+                    // Jika Predecessor selesai hari H dan Lag = 0, Successor mulai di hari yang sama (H).
+                    // Lag +N => H + N, Lead N => H - N. Harus konsisten dengan scheduleEngine.ts di frontend.
+                    $reqStart = $predEnd->copy()->addDays($lag);
                     break;
 
                 case 'SS':

@@ -122,8 +122,9 @@ class DependencySchedulerTest extends BaseTestCase
 
         (new DependencyScheduler())->recalculateTaskDates($successor);
 
-        $this->assertSame('2026-01-08', $successor->fresh()->start->toDateString());
-        $this->assertSame('2026-01-11', $successor->fresh()->end->toDateString());
+        // FS lag 0: successor mulai di hari yang sama dengan finish predecessor terakhir (01-07)
+        $this->assertSame('2026-01-07', $successor->fresh()->start->toDateString());
+        $this->assertSame('2026-01-09', $successor->fresh()->end->toDateString());
     }
 
     public function test_ff_group_schedule_preserves_duration_and_uses_latest_predecessor_finish(): void
