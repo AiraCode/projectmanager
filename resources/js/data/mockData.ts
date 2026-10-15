@@ -22,36 +22,47 @@ export interface DependencyItem {
 
 export interface SubSubtask {
   id: string;
+  dbId?: number;
   code: string;
   name: string;
   startDate: string;
   finishDate: string;
+  start?: string;
+  end?: string;
   duration: number;
   daysLeft: number;
   progress: number;
   status: Status;
   division?: string;
+  divisionId?: number;
   predecessor?: string;
+  predecessors?: any[];
   depType?: DependencyType;
   lag?: number;
   lead?: number;
   dependencies?: DependencyItem[];
   evidences?: EvidenceItem[];
+  evidence?: any;
   prevProgress?: number;
   weight: number;
   checked: boolean;
   requiresEvidence?: boolean;
+  requires_evidence?: boolean;
   completedByName?: string | null;
   completedAt?: string | null;
 }
 
 export interface SubMainJob {
   id: string;
+  dbId?: number;
   code: string;
   name: string;
   pic: string;
   startDate: string;
   finishDate: string;
+  endDate?: string;
+  start?: string;
+  end?: string;
   progress: number;
   status: Status;
   weight: number;
@@ -60,11 +71,14 @@ export interface SubMainJob {
 
 export interface MainJob {
   id: string;
+  dbId?: number;
   code: string;
   name: string;
   weight: number;
   startDate: string;
   finishDate: string;
+  start?: string;
+  end?: string;
   progress: number;
   status: Status;
   subMainJobs: SubMainJob[];
@@ -104,6 +118,8 @@ export interface Project {
   projectManager: string;
   startDate: string;
   endDate: string;
+  start?: string;
+  end?: string;
   status: Status;
   overallProgress: number;
   hariKe: number;

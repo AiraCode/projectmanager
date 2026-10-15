@@ -328,7 +328,7 @@ export default function TasksPage() {
 
         router.post(
             `/projects/${projectData.id}/tasks/${taskId}/toggle`,
-            payload,
+            payload as any,
             {
                 preserveScroll: true,
                 preserveState: true,
@@ -454,6 +454,7 @@ export default function TasksPage() {
         end?: string,
         targetId?: string,
         targetDbId?: number,
+        onComplete?: (error?: string) => void,
     ) => {
         if (!projectData.id || !name) return;
 
@@ -473,18 +474,28 @@ export default function TasksPage() {
                 },
                 {
                     preserveScroll: true,
-                    onSuccess: () => {
+                    onSuccess: (page: any) => {
+                        const flashError = page?.props?.flash?.error;
+                        const pageErrors = page?.props?.errors;
+                        const err = flashError || (pageErrors && Object.values(pageErrors)[0]);
+                        if (err) {
+                            const msg = typeof err === "string" ? err : JSON.stringify(err);
+                            onComplete?.(msg);
+                            setToastMsg(msg);
+                            return;
+                        }
                         setToastMsg(
                             `Main Task "${name}" updated successfully.`,
                         );
                         setShowMainJobModal(null);
+                        onComplete?.();
                     },
                     onError: (errors) => {
                         console.error("Error updating Main Task:", errors);
                         const errText = Object.values(errors).flat().join(", ");
-                        setToastMsg(
-                            `Failed to update Main Task: ${errText || "Please check your input"}`,
-                        );
+                        const msg = `Failed to update Main Task: ${errText || "Please check your input"}`;
+                        onComplete?.(msg);
+                        setToastMsg(msg);
                     },
                 },
             );
@@ -499,16 +510,26 @@ export default function TasksPage() {
                 },
                 {
                     preserveScroll: true,
-                    onSuccess: () => {
+                    onSuccess: (page: any) => {
+                        const flashError = page?.props?.flash?.error;
+                        const pageErrors = page?.props?.errors;
+                        const err = flashError || (pageErrors && Object.values(pageErrors)[0]);
+                        if (err) {
+                            const msg = typeof err === "string" ? err : JSON.stringify(err);
+                            onComplete?.(msg);
+                            setToastMsg(msg);
+                            return;
+                        }
                         setToastMsg(`Main Task "${name}" added successfully.`);
                         setShowMainJobModal(null);
+                        onComplete?.();
                     },
                     onError: (errors) => {
                         console.error("Error adding Main Task:", errors);
                         const errText = Object.values(errors).flat().join(", ");
-                        setToastMsg(
-                            `Failed to add Main Task: ${errText || "Please check your input"}`,
-                        );
+                        const msg = `Failed to add Main Task: ${errText || "Please check your input"}`;
+                        onComplete?.(msg);
+                        setToastMsg(msg);
                     },
                 },
             );
@@ -533,7 +554,14 @@ export default function TasksPage() {
                         `/projects/${projectData.id}/main-wbs/${targetDbId}`,
                         {
                             preserveScroll: true,
-                            onSuccess: () => {
+                            onSuccess: (page: any) => {
+                                const flashError = page?.props?.flash?.error;
+                                const pageErrors = page?.props?.errors;
+                                const err = flashError || (pageErrors && Object.values(pageErrors)[0]);
+                                if (err) {
+                                    setToastMsg(typeof err === "string" ? err : JSON.stringify(err));
+                                    return;
+                                }
                                 setToastMsg(
                                     `Main Task "${mjName}" deleted successfully.`,
                                 );
@@ -553,7 +581,10 @@ export default function TasksPage() {
     const handleSaveSubMainJob = (
         mjId: string,
         name: string,
+        start?: string,
+        end?: string,
         mjDbId?: number,
+        onComplete?: (error?: string) => void,
     ) => {
         if (!projectData.id || !name) return;
 
@@ -567,19 +598,31 @@ export default function TasksPage() {
             {
                 main_wbs_id: cleanMainId,
                 name: name,
+                start: start || null,
+                end: end || null,
             },
             {
                 preserveScroll: true,
-                onSuccess: () => {
+                onSuccess: (page: any) => {
+                    const flashError = page?.props?.flash?.error;
+                    const pageErrors = page?.props?.errors;
+                    const err = flashError || (pageErrors && Object.values(pageErrors)[0]);
+                    if (err) {
+                        const msg = typeof err === "string" ? err : JSON.stringify(err);
+                        onComplete?.(msg);
+                        setToastMsg(msg);
+                        return;
+                    }
                     setToastMsg(`Sub Task "${name}" added successfully.`);
                     setShowAddSubMainJobModal(null);
+                    onComplete?.();
                 },
                 onError: (errors) => {
                     console.error("Error adding Sub Task:", errors);
                     const errText = Object.values(errors).flat().join(", ");
-                    setToastMsg(
-                        `Failed to add Sub Task: ${errText || "Please check your input"}`,
-                    );
+                    const msg = `Failed to add Sub Task: ${errText || "Please check your input"}`;
+                    onComplete?.(msg);
+                    setToastMsg(msg);
                 },
             },
         );
@@ -606,7 +649,14 @@ export default function TasksPage() {
                         `/projects/${projectData.id}/sub-wbs/${targetDbId}`,
                         {
                             preserveScroll: true,
-                            onSuccess: () => {
+                            onSuccess: (page: any) => {
+                                const flashError = page?.props?.flash?.error;
+                                const pageErrors = page?.props?.errors;
+                                const err = flashError || (pageErrors && Object.values(pageErrors)[0]);
+                                if (err) {
+                                    setToastMsg(typeof err === "string" ? err : JSON.stringify(err));
+                                    return;
+                                }
                                 setToastMsg(
                                     `Sub Task "${smjName}" deleted successfully.`,
                                 );
@@ -629,6 +679,7 @@ export default function TasksPage() {
             smjDbId?: number;
             divisionId?: number;
         },
+        onComplete?: (error?: string) => void,
     ) => {
         if (!projectData.id || !taskData.name) return;
 
@@ -659,34 +710,54 @@ export default function TasksPage() {
                 payload,
                 {
                     preserveScroll: true,
-                    onSuccess: () => {
+                    onSuccess: (page: any) => {
+                        const flashError = page?.props?.flash?.error;
+                        const pageErrors = page?.props?.errors;
+                        const err = flashError || (pageErrors && Object.values(pageErrors)[0]);
+                        if (err) {
+                            const msg = typeof err === "string" ? err : JSON.stringify(err);
+                            onComplete?.(msg);
+                            setToastMsg(msg);
+                            return;
+                        }
                         setToastMsg(
                             `Task "${taskData.name}" updated successfully.`,
                         );
                         setShowAddTaskModal(null);
+                        onComplete?.();
                     },
                     onError: (errors) => {
                         console.error("Error updating task:", errors);
                         const errText = Object.values(errors).flat().join(", ");
-                        setToastMsg(
-                            `Failed to update task: ${errText || "Please check your input"}`,
-                        );
+                        const msg = `Failed to update task: ${errText || "Please check your input"}`;
+                        onComplete?.(msg);
+                        setToastMsg(msg);
                     },
                 },
             );
         } else {
             router.post(`/projects/${projectData.id}/tasks`, payload, {
                 preserveScroll: true,
-                onSuccess: () => {
+                onSuccess: (page: any) => {
+                    const flashError = page?.props?.flash?.error;
+                    const pageErrors = page?.props?.errors;
+                    const err = flashError || (pageErrors && Object.values(pageErrors)[0]);
+                    if (err) {
+                        const msg = typeof err === "string" ? err : JSON.stringify(err);
+                        onComplete?.(msg);
+                        setToastMsg(msg);
+                        return;
+                    }
                     setToastMsg(`Task "${taskData.name}" added successfully.`);
                     setShowAddTaskModal(null);
+                    onComplete?.();
                 },
                 onError: (errors) => {
                     console.error("Error adding task:", errors);
                     const errText = Object.values(errors).flat().join(", ");
-                    setToastMsg(
-                        `Failed to save task: ${errText || "Please check your input"}`,
-                    );
+                    const msg = `Failed to save task: ${errText || "Please check your input"}`;
+                    onComplete?.(msg);
+                    setToastMsg(msg);
                 },
             });
         }
@@ -706,7 +777,14 @@ export default function TasksPage() {
                         `/projects/${projectData.id}/tasks/${taskId}`,
                         {
                             preserveScroll: true,
-                            onSuccess: () => {
+                            onSuccess: (page: any) => {
+                                const flashError = page?.props?.flash?.error;
+                                const pageErrors = page?.props?.errors;
+                                const err = flashError || (pageErrors && Object.values(pageErrors)[0]);
+                                if (err) {
+                                    setToastMsg(typeof err === "string" ? err : JSON.stringify(err));
+                                    return;
+                                }
                                 setToastMsg(
                                     `Task "${taskName}" successfully deleted.`,
                                 );
@@ -1995,10 +2073,10 @@ export default function TasksPage() {
                             ? showMainJobModal
                             : undefined
                     }
-                    projectStartDate={projectData.startDate}
-                    projectEndDate={projectData.endDate}
+                    projectStartDate={projectData.startDate || projectData.start}
+                    projectEndDate={projectData.endDate || projectData.end}
                     onClose={() => setShowMainJobModal(null)}
-                    onSave={(name, weight, start, end) =>
+                    onSave={(name, weight, start, end, callback) =>
                         handleSaveMainJob(
                             name,
                             weight,
@@ -2010,27 +2088,43 @@ export default function TasksPage() {
                             showMainJobModal.mode === "edit"
                                 ? showMainJobModal.dbId
                                 : undefined,
+                            callback,
                         )
                     }
                 />
             )}
 
             {/* Modal Add Sub Task (Sub Main Job under Main Job) */}
-            {showAddSubMainJobModal && (
-                <AddSubMainJobModal
-                    mjName={showAddSubMainJobModal.mjName}
-                    parentWeight={showAddSubMainJobModal.parentWeight}
-                    currentSubCount={showAddSubMainJobModal.currentSubCount}
-                    onClose={() => setShowAddSubMainJobModal(null)}
-                    onSave={(name) =>
-                        handleSaveSubMainJob(
-                            showAddSubMainJobModal.mjId,
-                            name,
-                            showAddSubMainJobModal.mjDbId,
-                        )
-                    }
-                />
-            )}
+            {showAddSubMainJobModal && (() => {
+                const parentMj = projectData.mainJobs.find(
+                    (m) =>
+                        String(m.id) === String(showAddSubMainJobModal.mjId) ||
+                        m.dbId === showAddSubMainJobModal.mjDbId,
+                );
+                const parentStart = parentMj?.startDate || projectData.startDate || projectData.start;
+                const parentEnd = parentMj?.finishDate || projectData.endDate || projectData.end;
+
+                return (
+                    <AddSubMainJobModal
+                        mjName={showAddSubMainJobModal.mjName}
+                        parentWeight={showAddSubMainJobModal.parentWeight}
+                        currentSubCount={showAddSubMainJobModal.currentSubCount}
+                        parentStart={parentStart}
+                        parentEnd={parentEnd}
+                        onClose={() => setShowAddSubMainJobModal(null)}
+                        onSave={(name, start, end, callback) =>
+                            handleSaveSubMainJob(
+                                showAddSubMainJobModal.mjId,
+                                name,
+                                start,
+                                end,
+                                showAddSubMainJobModal.mjDbId,
+                                callback,
+                            )
+                        }
+                    />
+                );
+            })()}
 
             {/* Modal Add / Edit Task (Sub-Subtask) */}
             {showAddTaskModal && (
@@ -2041,9 +2135,11 @@ export default function TasksPage() {
                     mainJobs={projectData.mainJobs}
                     divisions={divisions}
                     initialData={showAddTaskModal.task}
+                    projectStart={projectData.startDate || projectData.start}
+                    projectEnd={projectData.endDate || projectData.end}
                     onClose={() => setShowAddTaskModal(null)}
-                    onSave={(taskData) =>
-                        handleSaveSubtask(showAddTaskModal.smjId, taskData)
+                    onSave={(taskData, callback) =>
+                        handleSaveSubtask(showAddTaskModal.smjId, taskData, callback)
                     }
                 />
             )}
@@ -3062,304 +3158,247 @@ function EvidencePreviewModal({
     );
 }
 
-function SearchablePredecessorSelect({
-    value,
-    onChange,
-    availableSubMainJobs,
-    currentTaskId,
-    currentTaskCode,
-}: {
-    value: string;
-    onChange: (val: string) => void;
-    availableSubMainJobs: SubMainJob[];
-    currentTaskId?: string;
-    currentTaskCode?: string;
-}) {
-    const [isOpen, setIsOpen] = useState(false);
-    const [search, setSearch] = useState("");
-    const containerRef = useRef<HTMLDivElement>(null);
+const parseYMD = (str: string): [number, number, number] => {
+    const parts = str.slice(0, 10).split("-");
+    return [
+        parseInt(parts[0], 10),
+        parseInt(parts[1], 10) - 1,
+        parseInt(parts[2], 10),
+    ];
+};
 
-    const [expandedGroups, setExpandedGroups] = useState<
-        Record<string, boolean>
-    >({});
+const toYMD = (year: number, monthIndex: number, day: number): string => {
+    const d = new Date(year, monthIndex, day);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dt = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dt}`;
+};
 
-    useEffect(() => {
-        function handleClickOutside(e: MouseEvent) {
-            if (
-                containerRef.current &&
-                !containerRef.current.contains(e.target as Node)
-            ) {
-                setIsOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () =>
-            document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+const addDaysSafe = (dateStr: string, days: number): string => {
+    if (!dateStr) return "";
+    const [y, m, d] = parseYMD(dateStr);
+    return toYMD(y, m, d + days);
+};
 
-    const query = search.trim().toLowerCase();
+const diffDaysSafe = (startStr: string, endStr: string): number => {
+    if (!startStr || !endStr) return 0;
+    const [y1, m1, d1] = parseYMD(startStr);
+    const [y2, m2, d2] = parseYMD(endStr);
+    const t1 = Date.UTC(y1, m1, d1);
+    const t2 = Date.UTC(y2, m2, d2);
+    return Math.floor((t2 - t1) / (1000 * 60 * 60 * 24));
+};
 
-    useEffect(() => {
-        if (query) {
-            const newExpanded = { ...expandedGroups };
-            availableSubMainJobs.forEach((smj) => {
-                const matchingTasks = (smj.subtasks || []).filter((st) => {
-                    if (st.id === currentTaskId || st.code === currentTaskCode)
-                        return false;
-                    return (
-                        st.name.toLowerCase().includes(query) ||
-                        st.code.toLowerCase().includes(query) ||
-                        (st.division &&
-                            st.division.toLowerCase().includes(query))
-                    );
-                });
-                if (matchingTasks.length > 0) {
-                    newExpanded[smj.id] = true;
-                }
-            });
-            setExpandedGroups(newExpanded);
-        }
-    }, [query, availableSubMainJobs]);
+const calcEndDate = (start: string, duration: number): string => {
+    if (!start) return "";
+    return addDaysSafe(start, Math.max(1, duration) - 1);
+};
 
-    // Find currently selected label
-    let selectedLabel = value
-        ? `Unknown Predecessor (${value})`
-        : "None (No Predecessor)";
-    if (value) {
-        for (const smj of availableSubMainJobs) {
-            if (smj.id === value || smj.code === value) {
-                selectedLabel = `${smj.code} - ${smj.name} (Sub Task)`;
-                break;
-            }
-            const st = (smj.subtasks || []).find(
-                (s) => s.id === value || s.code === value,
-            );
-            if (st) {
-                selectedLabel = `${st.code} - ${st.name}`;
-                break;
-            }
-        }
+const calcStartFromPredecessor = (
+    predTask: { start?: string; end?: string; startDate?: string; finishDate?: string } | undefined,
+    depType: "FS" | "SS" | "FF" | "SF",
+    lag: number,
+    duration: number,
+    minBound?: string,
+    maxBound?: string,
+    currentStart?: string,
+): string => {
+    const pStart = (predTask?.startDate || predTask?.start || "").slice(0, 10);
+    const pEnd = (predTask?.finishDate || predTask?.end || "").slice(0, 10);
+    if (!pStart || !pEnd) return currentStart || "";
+
+    const dur = Math.max(1, duration || 1);
+    let calculatedStart = currentStart || pEnd;
+
+    // FS: this task starts after predecessor finishes (+ lag)
+    if (depType === "FS") calculatedStart = addDaysSafe(pEnd, lag);
+    // SS: this task starts when predecessor starts (+ lag)
+    else if (depType === "SS") calculatedStart = addDaysSafe(pStart, lag);
+    // FF: this task finishes when predecessor finishes -> start = predEnd + lag - (duration - 1)
+    else if (depType === "FF") calculatedStart = addDaysSafe(pEnd, lag - (dur - 1));
+    // SF: this task finishes when predecessor starts -> start = predStart + lag - (duration - 1)
+    else if (depType === "SF") calculatedStart = addDaysSafe(pStart, lag - (dur - 1));
+
+    // Clamping: Tanggal tidak boleh lebih awal dari batas mulai proyek / Main Task
+    if (minBound && calculatedStart < minBound) {
+        calculatedStart = minBound;
     }
 
-    // Filter tasks
-    const filteredGroups = availableSubMainJobs
-        .map((smj) => {
-            const smjMatches =
-                !query ||
-                smj.name.toLowerCase().includes(query) ||
-                smj.code.toLowerCase().includes(query);
-            const matchingTasks = (smj.subtasks || []).filter((st) => {
-                if (st.id === currentTaskId || st.code === currentTaskCode)
-                    return false;
-                if (!query) return true;
-                return (
-                    st.name.toLowerCase().includes(query) ||
-                    st.code.toLowerCase().includes(query) ||
-                    (st.division && st.division.toLowerCase().includes(query))
-                );
-            });
+    // Clamping: Tanggal mulai tidak boleh melebihi batas selesai Main Task
+    if (maxBound && calculatedStart > maxBound) {
+        calculatedStart = maxBound;
+    }
 
-            return {
-                smj,
-                matchingTasks,
-                visible: smjMatches || matchingTasks.length > 0,
-            };
-        })
-        .filter((g) => g.visible);
-
-    return (
-        <div ref={containerRef} className="relative w-full">
-            <div
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] bg-white cursor-pointer flex items-center justify-between hover:border-neutral-300 focus:border-brand"
-            >
-                <span
-                    className={`truncate ${value ? "font-bold text-neutral-800" : "text-neutral-400"}`}
-                >
-                    {selectedLabel}
-                </span>
-                <ChevronDown
-                    size={14}
-                    className={`text-neutral-400 transform transition-transform ${isOpen ? "rotate-180" : ""}`}
-                />
-            </div>
-
-            {isOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white rounded-xl border border-neutral-200 shadow-xl max-h-64 flex flex-col overflow-hidden">
-                    {/* Search box inside dropdown */}
-                    <div className="p-2 border-b border-neutral-100 bg-neutral-50 flex items-center gap-1.5">
-                        <Search size={14} className="text-neutral-400 ml-1" />
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search predecessor by name or code (e.g. civil, WBS)..."
-                            className="w-full px-2 py-1 text-[12px] bg-transparent outline-none font-medium"
-                            autoFocus
-                        />
-                        {search && (
-                            <button
-                                type="button"
-                                onClick={() => setSearch("")}
-                                className="text-neutral-400 hover:text-neutral-600 p-1"
-                            >
-                                <X size={12} />
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="overflow-y-auto divide-y divide-neutral-100 flex-1 p-1">
-                        {/* None Option */}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                onChange("");
-                                setIsOpen(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-[12.5px] rounded-lg transition-colors font-medium ${
-                                !value
-                                    ? "bg-brand/10 text-brand font-bold"
-                                    : "text-neutral-600 hover:bg-neutral-50"
-                            }`}
-                        >
-                            None (No Predecessor)
-                        </button>
-
-                        {filteredGroups.length === 0 ? (
-                            <div className="py-4 text-center text-[12px] text-neutral-400 italic">
-                                No matching tasks found for "{search}"
-                            </div>
-                        ) : (
-                            filteredGroups.map(({ smj, matchingTasks }) => {
-                                const isExpanded =
-                                    expandedGroups[smj.id] || false;
-
-                                return (
-                                    <div
-                                        key={smj.id || smj.code}
-                                        className="pt-1.5 pb-1"
-                                    >
-                                        <div className="px-3 py-1 text-[11px] font-black text-neutral-400 uppercase tracking-wider">
-                                            {smj.code} · {smj.name}
-                                        </div>
-                                        {/* Sub-Task label (Clickable to expand/collapse) */}
-                                        <div
-                                            onClick={() =>
-                                                setExpandedGroups((prev) => ({
-                                                    ...prev,
-                                                    [smj.id]: !prev[smj.id],
-                                                }))
-                                            }
-                                            className="w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg flex items-center justify-between text-neutral-800 bg-neutral-100/50 mb-1 cursor-pointer hover:bg-neutral-200/50 transition-colors"
-                                        >
-                                            <span className="truncate font-medium flex items-center gap-1.5">
-                                                <ChevronRight
-                                                    size={14}
-                                                    className={`text-neutral-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                                                />
-                                                <strong>{smj.code}</strong> -{" "}
-                                                {smj.name}
-                                            </span>
-                                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-neutral-200/80 text-neutral-500 uppercase flex-shrink-0 ml-2">
-                                                Sub-Task Group
-                                            </span>
-                                        </div>
-
-                                        {/* Specific Task items */}
-                                        {isExpanded &&
-                                            matchingTasks.map((st) => (
-                                                <button
-                                                    key={st.id || st.code}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        onChange(st.id);
-                                                        setIsOpen(false);
-                                                    }}
-                                                    className={`w-full text-left pl-8 pr-3 py-1.5 text-[12px] rounded-lg transition-colors flex items-center justify-between ${
-                                                        value === st.id
-                                                            ? "bg-brand text-white font-bold"
-                                                            : "text-neutral-700 hover:bg-neutral-50"
-                                                    }`}
-                                                >
-                                                    <span className="truncate">
-                                                        <strong>
-                                                            {st.code}
-                                                        </strong>{" "}
-                                                        - {st.name}
-                                                    </span>
-                                                </button>
-                                            ))}
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
+    return calculatedStart;
+};
 
 function AddSubMainJobModal({
     mjName,
     parentWeight = 0,
     currentSubCount = 0,
+    parentStart,
+    parentEnd,
     onClose,
     onSave,
 }: {
     mjName: string;
     parentWeight?: number;
     currentSubCount?: number;
+    parentStart?: string;
+    parentEnd?: string;
     onClose: () => void;
-    onSave: (name: string) => void;
+    onSave: (
+        name: string,
+        start?: string,
+        end?: string,
+        callback?: (err?: string | null) => void,
+    ) => void;
 }) {
     const [name, setName] = useState("");
+    const [startDate, setStartDate] = useState(parentStart || "");
+    const [endDate, setEndDate] = useState(parentEnd || "");
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim()) return;
-        onSave(name.trim());
+
+        if (parentStart && startDate && startDate < parentStart) {
+            setActionError(
+                `Start date cannot be earlier than Main Task start date (${formatDateDisplay(parentStart)}).`,
+            );
+            return;
+        }
+        if (parentEnd && endDate && endDate > parentEnd) {
+            setActionError(
+                `Finish date cannot exceed Main Task finish deadline (${formatDateDisplay(parentEnd)}).`,
+            );
+            return;
+        }
+        if (startDate && endDate && endDate <= startDate) {
+            setActionError(
+                "Finish date must be after start date (at least +1 day later).",
+            );
+            return;
+        }
+
+        setSubmitting(true);
+        setActionError(null);
+        onSave(name.trim(), startDate, endDate, (err) => {
+            setSubmitting(false);
+            if (err) {
+                setActionError(err);
+            }
+        });
     };
 
     return (
         <Modal
-            title="Add New Sub Task (Sub Main Job)"
+            title="Add New Sub Task"
             subtitle={`Under WBS Group: ${mjName}`}
             onClose={onClose}
-            size="sm"
+            size="md"
         >
             <form onSubmit={handleSubmit} className="space-y-4">
+                {actionError && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+                        <AlertTriangle size={14} className="flex-shrink-0" />
+                        <span>{actionError}</span>
+                    </div>
+                )}
+
                 <div>
                     <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                        Sub Task Name <span className="text-danger">*</span>
+                        Sub Task Name <span className="text-red-500">*</span>
                     </label>
                     <input
                         type="text"
                         required
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="e.g. DOCUMENT REVIEW & PERMITS"
-                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
+                        onChange={(e) => {
+                            setName(e.target.value);
+                            setActionError(null);
+                        }}
+                        placeholder="e.g. SUBSTRUCTURE, SUPERSTRUCTURE, PIPING, etc."
+                        className="w-full px-3.5 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
                         autoFocus
                     />
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                            Start Date
+                        </label>
+                        <input
+                            type="date"
+                            value={startDate}
+                            min={parentStart || undefined}
+                            max={endDate || parentEnd || undefined}
+                            onChange={(e) => {
+                                let val = e.target.value;
+                                if (parentStart && val && val < parentStart) val = parentStart;
+                                if (parentEnd && val && val > parentEnd) val = parentEnd;
+                                setStartDate(val);
+                                setActionError(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                            End Date
+                        </label>
+                        <input
+                            type="date"
+                            value={endDate}
+                            min={startDate || parentStart || undefined}
+                            max={parentEnd || undefined}
+                            onChange={(e) => {
+                                let val = e.target.value;
+                                if (parentEnd && val && val > parentEnd) val = parentEnd;
+                                setEndDate(val);
+                                setActionError(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                        />
+                    </div>
+                    {parentEnd && (
+                        <div className="col-span-2 text-[11px] text-amber-900 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                                <Lock size={12} className="text-amber-700 flex-shrink-0" />
+                                <span>
+                                    <span className="font-semibold text-neutral-800">
+                                        Finish Deadline:
+                                    </span>{" "}
+                                    <span className="font-bold text-amber-900">
+                                        {formatDateDisplay(parentEnd)}
+                                    </span>
+                                </span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
                     <Button
-                        variant="ghost"
-                        size="sm"
+                        variant="outline"
+                        size="md"
                         type="button"
                         onClick={onClose}
+                        disabled={submitting}
                     >
                         Cancel
                     </Button>
                     <Button
                         variant="primary"
-                        size="sm"
+                        size="md"
                         type="submit"
-                        disabled={!name.trim()}
+                        disabled={submitting || !name.trim()}
                     >
-                        Save Sub Task
+                        {submitting ? "Saving..." : "Save Sub Task"}
                     </Button>
                 </div>
             </form>
@@ -3390,6 +3429,7 @@ function MainJobModal({
         weight: number,
         start?: string,
         end?: string,
+        callback?: (err?: string | null) => void,
     ) => void;
 }) {
     const isEdit = !!initialData?.id;
@@ -3407,32 +3447,40 @@ function MainJobModal({
         if (projectEndDate) return projectEndDate;
         return new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
     });
-    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim()) return;
 
         if (projectStartDate && startDate && startDate < projectStartDate) {
-            setErrorMsg(
-                `Start date cannot be earlier than project Start Date (${formatDateDisplay(projectStartDate)}).`,
+            setActionError(
+                `Start date cannot be earlier than project start date (${formatDateDisplay(projectStartDate)}).`,
             );
             return;
         }
         if (projectEndDate && endDate && endDate > projectEndDate) {
-            setErrorMsg(
-                `Finish date cannot exceed project Target Finish Date (${formatDateDisplay(projectEndDate)}).`,
+            setActionError(
+                `Finish date cannot exceed project target finish date (${formatDateDisplay(projectEndDate)}).`,
             );
             return;
         }
         if (startDate && endDate && endDate <= startDate) {
-            setErrorMsg(
-                "Finish date must be after Start date (at least +1 day later).",
+            setActionError(
+                "Finish date must be after start date (at least +1 day later).",
             );
             return;
         }
 
-        onSave(name.trim(), parseFloat(weight) || 0, startDate, endDate);
+        setSubmitting(true);
+        setActionError(null);
+        onSave(name.trim(), parseFloat(weight) || 0, startDate, endDate, (err) => {
+            setSubmitting(false);
+            if (err) {
+                setActionError(err);
+            }
+        });
     };
 
     return (
@@ -3448,24 +3496,28 @@ function MainJobModal({
                     : "Add a Level 1 primary job group to the project"
             }
             onClose={onClose}
-            size="sm"
+            size="md"
         >
             <form onSubmit={handleSubmit} className="space-y-4">
-                {errorMsg && (
-                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold">
-                        {errorMsg}
+                {actionError && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+                        <AlertTriangle size={14} className="flex-shrink-0" />
+                        <span>{actionError}</span>
                     </div>
                 )}
 
                 <div>
                     <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                        Main Task Name <span className="text-danger">*</span>
+                        Main Task Name <span className="text-red-500">*</span>
                     </label>
                     <input
                         type="text"
                         required
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => {
+                            setName(e.target.value);
+                            setActionError(null);
+                        }}
                         placeholder="e.g. COMMISSIONING & HANDOVER"
                         className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
                         autoFocus
@@ -3475,7 +3527,7 @@ function MainJobModal({
                 <div>
                     <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                         Weight Allocation (%){" "}
-                        <span className="text-danger">*</span>
+                        <span className="text-red-500">*</span>
                     </label>
                     <input
                         type="number"
@@ -3518,7 +3570,7 @@ function MainJobModal({
                                 )
                                     val = projectEndDate;
                                 setStartDate(val);
-                                setErrorMsg(null);
+                                setActionError(null);
                             }}
                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
                         />
@@ -3541,42 +3593,49 @@ function MainJobModal({
                                 )
                                     val = projectEndDate;
                                 setEndDate(val);
-                                setErrorMsg(null);
+                                setActionError(null);
                             }}
                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
                         />
                     </div>
                     {projectEndDate && (
                         <div className="col-span-2 text-[11px] text-amber-900 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-center justify-between">
-                            <span className="font-medium">
-                                Project Target Limit:{" "}
-                                <strong>
-                                    {formatDateDisplay(projectEndDate)}
-                                </strong>
-                            </span>
-                            {/* <span className="text-[10px] font-bold text-amber-800 bg-amber-200/60 px-1.5 py-0.5 rounded border border-amber-300">
-                Mentok: {formatDateDisplay(projectEndDate)}
-              </span> */}
+                            <div className="flex items-center gap-1.5">
+                                <Lock size={12} className="text-amber-700 flex-shrink-0" />
+                                <span>
+                                    <span className="font-semibold text-neutral-800">
+                                        Project Target Limit:
+                                    </span>{" "}
+                                    <span className="font-bold text-amber-900">
+                                        {formatDateDisplay(projectEndDate)}
+                                    </span>
+                                </span>
+                            </div>
                         </div>
                     )}
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
                     <Button
-                        variant="ghost"
-                        size="sm"
+                        variant="outline"
+                        size="md"
                         type="button"
                         onClick={onClose}
+                        disabled={submitting}
                     >
                         Cancel
                     </Button>
                     <Button
                         variant="primary"
-                        size="sm"
+                        size="md"
                         type="submit"
-                        disabled={!name.trim()}
+                        disabled={submitting || !name.trim()}
                     >
-                        {isEdit ? "Update Main Task" : "Save Main Task"}
+                        {submitting
+                            ? "Saving..."
+                            : isEdit
+                              ? "Update Main Task"
+                              : "Save Main Task"}
                     </Button>
                 </div>
             </form>
@@ -3593,6 +3652,8 @@ function AddSubtaskModal({
     onClose,
     onSave,
     initialData,
+    projectStart,
+    projectEnd,
 }: {
     smjId: string;
     smjDbId?: number;
@@ -3604,324 +3665,255 @@ function AddSubtaskModal({
         taskData: Partial<SubSubtask> & {
             smjDbId?: number;
             divisionId?: number;
+            depType?: "FS" | "SS" | "FF" | "SF";
+            lag?: number;
         },
+        callback?: (err?: string | null) => void,
     ) => void;
     initialData?: SubSubtask;
+    projectStart?: string;
+    projectEnd?: string;
 }) {
     const isEdit = !!initialData?.id;
-    const allTasks =
-        mainJobs?.flatMap(
-            (mj) => mj.subMainJobs?.flatMap((smj) => smj.subtasks || []) || [],
-        ) || [];
-    const isFirstTask = isEdit
-        ? allTasks.length > 0 &&
-          String(allTasks[0].id) === String(initialData?.id)
-        : allTasks.length === 0;
-    const lastTask = allTasks.length > 0 ? allTasks[allTasks.length - 1] : null;
 
+    // Resolve parent SubMainJob and MainJob for boundary clamping
+    let resolvedSmj = parentSmj;
+    let resolvedMj: MainJob | undefined;
+    for (const mj of mainJobs) {
+        const found = (mj.subMainJobs || []).find(
+            (s) =>
+                String(s.id) === String(smjId) ||
+                (smjDbId && s.dbId === smjDbId) ||
+                (resolvedSmj?.id && String(s.id) === String(resolvedSmj.id)),
+        );
+        if (found) {
+            resolvedSmj = found;
+            resolvedMj = mj;
+            break;
+        }
+    }
+
+    const minStart = (
+        resolvedMj?.startDate ||
+        resolvedSmj?.startDate ||
+        projectStart ||
+        ""
+    ).slice(0, 10);
+
+    const maxEnd = (
+        resolvedMj?.finishDate ||
+        resolvedSmj?.endDate ||
+        projectEnd ||
+        ""
+    ).slice(0, 10);
+
+    // Extract all leaf tasks for predecessor selection
+    const allLeafTasks: SubSubtask[] = useMemo(() => {
+        const list: SubSubtask[] = [];
+        mainJobs.forEach((mj) => {
+            (mj.subMainJobs || []).forEach((smj) => {
+                (smj.subtasks || []).forEach((st) => {
+                    list.push(st);
+                });
+            });
+        });
+        return list;
+    }, [mainJobs]);
+
+    const isFirstTask = isEdit
+        ? allLeafTasks.length > 0 &&
+          String(allLeafTasks[0].id) === String(initialData?.id)
+        : allLeafTasks.length === 0;
+
+    const lastTask = allLeafTasks.length > 0 ? allLeafTasks[allLeafTasks.length - 1] : null;
+
+    // Initial state setup
     const [name, setName] = useState(initialData?.name || "");
-    const [weight, setWeight] = useState(
-        initialData?.weight !== undefined
-            ? initialData.weight.toString()
-            : "100",
-    );
-    const [startDate, setStartDate] = useState(() => {
-        if (initialData?.startDate) return initialData.startDate;
-        if (!isFirstTask && lastTask) {
-            return (
-                lastTask.finishDate ||
-                lastTask.startDate ||
-                new Date().toISOString().slice(0, 10)
+    const [divisionId, setDivisionId] = useState<number>(() => {
+        if (initialData?.division) {
+            const match = divisions.find(
+                (d) =>
+                    d.divisi.toLowerCase() ===
+                    initialData.division?.toLowerCase(),
+            );
+            if (match) return match.id;
+        }
+        return divisions[0]?.id || 1;
+    });
+
+    const initialDep = initialData?.dependencies?.[0];
+    const [predecessorId, setPredecessorId] = useState<string>(() => {
+        if (initialDep?.predecessor_wbs_id) {
+            return String(initialDep.predecessor_wbs_id);
+        }
+        if (initialData?.predecessor) {
+            return String(initialData.predecessor);
+        }
+        // Jika bukan task pertama dan mode tambah baru, otomatis jadikan task sebelumnya sebagai predecessor
+        if (!isEdit && !isFirstTask && lastTask) {
+            return String(lastTask.id);
+        }
+        return "";
+    });
+
+    const [depType, setDepType] = useState<"FS" | "SS" | "FF" | "SF">(() => {
+        return (initialDep?.dependency_type ||
+            initialData?.depType ||
+            "FS") as "FS" | "SS" | "FF" | "SF";
+    });
+
+    const [lag, setLag] = useState<number>(() => {
+        if (initialDep?.lag_days !== undefined) return initialDep.lag_days;
+        if (initialData?.lag !== undefined) return initialData.lag;
+        return 0;
+    });
+
+    const [duration, setDuration] = useState<number>(() => {
+        return Math.max(1, initialData?.duration || 5);
+    });
+
+    const [manualStart, setManualStart] = useState<string>(() => {
+        if (initialData?.startDate) return initialData.startDate.slice(0, 10);
+        if (!isEdit && !isFirstTask && lastTask) {
+            return calcStartFromPredecessor(
+                lastTask,
+                "FS",
+                0,
+                5,
+                minStart,
+                maxEnd,
+                minStart,
             );
         }
+        if (minStart) return minStart;
         return new Date().toISOString().slice(0, 10);
     });
-    const [duration, setDuration] = useState(
-        initialData?.duration?.toString() || "5",
-    );
-    const [divisionId, setDivisionId] = useState<string>(
-        initialData?.division
-            ? divisions
-                  .find(
-                      (d: any) =>
-                          d.divisi?.toLowerCase() ===
-                          initialData.division?.toLowerCase(),
-                  )
-                  ?.id?.toString() ||
-                  divisions[0]?.id?.toString() ||
-                  ""
-            : divisions[0]?.id?.toString() || "",
-    );
 
-    const [dependencies, setDependencies] = useState<
-        Array<{
-            id: string;
-            predecessor: string;
-            depType: DependencyType;
-            lag: string;
-            lead: string;
-        }>
-    >(() => {
-        if (isEdit) return [];
-        if (!isFirstTask && lastTask) {
-            return [
-                {
-                    id: "dep-1",
-                    predecessor: lastTask.id || lastTask.code || "",
-                    depType: "FS",
-                    lag: "0",
-                    lead: "0",
-                },
-            ];
-        }
-        return [
-            {
-                id: "dep-1",
-                predecessor: initialData?.predecessor || "",
-                depType: initialData?.depType || "FS",
-                lag: initialData?.lag ? initialData.lag.toString() : "0",
-                lead: initialData?.lead ? initialData.lead.toString() : "0",
-            },
-        ];
+    const [requiresEvidence, setRequiresEvidence] = useState<boolean>(() => {
+        return !!initialData?.requires_evidence;
     });
-    const [requiresEvidence, setRequiresEvidence] = useState(
-        initialData?.requiresEvidence ?? false,
-    );
 
-    // Available SubMainJobs across the project
-    const availableSubMainJobs =
-        mainJobs && mainJobs.length > 0
-            ? mainJobs.flatMap((mj) => mj.subMainJobs || [])
-            : parentSmj
-              ? [parentSmj]
-              : [];
+    const [searchDep, setSearchDep] = useState("");
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
 
-    // Find predecessor task to calculate automatic start date
+    // Selected Predecessor object
+    const selectedPred = useMemo(() => {
+        if (!predecessorId) return null;
+        return allLeafTasks.find((t) => String(t.id) === String(predecessorId)) || null;
+    }, [predecessorId, allLeafTasks]);
+
+    // Current calculated start date
+    const currentStart = useMemo(() => {
+        if (selectedPred) {
+            return calcStartFromPredecessor(
+                selectedPred,
+                depType,
+                lag,
+                duration,
+                minStart,
+                maxEnd,
+                manualStart,
+            );
+        }
+        return manualStart;
+    }, [selectedPred, depType, lag, duration, minStart, maxEnd, manualStart]);
+
+    // Maximum allowed duration clamped strictly by Main Task finish deadline (maxEnd)
+    const maxAllowedDuration = useMemo(() => {
+        if (!maxEnd || !currentStart) return undefined;
+        const diff = diffDaysSafe(currentStart, maxEnd);
+        return Math.max(1, diff + 1);
+    }, [currentStart, maxEnd]);
+
+    // Ensure duration is clamped if currentStart pushes beyond maxEnd
     useEffect(() => {
-        let maxStart: Date | null = null;
-        let hasValidDep = false;
+        if (maxAllowedDuration !== undefined && duration > maxAllowedDuration) {
+            setDuration(maxAllowedDuration);
+        }
+    }, [maxAllowedDuration, duration]);
 
-        dependencies.forEach((dep) => {
-            if (!dep.predecessor || dep.predecessor === "-") return;
+    // Calculated finish date for preview
+    const previewEnd = useMemo(() => {
+        return calcEndDate(currentStart, duration);
+    }, [currentStart, duration]);
 
-            let predTask = null;
-            for (const mj of mainJobs) {
-                for (const smj of mj.subMainJobs || []) {
-                    const found = smj.subtasks?.find(
-                        (st) =>
-                            st.id === dep.predecessor ||
-                            st.code === dep.predecessor,
-                    );
-                    if (found) {
-                        predTask = found;
-                        break;
-                    }
-                }
-                if (predTask) break;
-            }
+    // Lead and Lag clamping boundaries based on predecessor and Main Task limits
+    let maxAllowedLead: number | undefined;
+    let maxAllowedLag: number | undefined;
+    if (selectedPred) {
+        const pStart = (selectedPred.startDate || selectedPred.start || "").slice(0, 10);
+        const pEnd = (selectedPred.finishDate || selectedPred.end || "").slice(0, 10);
+        const dur = Math.max(1, duration || 1);
 
-            if (predTask) {
-                hasValidDep = true;
-                const pStart = new Date(predTask.startDate);
-                const pEnd = new Date(predTask.finishDate);
-                const lagDays = parseInt(dep.lag) || 0;
-                const leadDays = parseInt(dep.lead) || 0;
-                const offset = lagDays - leadDays;
-
-                let newStart = new Date();
-                if (dep.depType === "FS") {
-                    newStart = new Date(pEnd);
-                    newStart.setDate(newStart.getDate() + offset);
-                } else if (dep.depType === "SS") {
-                    newStart = new Date(pStart);
-                    newStart.setDate(newStart.getDate() + offset);
-                } else if (dep.depType === "FF") {
-                    const newEnd = new Date(pEnd);
-                    newEnd.setDate(newEnd.getDate() + offset);
-                    newStart = new Date(newEnd);
-                    newStart.setDate(
-                        newStart.getDate() - (Math.max(1, parseInt(duration) || 1) - 1),
-                    );
-                } else if (dep.depType === "SF") {
-                    const newEnd = new Date(pStart);
-                    newEnd.setDate(newEnd.getDate() + offset);
-                    newStart = new Date(newEnd);
-                    newStart.setDate(
-                        newStart.getDate() - (Math.max(1, parseInt(duration) || 1) - 1),
-                    );
-                }
-
-                if (!maxStart || newStart > maxStart) {
-                    maxStart = newStart;
-                }
-            }
-        });
-
-        let parentMj: MainJob | undefined;
-        for (const mj of mainJobs) {
-            if (
-                mj.subMainJobs?.some(
-                    (smj) =>
-                        String(smj.id) === String(smjId) ||
-                        smj.id === smjDbId ||
-                        String(smj.id) === String(parentSmj?.id),
-                )
-            ) {
-                parentMj = mj;
-                break;
+        if (minStart && pStart && pEnd) {
+            if (depType === "FS") {
+                maxAllowedLead = Math.max(0, diffDaysSafe(minStart, pEnd));
+            } else if (depType === "SS") {
+                maxAllowedLead = Math.max(0, diffDaysSafe(minStart, pStart));
+            } else if (depType === "FF") {
+                maxAllowedLead = Math.max(0, diffDaysSafe(minStart, pEnd) - dur);
+            } else if (depType === "SF") {
+                maxAllowedLead = Math.max(0, diffDaysSafe(minStart, pStart) - dur);
             }
         }
 
-        if (hasValidDep && maxStart && !isFirstTask) {
-            let clampedStart = maxStart;
-            if (parentMj?.startDate) {
-                const pMjStart = new Date(parentMj.startDate);
-                if (clampedStart < pMjStart) clampedStart = pMjStart;
+        if (maxEnd && pStart && pEnd) {
+            if (depType === "FS") {
+                maxAllowedLag = Math.max(0, diffDaysSafe(pEnd, maxEnd));
+            } else if (depType === "SS") {
+                maxAllowedLag = Math.max(0, diffDaysSafe(pStart, maxEnd));
+            } else if (depType === "FF") {
+                maxAllowedLag = Math.max(0, diffDaysSafe(pEnd, maxEnd) + dur);
+            } else if (depType === "SF") {
+                maxAllowedLag = Math.max(0, diffDaysSafe(pStart, maxEnd) + dur);
             }
-            if (parentMj?.finishDate) {
-                const pMjEnd = new Date(parentMj.finishDate);
-                if (clampedStart > pMjEnd) clampedStart = pMjEnd;
-            }
-            setStartDate(clampedStart.toISOString().slice(0, 10));
         }
-    }, [
-        dependencies,
-        duration,
-        mainJobs,
-        isFirstTask,
-        smjId,
-        smjDbId,
-        parentSmj,
-    ]);
-
-    const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value;
-        setStartDate(val);
-
-        setDependencies((prevDeps) =>
-            prevDeps.map((dep) => {
-                if (!dep.predecessor || dep.predecessor === "-") return dep;
-
-                let predTask = null;
-                for (const mj of mainJobs) {
-                    for (const smj of mj.subMainJobs || []) {
-                        const found = smj.subtasks?.find(
-                            (st) =>
-                                st.id === dep.predecessor ||
-                                st.code === dep.predecessor,
-                        );
-                        if (found) {
-                            predTask = found;
-                            break;
-                        }
-                    }
-                    if (predTask) break;
-                }
-
-                if (!predTask) return dep;
-
-                const pStart = new Date(predTask.startDate);
-                const pEnd = new Date(predTask.finishDate);
-                const d = new Date(val);
-
-                pStart.setHours(0, 0, 0, 0);
-                pEnd.setHours(0, 0, 0, 0);
-                d.setHours(0, 0, 0, 0);
-
-                const diffDays = (d1: Date, d2: Date) =>
-                    Math.round(
-                        (d1.getTime() - d2.getTime()) / (1000 * 3600 * 24),
-                    );
-
-                let offset = 0;
-                if (dep.depType === "FS") {
-                    offset = diffDays(d, pEnd);
-                } else if (dep.depType === "SS") {
-                    offset = diffDays(d, pStart);
-                } else if (dep.depType === "FF") {
-                    const dEnd = new Date(d);
-                    const dur = Math.max(1, parseInt(duration) || 1);
-                    dEnd.setDate(dEnd.getDate() + (dur - 1));
-                    offset = diffDays(dEnd, pEnd);
-                } else if (dep.depType === "SF") {
-                    const dEnd = new Date(d);
-                    const dur = Math.max(1, parseInt(duration) || 1);
-                    dEnd.setDate(dEnd.getDate() + (dur - 1));
-                    offset = diffDays(dEnd, pStart);
-                }
-
-                return {
-                    ...dep,
-                    lag: offset > 0 ? offset.toString() : "0",
-                    lead: offset < 0 ? Math.abs(offset).toString() : "0",
-                };
-            }),
-        );
-    };
-
-    // Calculate finish date preview: End = Start + Duration - 1
-    const finishDatePreview = useMemo(() => {
-        try {
-            const parts = startDate.slice(0, 10).split("-");
-            if (parts.length === 3) {
-                const y = parseInt(parts[0], 10);
-                const m = parseInt(parts[1], 10) - 1;
-                const day = parseInt(parts[2], 10);
-                const dur = Math.max(1, parseInt(duration) || 1);
-                const d = new Date(y, m, day + (dur - 1));
-                const resY = d.getFullYear();
-                const resM = String(d.getMonth() + 1).padStart(2, "0");
-                const resD = String(d.getDate()).padStart(2, "0");
-                return `${resY}-${resM}-${resD}`;
-            }
-            const d = new Date(startDate);
-            const dur = Math.max(1, parseInt(duration) || 1);
-            d.setDate(d.getDate() + (dur - 1));
-            return d.toISOString().slice(0, 10);
-        } catch {
-            return startDate;
-        }
-    }, [startDate, duration]);
+    }
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim()) return;
 
-        if (!isFirstTask && !isEdit) {
-            const validDeps = dependencies.filter(
-                (d) => d.predecessor && d.predecessor !== "-",
-            );
-            if (validDeps.length === 0) {
-                alert(
-                    "Tasks other than the first task must have a Predecessor to determine their start date.",
-                );
-                return;
-            }
+        if (!isFirstTask && !predecessorId) {
+            setActionError("Predecessor is required for tasks other than the first task.");
+            return;
         }
 
-        onSave({
-            id: initialData?.id,
-            smjDbId,
-            name: name.trim(),
-            weight: parseFloat(weight) || 100,
-            divisionId: divisionId ? parseInt(divisionId) : undefined,
-            startDate,
-            finishDate: finishDatePreview,
-            duration: parseInt(duration) || 1,
-            predecessor: undefined,
-            depType: "FS",
-            lag: 0,
-            lead: 0,
-            predecessors: dependencies
-                .filter((d) => d.predecessor && d.predecessor !== "-")
-                .map((d) => ({
-                    predecessor: d.predecessor,
-                    dep_type: d.depType,
-                    lag: parseInt(d.lag) || 0,
-                    lead: parseInt(d.lead) || 0,
-                })),
-            requiresEvidence,
-        });
+        if (maxEnd && previewEnd && previewEnd > maxEnd) {
+            setActionError(
+                `Calculated task finish date (${formatDateDisplay(previewEnd)}) cannot exceed Main Task finish deadline (${formatDateDisplay(maxEnd)}).`,
+            );
+            return;
+        }
+
+        setSubmitting(true);
+        setActionError(null);
+
+        onSave(
+            {
+                ...(initialData || {}),
+                name: name.trim(),
+                duration,
+                startDate: currentStart,
+                finishDate: previewEnd,
+                divisionId,
+                requires_evidence: requiresEvidence,
+                predecessor: predecessorId || undefined,
+                depType,
+                lag,
+                smjDbId: smjDbId || resolvedSmj?.dbId,
+            },
+            (err) => {
+                setSubmitting(false);
+                if (err) {
+                    setActionError(err);
+                } else {
+                    onClose();
+                }
+            },
+        );
     };
 
     return (
@@ -3933,343 +3925,464 @@ function AddSubtaskModal({
             }
             subtitle={
                 isEdit
-                    ? `Editing: ${initialData?.code} — ${initialData?.name}`
+                    ? "Edit project task breakdown item"
                     : "Add specific project task breakdown item"
             }
             onClose={onClose}
             size="md"
         >
-            <form onSubmit={handleSubmit} className="flex flex-col">
-                <div className="space-y-4 pr-1">
-                    {/* Task Name */}
-                    <div>
-                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                            Task Description{" "}
-                            <span className="text-danger">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            required
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="e.g. Preparation and review of vendor documents..."
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
-                            autoFocus
-                        />
+            <form
+                onSubmit={handleSubmit}
+                className="space-y-4 max-h-[75vh] overflow-y-auto pr-1"
+            >
+                {actionError && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+                        <AlertTriangle size={14} className="flex-shrink-0" />
+                        <span>{actionError}</span>
                     </div>
+                )}
 
-                    {/* Division */}
+                {/* Task Name */}
+                <div>
+                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                        Task Description <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => {
+                            setName(e.target.value);
+                            setActionError(null);
+                        }}
+                        placeholder="e.g. Preparation and review of vendor documents..."
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
+                        required
+                        autoFocus
+                    />
+                </div>
+
+                {/* Division */}
+                <div>
+                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                        Responsible Division <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                        value={divisionId}
+                        onChange={(e) => setDivisionId(parseInt(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
+                    >
+                        {divisions.map((d) => (
+                            <option key={d.id} value={d.id}>
+                                {d.divisi}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Duration and Start Date */}
+                <div className="grid grid-cols-2 gap-3">
                     <div>
-                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                            Responsible Division{" "}
-                            <span className="text-danger">*</span>
-                        </label>
-                        <select
-                            value={divisionId}
-                            onChange={(e) => setDivisionId(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
-                        >
-                            {divisions.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                    {formatDivisionName(d.divisi)}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Duration and Start Date */}
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                                Duration (Days){" "}
-                                <span className="text-danger">*</span>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[12px] font-bold text-neutral-700">
+                                Duration (Days) <span className="text-red-500">*</span>
                             </label>
-                            <input
-                                type="number"
-                                min="1"
-                                required
-                                value={duration}
-                                onChange={(e) => setDuration(e.target.value)}
-                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
-                            />
-                        </div>
-                        <div>
-                            <div className="flex items-center justify-between mb-1">
-                                <label className="block text-[12px] font-bold text-neutral-700">
-                                    Start Date{" "}
-                                    <span className="text-danger">*</span>
-                                </label>
-                                {isFirstTask ? (
-                                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                        <Sparkles size={11} /> First Task
-                                    </span>
-                                ) : (
-                                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                        <Lock size={11} /> Locked
-                                    </span>
-                                )}
-                            </div>
-                            <input
-                                type="date"
-                                required
-                                value={startDate}
-                                readOnly={!isFirstTask}
-                                tabIndex={!isFirstTask ? -1 : 0}
-                                onChange={(e) => {
-                                    if (isFirstTask) {
-                                        handleStartDateChange(e);
-                                    }
-                                }}
-                                className={`w-full px-3 py-2 rounded-lg border text-[13px] outline-none ${
-                                    !isFirstTask
-                                        ? "bg-neutral-100 text-neutral-600 border-neutral-200 cursor-not-allowed select-none"
-                                        : "border-neutral-200 text-neutral-900 focus:border-brand bg-white"
-                                }`}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Predecessors (Only shown if NOT edit mode, or if they want to manage them) */}
-                    {!isEdit && (
-                        <div className="space-y-3 pt-2 border-t border-neutral-100">
-                            <div className="flex items-center justify-between">
-                                <label className="block text-[12px] font-bold text-neutral-700">
-                                    Predecessors (WBS Task)
-                                </label>
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        setDependencies((d) => [
-                                            ...d,
-                                            {
-                                                id: `dep-${Date.now()}`,
-                                                predecessor: "",
-                                                depType: "FS",
-                                                lag: "0",
-                                                lead: "0",
-                                            },
-                                        ])
-                                    }
-                                    className="text-[11px] font-bold text-brand hover:text-brand-dark px-2 py-1 bg-brand/5 rounded-lg transition-colors flex items-center gap-1"
-                                >
-                                    <Plus size={12} /> Add Predecessor
-                                </button>
-                            </div>
-
-                            {dependencies.length === 0 ? (
-                                <div className="text-[12px] text-neutral-500 italic p-3 bg-neutral-50 rounded-lg text-center border border-neutral-200">
-                                    No predecessors added. Task will start
-                                    according to its own schedule.
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {dependencies.map((dep, index) => (
-                                        <div
-                                            key={dep.id}
-                                            className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 relative group"
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setDependencies((d) =>
-                                                        d.filter(
-                                                            (x) =>
-                                                                x.id !== dep.id,
-                                                        ),
-                                                    )
-                                                }
-                                                className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity border border-red-200 hover:bg-red-200 z-10"
-                                                title="Remove Dependency"
-                                            >
-                                                <X size={12} />
-                                            </button>
-
-                                            <div className="space-y-2">
-                                                <SearchablePredecessorSelect
-                                                    value={dep.predecessor}
-                                                    onChange={(v) =>
-                                                        setDependencies((d) =>
-                                                            d.map((x) =>
-                                                                x.id === dep.id
-                                                                    ? {
-                                                                          ...x,
-                                                                          predecessor:
-                                                                              v,
-                                                                      }
-                                                                    : x,
-                                                            ),
-                                                        )
-                                                    }
-                                                    availableSubMainJobs={
-                                                        availableSubMainJobs
-                                                    }
-                                                    currentTaskId={
-                                                        initialData?.id
-                                                    }
-                                                    currentTaskCode={
-                                                        initialData?.code
-                                                    }
-                                                />
-
-                                                <div className="grid grid-cols-[2fr_1fr_1fr] gap-2">
-                                                    <div>
-                                                        <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">
-                                                            Type
-                                                        </label>
-                                                        <select
-                                                            value={dep.depType}
-                                                            onChange={(e) =>
-                                                                setDependencies(
-                                                                    (d) =>
-                                                                        d.map(
-                                                                            (
-                                                                                x,
-                                                                            ) =>
-                                                                                x.id ===
-                                                                                dep.id
-                                                                                    ? {
-                                                                                          ...x,
-                                                                                          depType:
-                                                                                              e
-                                                                                                  .target
-                                                                                                  .value as any,
-                                                                                      }
-                                                                                    : x,
-                                                                        ),
-                                                                )
-                                                            }
-                                                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] outline-none focus:border-brand bg-white font-medium"
-                                                        >
-                                                            <option value="FS">
-                                                                Finish-to-Start
-                                                            </option>
-                                                            <option value="SS">
-                                                                Start-to-Start
-                                                            </option>
-                                                            <option value="FF">
-                                                                Finish-to-Finish
-                                                            </option>
-                                                            <option value="SF">
-                                                                Start-to-Finish
-                                                            </option>
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">
-                                                            Lag
-                                                        </label>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            value={dep.lag}
-                                                            onChange={(e) =>
-                                                                setDependencies(
-                                                                    (d) =>
-                                                                        d.map(
-                                                                            (
-                                                                                x,
-                                                                            ) =>
-                                                                                x.id ===
-                                                                                dep.id
-                                                                                    ? {
-                                                                                          ...x,
-                                                                                          lag: e
-                                                                                              .target
-                                                                                              .value,
-                                                                                      }
-                                                                                    : x,
-                                                                        ),
-                                                                )
-                                                            }
-                                                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-[10px] font-bold text-neutral-500 mb-0.5 uppercase tracking-wide">
-                                                            Lead
-                                                        </label>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            value={dep.lead}
-                                                            onChange={(e) =>
-                                                                setDependencies(
-                                                                    (d) =>
-                                                                        d.map(
-                                                                            (
-                                                                                x,
-                                                                            ) =>
-                                                                                x.id ===
-                                                                                dep.id
-                                                                                    ? {
-                                                                                          ...x,
-                                                                                          lead: e
-                                                                                              .target
-                                                                                              .value,
-                                                                                      }
-                                                                                    : x,
-                                                                        ),
-                                                                )
-                                                            }
-                                                            className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-bold outline-none focus:border-brand bg-white"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                            {maxAllowedDuration !== undefined && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                    <Lock size={10} /> Max: {maxAllowedDuration}d
+                                </span>
                             )}
                         </div>
-                    )}
-                    {isEdit && (
-                        <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-start gap-2.5">
-                            <Info
-                                size={14}
-                                className="text-blue-500 mt-0.5 flex-shrink-0"
-                            />
-                            <p className="text-[11.5px] text-blue-800 font-medium leading-relaxed">
-                                To add or manage task dependencies for this
-                                existing task, use the{" "}
-                                <strong className="text-blue-900">
-                                    "Manage Dependencies"
-                                </strong>{" "}
-                                button on the task row.
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Evidence Requirement */}
-                    <div className="pt-2 border-t border-neutral-100">
-                        <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 transition-colors">
-                            <input
-                                type="checkbox"
-                                checked={requiresEvidence}
-                                onChange={(e) =>
-                                    setRequiresEvidence(e.target.checked)
+                        <input
+                            type="number"
+                            min="1"
+                            max={maxAllowedDuration}
+                            value={duration}
+                            onChange={(e) => {
+                                const rawVal = parseInt(e.target.value) || 0;
+                                let clamped = Math.max(1, rawVal);
+                                if (
+                                    maxAllowedDuration !== undefined &&
+                                    clamped > maxAllowedDuration
+                                ) {
+                                    clamped = maxAllowedDuration;
                                 }
-                                className="w-4 h-4 rounded text-brand border-neutral-300 focus:ring-brand"
-                            />
-                            <div className="flex flex-col">
-                                <span className="text-[13px] font-bold text-neutral-800">
-                                    Requires Evidence for Completion
+                                setDuration(clamped);
+                                setActionError(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-[13px] outline-none focus:border-brand font-semibold"
+                            required
+                        />
+                        {maxAllowedDuration !== undefined && (
+                            <span className="text-[10px] text-neutral-500 mt-1 block">
+                                Locked by Main Task limit (Max {maxAllowedDuration} days).
+                            </span>
+                        )}
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[12px] font-bold text-neutral-700">
+                                Start Date <span className="text-red-500">*</span>
+                            </label>
+                            {isFirstTask ? (
+                                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    <Sparkles size={11} /> First Task
                                 </span>
-                                <span className="text-[11.5px] text-neutral-500">
-                                    Workers must upload a file/photo to mark
-                                    this task 100% complete.
+                            ) : (
+                                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                    <Lock size={11} /> Locked
                                 </span>
-                            </div>
-                        </label>
+                            )}
+                        </div>
+                        <input
+                            type="date"
+                            value={currentStart}
+                            min={minStart || undefined}
+                            max={maxEnd || undefined}
+                            readOnly={!isFirstTask}
+                            tabIndex={!isFirstTask ? -1 : 0}
+                            onChange={(e) => {
+                                if (isFirstTask) {
+                                    let val = e.target.value;
+                                    if (minStart && val < minStart) val = minStart;
+                                    if (maxEnd && val > maxEnd) val = maxEnd;
+                                    setManualStart(val);
+                                    setActionError(null);
+                                }
+                            }}
+                            className={`w-full px-3 py-2 rounded-lg border text-[13px] outline-none ${
+                                !isFirstTask
+                                    ? "bg-neutral-100 text-neutral-600 border-neutral-200 cursor-not-allowed select-none"
+                                    : "border-neutral-200 text-neutral-900 focus:border-brand bg-white"
+                            }`}
+                            required
+                        />
                     </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-neutral-100 shrink-0">
+                {/* Predecessor (Full Width) */}
+                <div>
+                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                        Predecessor (WBS Task / Sub-sub Task)
+                    </label>
+
+                    {/* Search Input */}
+                    <div className="relative mb-2">
+                        <Search
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                            size={14}
+                        />
+                        <input
+                            type="text"
+                            placeholder="Search predecessor by task code or name..."
+                            value={searchDep}
+                            onChange={(e) => setSearchDep(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 bg-white border border-neutral-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand"
+                        />
+                    </div>
+
+                    <div className="max-h-[170px] overflow-y-auto border border-neutral-200 rounded-lg bg-white p-2 space-y-1 custom-scrollbar">
+                        {(() => {
+                            const availableTasks = allLeafTasks.filter(
+                                (t) => String(t.id) !== String(initialData?.id),
+                            );
+                            const filteredTasks = availableTasks.filter((t) =>
+                                (t.code + " " + t.name)
+                                    .toLowerCase()
+                                    .includes(searchDep.toLowerCase()),
+                            );
+                            const groupedTasks = filteredTasks.reduce(
+                                (acc, t) => {
+                                    const parts = t.code.split(".");
+                                    const prefix =
+                                        parts.length > 1
+                                            ? parts
+                                                  .slice(0, parts.length - 1)
+                                                  .join(".")
+                                            : t.code;
+                                    if (!acc[prefix]) acc[prefix] = [];
+                                    acc[prefix].push(t);
+                                    return acc;
+                                },
+                                {} as Record<string, SubSubtask[]>,
+                            );
+
+                            return (
+                                <>
+                                    {/* Option None (Hanya untuk Task Pertama) */}
+                                    {isFirstTask && (
+                                        <label
+                                            className={`flex items-start gap-2.5 px-2.5 py-2 hover:bg-neutral-50 rounded-lg cursor-pointer transition-colors border ${
+                                                predecessorId === ""
+                                                    ? "border-brand/30 bg-brand/5"
+                                                    : "border-transparent"
+                                            }`}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="task_predecessor"
+                                                checked={predecessorId === ""}
+                                                onChange={() => {
+                                                    setPredecessorId("");
+                                                    setLag(0);
+                                                    setActionError(null);
+                                                }}
+                                                className="mt-0.5 text-brand focus:ring-brand rounded-full border-neutral-300 cursor-pointer"
+                                            />
+                                            <div className="flex flex-col flex-1 min-w-0">
+                                                <span className="text-[12px] font-bold text-neutral-800">
+                                                    None (No Predecessor)
+                                                </span>
+                                                <span className="text-[10.5px] text-neutral-400">
+                                                    Task can start independently or follow project schedule
+                                                </span>
+                                            </div>
+                                        </label>
+                                    )}
+
+                                    {Object.keys(groupedTasks).length === 0 &&
+                                        searchDep !== "" && (
+                                            <div className="text-[11.5px] text-neutral-500 italic text-center py-4">
+                                                No tasks match your search "{searchDep}".
+                                            </div>
+                                        )}
+
+                                    {Object.entries(groupedTasks).map(
+                                        ([prefix, tasks]) => {
+                                            const isExpanded =
+                                                expandedGroups[prefix] ?? true;
+                                            return (
+                                                <div
+                                                    key={prefix}
+                                                    className="mb-2 last:mb-0"
+                                                >
+                                                    <div
+                                                        onClick={() =>
+                                                            setExpandedGroups(
+                                                                (prev) => ({
+                                                                    ...prev,
+                                                                    [prefix]:
+                                                                        !isExpanded,
+                                                                }),
+                                                            )
+                                                        }
+                                                        className="flex items-center gap-2 px-2 py-1.5 bg-neutral-100 rounded-lg cursor-pointer hover:bg-neutral-200/60 transition-colors mb-1"
+                                                    >
+                                                        <ChevronRight
+                                                            size={14}
+                                                            className={`text-neutral-500 transition-transform ${
+                                                                isExpanded
+                                                                    ? "rotate-90"
+                                                                    : ""
+                                                            }`}
+                                                        />
+                                                        <span className="text-[11px] font-black text-neutral-700 uppercase tracking-wider">
+                                                            WBS Group: {prefix} (
+                                                            {tasks.length})
+                                                        </span>
+                                                    </div>
+                                                    {isExpanded && (
+                                                        <div className="space-y-1 pl-1 mt-1">
+                                                            {tasks.map((t) => (
+                                                                <label
+                                                                    key={t.id}
+                                                                    className={`flex items-start gap-2.5 px-2.5 py-2 hover:bg-neutral-50 rounded-lg cursor-pointer transition-colors border ${
+                                                                        predecessorId ===
+                                                                        String(t.id)
+                                                                            ? "border-brand/30 bg-brand/5"
+                                                                            : "border-transparent"
+                                                                    }`}
+                                                                >
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="task_predecessor"
+                                                                        checked={
+                                                                            predecessorId ===
+                                                                            String(t.id)
+                                                                        }
+                                                                        onChange={() => {
+                                                                            setPredecessorId(
+                                                                                String(t.id),
+                                                                            );
+                                                                            setLag(0);
+                                                                            setActionError(null);
+                                                                        }}
+                                                                        className="mt-0.5 text-brand focus:ring-brand rounded-full border-neutral-300 cursor-pointer"
+                                                                    />
+                                                                    <div className="flex flex-col flex-1 min-w-0">
+                                                                        <span className="text-[12px] font-bold text-neutral-800 line-clamp-1">
+                                                                            {t.code} -{" "}
+                                                                            {t.name}
+                                                                        </span>
+                                                                        <span className="text-[10.5px] text-neutral-500">
+                                                                            {t.startDate || t.start
+                                                                                ? formatDateDisplay(
+                                                                                      (t.startDate || t.start)!,
+                                                                                  )
+                                                                                : "-"}{" "}
+                                                                            to{" "}
+                                                                            {t.finishDate || t.end
+                                                                                ? formatDateDisplay(
+                                                                                      (t.finishDate || t.end)!,
+                                                                                  )
+                                                                                : "-"}
+                                                                        </span>
+                                                                    </div>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        },
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+
+                {/* Dependency Type (Full Width) */}
+                <div>
+                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                        Dependency Type
+                    </label>
+                    <select
+                        value={depType}
+                        onChange={(e) => {
+                            setDepType(
+                                e.target.value as "FS" | "SS" | "FF" | "SF",
+                            );
+                            setActionError(null);
+                        }}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
+                    >
+                        <option value="FS">Finish-to-Start (FS)</option>
+                        <option value="SS">Start-to-Start (SS)</option>
+                        <option value="FF">Finish-to-Finish (FF)</option>
+                        <option value="SF">Start-to-Finish (SF)</option>
+                    </select>
+                </div>
+
+                {/* Lag and Lead */}
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-100">
+                    <div>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[12px] font-bold text-neutral-700">
+                                Lag (Days)
+                            </label>
+                            {maxAllowedLag !== undefined && (
+                                <span className="text-[10.5px] text-neutral-400 font-medium">
+                                    Max: {maxAllowedLag} days
+                                </span>
+                            )}
+                        </div>
+                        <input
+                            type="number"
+                            min="0"
+                            max={maxAllowedLag}
+                            value={lag > 0 ? lag : ""}
+                            onChange={(e) => {
+                                const raw = Math.abs(parseInt(e.target.value) || 0);
+                                const clamped =
+                                    maxAllowedLag !== undefined
+                                        ? Math.min(raw, maxAllowedLag)
+                                        : raw;
+                                setLag(clamped);
+                                setActionError(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+                            placeholder="0"
+                        />
+                        <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                            Delay time. {maxAllowedLag !== undefined && maxAllowedLag === 0 ? "Main Task end deadline reached." : ""}
+                        </span>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[12px] font-bold text-neutral-700">
+                                Lead (Days)
+                            </label>
+                            {maxAllowedLead !== undefined && (
+                                <span className="text-[10.5px] text-neutral-400 font-medium">
+                                    Max: {maxAllowedLead} days
+                                </span>
+                            )}
+                        </div>
+                        <input
+                            type="number"
+                            min="0"
+                            max={maxAllowedLead}
+                            value={lag < 0 ? Math.abs(lag) : ""}
+                            onChange={(e) => {
+                                const raw = Math.abs(parseInt(e.target.value) || 0);
+                                const clamped =
+                                    maxAllowedLead !== undefined
+                                        ? Math.min(raw, maxAllowedLead)
+                                        : raw;
+                                setLag(-clamped);
+                                setActionError(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
+                            placeholder="0"
+                        />
+                        <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                            Start earlier (lead time). {maxAllowedLead !== undefined && maxAllowedLead === 0 ? "Project/Main Task start bound reached." : ""}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Evidence Requirement */}
+                <div className="pt-2 border-t border-neutral-100">
+                    <label className="flex items-center gap-2 cursor-pointer p-3 rounded-lg border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 transition-colors">
+                        <input
+                            type="checkbox"
+                            checked={requiresEvidence}
+                            onChange={(e) => setRequiresEvidence(e.target.checked)}
+                            className="w-4 h-4 rounded text-brand border-neutral-300 focus:ring-brand"
+                        />
+                        <div className="flex flex-col">
+                            <span className="text-[13px] font-bold text-neutral-800">
+                                Requires Evidence for Completion
+                            </span>
+                            <span className="text-[11.5px] text-neutral-500">
+                                Workers must upload a file/photo to mark this task 100% complete.
+                            </span>
+                        </div>
+                    </label>
+                </div>
+
+                {/* Preview Banner */}
+                {currentStart && previewEnd && (
+                    <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex flex-col gap-1 text-[11.5px]">
+                        <div className="flex items-center justify-between text-neutral-700">
+                            <span>Calculated Finish Date:</span>
+                            <strong className="text-neutral-900 font-bold">
+                                {formatDateDisplay(previewEnd)}
+                            </strong>
+                        </div>
+                        {maxEnd && (
+                            <div className="flex items-center justify-between text-amber-900 pt-1 border-t border-neutral-200/60">
+                                <span className="flex items-center gap-1 font-medium">
+                                    <Lock size={11} className="text-amber-700" />
+                                    Main Task Deadline:
+                                </span>
+                                <strong className="font-bold text-amber-900">
+                                    {formatDateDisplay(maxEnd)}
+                                </strong>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100">
                     <Button
                         variant="outline"
                         size="sm"
                         type="button"
                         onClick={onClose}
+                        disabled={submitting}
                     >
                         Cancel
                     </Button>
@@ -4277,9 +4390,13 @@ function AddSubtaskModal({
                         variant="primary"
                         size="sm"
                         type="submit"
-                        disabled={!name.trim()}
+                        disabled={submitting || !name.trim()}
                     >
-                        {isEdit ? "Update Task" : "Save Task"}
+                        {submitting
+                            ? "Saving..."
+                            : isEdit
+                              ? "Update Task"
+                              : "Save Task"}
                     </Button>
                 </div>
             </form>
@@ -4582,7 +4699,7 @@ function ManageDependenciesModal({
                                                                                   ]
                                                                                 : depForm.predecessor_wbs_ids.filter(
                                                                                       (
-                                                                                          id,
+                                                                                          id: any,
                                                                                       ) =>
                                                                                           id !==
                                                                                           t.id,

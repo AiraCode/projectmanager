@@ -331,9 +331,15 @@ class DependencyScheduler
             $minStart = Carbon::parse($childWbs->min('start'))->startOfDay();
             $maxEnd   = Carbon::parse($childWbs->max('end'))->startOfDay();
 
+            $subEnd = $subWbs->end ? Carbon::parse($subWbs->end)->startOfDay() : null;
+            $newSubEnd = $subEnd && $subEnd->gt($maxEnd) ? $subEnd : $maxEnd;
+
+            $subStart = $subWbs->start ? Carbon::parse($subWbs->start)->startOfDay() : null;
+            $newSubStart = $subStart && $subStart->lt($minStart) ? $subStart : $minStart;
+
             $subWbs->update([
-                'start'        => $minStart->format('Y-m-d'),
-                'end'          => $maxEnd->format('Y-m-d'),
+                'start'        => $newSubStart->format('Y-m-d'),
+                'end'          => $newSubEnd->format('Y-m-d'),
                 'actual_start' => $minStart->format('Y-m-d'),
                 'actual_end'   => $maxEnd->format('Y-m-d'),
             ]);
@@ -349,11 +355,27 @@ class DependencyScheduler
                     $mainStart = Carbon::parse($siblingSubs->min('start'))->startOfDay();
                     $mainEnd   = Carbon::parse($siblingSubs->max('end'))->startOfDay();
 
+                    $existingMainEnd = $mainWbs->end ? Carbon::parse($mainWbs->end)->startOfDay() : null;
+                    $newMainEnd = $existingMainEnd && $existingMainEnd->gt($mainEnd) ? $existingMainEnd : $mainEnd;
+
+                    $existingMainStart = $mainWbs->start ? Carbon::parse($mainWbs->start)->startOfDay() : null;
+                    $newMainStart = $existingMainStart && $existingMainStart->lt($mainStart) ? $existingMainStart : $mainStart;
+
+                    $siblingActualStarts = $siblingSubs->whereNotNull('actual_start');
+                    $siblingActualEnds   = $siblingSubs->whereNotNull('actual_end');
+
+                    $mainActualStart = $siblingActualStarts->isNotEmpty()
+                        ? Carbon::parse($siblingActualStarts->min('actual_start'))->startOfDay()
+                        : $minStart;
+                    $mainActualEnd   = $siblingActualEnds->isNotEmpty()
+                        ? Carbon::parse($siblingActualEnds->max('actual_end'))->startOfDay()
+                        : $maxEnd;
+
                     $mainWbs->update([
-                        'start'        => $mainStart->format('Y-m-d'),
-                        'end'          => $mainEnd->format('Y-m-d'),
-                        'actual_start' => $mainStart->format('Y-m-d'),
-                        'actual_end'   => $mainEnd->format('Y-m-d'),
+                        'start'        => $newMainStart->format('Y-m-d'),
+                        'end'          => $newMainEnd->format('Y-m-d'),
+                        'actual_start' => $mainActualStart->format('Y-m-d'),
+                        'actual_end'   => $mainActualEnd->format('Y-m-d'),
                     ]);
                 }
             }

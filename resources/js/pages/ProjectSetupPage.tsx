@@ -674,8 +674,24 @@ export default function ProjectSetupPage() {
                     minBound,
                     maxBound,
                 );
-                if (newStart && newStart !== taskForm.start) {
-                    setTaskForm((prev) => ({ ...prev, start: newStart }));
+                const maxDur =
+                    maxBound && newStart
+                        ? Math.max(1, diffDaysSafe(newStart, maxBound) + 1)
+                        : undefined;
+                const clampedDuration =
+                    maxDur !== undefined && taskForm.duration > maxDur
+                        ? maxDur
+                        : taskForm.duration;
+
+                if (
+                    (newStart && newStart !== taskForm.start) ||
+                    clampedDuration !== taskForm.duration
+                ) {
+                    setTaskForm((prev) => ({
+                        ...prev,
+                        start: newStart || prev.start,
+                        duration: clampedDuration,
+                    }));
                 }
             }
         }
@@ -726,12 +742,18 @@ export default function ProjectSetupPage() {
             );
         }
 
+        const maxInitDur =
+            maxBound && defaultStart
+                ? Math.max(1, diffDaysSafe(defaultStart, maxBound) + 1)
+                : 5;
+        const initialDur = Math.min(5, maxInitDur);
+
         setSearchDep("");
         setTaskForm({
             name: "",
             divisions_id: divisions[0]?.id || 1,
             start: defaultStart,
-            duration: 5,
+            duration: initialDur,
             vendor: "INTERNAL",
             requires_evidence: false,
             predecessor_wbs_id: defaultPred,
@@ -789,12 +811,18 @@ export default function ProjectSetupPage() {
             if (maxBound && startVal > maxBound) startVal = maxBound;
         }
 
+        const maxEditDur =
+            maxBound && startVal
+                ? Math.max(1, diffDaysSafe(startVal, maxBound) + 1)
+                : item.duration_days || 1;
+        const editDur = Math.min(item.duration_days || 1, maxEditDur);
+
         setSearchDep("");
         setTaskForm({
             name: item.name,
             divisions_id: item.division_id || divisions[0]?.id || 1,
             start: startVal,
-            duration: item.duration_days || 1,
+            duration: editDur,
             vendor: item.vendor || "INTERNAL",
             requires_evidence: item.requires_evidence || false,
             predecessor_wbs_id: predId,
@@ -827,17 +855,15 @@ export default function ProjectSetupPage() {
             return;
         }
 
-        // Auto-calculate end date from start + duration
-        const computedEnd = calcEndDate(taskForm.start, taskForm.duration);
-
         // Find parent Main Task boundaries
         let parentMain: MainWbs | undefined;
+        const targetSubId = Number(
+            taskModal.parentId || taskModal.item?.sub_wbs_id,
+        );
         for (const m of proj.mainWbs || []) {
             if (
                 m.subWbs?.some(
-                    (s) =>
-                        s.id ===
-                        (taskModal.parentId || taskModal.item?.sub_wbs_id),
+                    (s) => Number(s.id) === targetSubId,
                 )
             ) {
                 parentMain = m;
@@ -846,6 +872,18 @@ export default function ProjectSetupPage() {
         }
         const minTaskStart = parentMain?.start || proj.start || "";
         const maxTaskEnd = parentMain?.end || proj.end || "";
+
+        // Strictly clamp duration so it cannot push end date past maxTaskEnd
+        let safeDuration = Math.max(1, taskForm.duration || 1);
+        if (maxTaskEnd && taskForm.start) {
+            const maxAllowed = Math.max(1, diffDaysSafe(taskForm.start, maxTaskEnd) + 1);
+            if (safeDuration > maxAllowed) {
+                safeDuration = maxAllowed;
+            }
+        }
+
+        // Auto-calculate end date from start + safe duration
+        const computedEnd = calcEndDate(taskForm.start, safeDuration);
 
         if (minTaskStart && taskForm.start < minTaskStart) {
             setActionError(
@@ -876,7 +914,7 @@ export default function ProjectSetupPage() {
                     sub_wbs_id: taskModal.parentId,
                     name: taskForm.name.trim(),
                     divisions_id: taskForm.divisions_id,
-                    duration: taskForm.duration,
+                    duration: safeDuration,
                     start: taskForm.start,
                     end: computedEnd,
                     vendor: taskForm.vendor,
@@ -903,7 +941,7 @@ export default function ProjectSetupPage() {
                 {
                     name: taskForm.name.trim(),
                     divisions_id: taskForm.divisions_id,
-                    duration: taskForm.duration,
+                    duration: safeDuration,
                     start: taskForm.start,
                     end: computedEnd,
                     vendor: taskForm.vendor,
@@ -2253,6 +2291,11 @@ export default function ProjectSetupPage() {
                         ? parentMain.end.slice(0, 10)
                         : (proj.end ? proj.end.slice(0, 10) : "");
 
+                    const maxAllowedDuration =
+                        maxEnd && taskForm.start
+                            ? Math.max(1, diffDaysSafe(taskForm.start, maxEnd) + 1)
+                            : undefined;
+
                     let maxAllowedLead: number | undefined;
                     let maxAllowedLag: number | undefined;
                     if (selectedPred && selectedPred.start && selectedPred.end) {
@@ -2368,40 +2411,59 @@ export default function ProjectSetupPage() {
                                 {/* Duration and Start Date */}
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                                            Duration (Days){" "}
-                                            <span className="text-red-500">
-                                                *
-                                            </span>
-                                        </label>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-[12px] font-bold text-neutral-700">
+                                                Duration (Days){" "}
+                                                <span className="text-red-500">
+                                                    *
+                                                </span>
+                                            </label>
+                                            {maxAllowedDuration !== undefined && (
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                    <Lock size={10} /> Max: {maxAllowedDuration}d
+                                                </span>
+                                            )}
+                                        </div>
                                         <input
                                             type="number"
                                             min="1"
+                                            max={maxAllowedDuration}
                                             value={taskForm.duration}
                                             onChange={(e) => {
-                                                const newDur = Math.max(
-                                                    1,
-                                                    parseInt(e.target.value) || 1,
-                                                );
+                                                const rawVal =
+                                                    parseInt(e.target.value) || 0;
+                                                let clamped = Math.max(1, rawVal);
+                                                if (
+                                                    maxAllowedDuration !== undefined &&
+                                                    clamped > maxAllowedDuration
+                                                ) {
+                                                    clamped = maxAllowedDuration;
+                                                }
                                                 const newStart = taskForm.predecessor_wbs_id
                                                     ? calcStartFromPredecessor(
                                                           taskForm.predecessor_wbs_id,
                                                           taskForm.dep_type,
                                                           taskForm.lag,
-                                                          newDur,
+                                                          clamped,
                                                           minStart,
                                                           maxEnd,
                                                         )
                                                     : taskForm.start;
                                                 setTaskForm({
                                                     ...taskForm,
-                                                    duration: newDur,
+                                                    duration: clamped,
                                                     start: newStart,
                                                 });
+                                                setActionError(null);
                                             }}
                                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-[13px] outline-none focus:border-brand font-semibold"
                                             required
                                         />
+                                        {maxAllowedDuration !== undefined && (
+                                            <span className="text-[10px] text-neutral-500 mt-1 block">
+                                                Locked by Main Task limit (Max {maxAllowedDuration} days).
+                                            </span>
+                                        )}
                                     </div>
                                     <div>
                                         <div className="flex items-center justify-between mb-1">
@@ -2433,10 +2495,20 @@ export default function ProjectSetupPage() {
                                                     let val = e.target.value;
                                                     if (minStart && val < minStart) val = minStart;
                                                     if (maxEnd && val > maxEnd) val = maxEnd;
+                                                    const maxDur =
+                                                        maxEnd && val
+                                                            ? Math.max(1, diffDaysSafe(val, maxEnd) + 1)
+                                                            : undefined;
+                                                    const clampedDuration =
+                                                        maxDur !== undefined && taskForm.duration > maxDur
+                                                            ? maxDur
+                                                            : taskForm.duration;
                                                     setTaskForm({
                                                         ...taskForm,
                                                         start: val,
+                                                        duration: clampedDuration,
                                                     });
+                                                    setActionError(null);
                                                 }
                                             }}
                                             className={`w-full px-3 py-2 rounded-lg border text-[13px] outline-none ${
@@ -2629,12 +2701,22 @@ export default function ProjectSetupPage() {
                                                                                                 minStart,
                                                                                                 maxEnd,
                                                                                             );
+                                                                                            const maxDur =
+                                                                                                maxEnd && newStart
+                                                                                                    ? Math.max(1, diffDaysSafe(newStart, maxEnd) + 1)
+                                                                                                    : undefined;
+                                                                                            const clampedDuration =
+                                                                                                maxDur !== undefined && taskForm.duration > maxDur
+                                                                                                    ? maxDur
+                                                                                                    : taskForm.duration;
                                                                                             setTaskForm({
                                                                                                 ...taskForm,
                                                                                                 predecessor_wbs_id: predId,
                                                                                                 lag: 0,
                                                                                                 start: newStart,
+                                                                                                duration: clampedDuration,
                                                                                             });
+                                                                                            setActionError(null);
                                                                                         }}
                                                                                         className="mt-0.5 text-brand focus:ring-brand rounded-full border-neutral-300 cursor-pointer"
                                                                                     />
@@ -2699,11 +2781,21 @@ export default function ProjectSetupPage() {
                                                       maxEnd,
                                                   )
                                                 : taskForm.start;
+                                            const maxDur =
+                                                maxEnd && newStart
+                                                    ? Math.max(1, diffDaysSafe(newStart, maxEnd) + 1)
+                                                    : undefined;
+                                            const clampedDuration =
+                                                maxDur !== undefined && taskForm.duration > maxDur
+                                                    ? maxDur
+                                                    : taskForm.duration;
                                             setTaskForm({
                                                 ...taskForm,
                                                 dep_type: newDep,
                                                 start: newStart,
+                                                duration: clampedDuration,
                                             });
+                                            setActionError(null);
                                         }}
                                         className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
                                     >
@@ -2762,11 +2854,21 @@ export default function ProjectSetupPage() {
                                                           maxEnd,
                                                       )
                                                     : taskForm.start;
+                                                const maxDur =
+                                                    maxEnd && newStart
+                                                        ? Math.max(1, diffDaysSafe(newStart, maxEnd) + 1)
+                                                        : undefined;
+                                                const clampedDuration =
+                                                    maxDur !== undefined && taskForm.duration > maxDur
+                                                        ? maxDur
+                                                        : taskForm.duration;
                                                 setTaskForm({
                                                     ...taskForm,
                                                     lag: clamped,
                                                     start: newStart,
+                                                    duration: clampedDuration,
                                                 });
+                                                setActionError(null);
                                             }}
                                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
                                             placeholder="0"
@@ -2814,11 +2916,21 @@ export default function ProjectSetupPage() {
                                                           maxEnd,
                                                       )
                                                     : taskForm.start;
+                                                const maxDur =
+                                                    maxEnd && newStart
+                                                        ? Math.max(1, diffDaysSafe(newStart, maxEnd) + 1)
+                                                        : undefined;
+                                                const clampedDuration =
+                                                    maxDur !== undefined && taskForm.duration > maxDur
+                                                        ? maxDur
+                                                        : taskForm.duration;
                                                 setTaskForm({
                                                     ...taskForm,
                                                     lag: newLag,
                                                     start: newStart,
+                                                    duration: clampedDuration,
                                                 });
+                                                setActionError(null);
                                             }}
                                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold outline-none focus:border-brand bg-white"
                                             placeholder="0"

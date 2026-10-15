@@ -2,6 +2,9 @@
 
 namespace Tests\Unit;
 
+use App\Models\MainWbs;
+use App\Models\Project;
+use App\Models\SubWbs;
 use App\Models\TaskDependency;
 use App\Models\TaskDependencyGroup;
 use App\Models\Wbs;
@@ -30,12 +33,37 @@ class DependencySchedulerTest extends BaseTestCase
         config([
             'database.default' => 'sqlite',
             'database.connections.sqlite.database' => ':memory:',
-            'database.connections.sqlite.foreign_key_constraints' => true,
+            'database.connections.sqlite.foreign_key_constraints' => false,
         ]);
         DB::purge('sqlite');
 
+        Schema::create('main_wbs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('projects_id')->nullable();
+            $table->string('name')->nullable();
+            $table->dateTime('start')->nullable();
+            $table->dateTime('end')->nullable();
+            $table->dateTime('actual_start')->nullable();
+            $table->dateTime('actual_end')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
+        Schema::create('sub_wbs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('sub_wbs_id')->nullable();
+            $table->string('name')->nullable();
+            $table->dateTime('start')->nullable();
+            $table->dateTime('end')->nullable();
+            $table->dateTime('actual_start')->nullable();
+            $table->dateTime('actual_end')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
         Schema::create('wbs', function (Blueprint $table) {
             $table->string('id', 45)->primary();
+            $table->unsignedBigInteger('sub_wbs_id')->nullable();
             $table->string('name');
             $table->dateTime('start')->nullable();
             $table->dateTime('end')->nullable();
@@ -233,5 +261,44 @@ class DependencySchedulerTest extends BaseTestCase
                 'lag_days' => $group->lag_days,
             ]);
         }
+    }
+
+    public function test_sync_parent_wbs_dates_preserves_planned_deadline(): void
+    {
+        $main = MainWbs::create([
+            'projects_id' => 1,
+            'name' => 'Main 1',
+            'start' => '2026-10-01',
+            'end' => '2026-10-30',
+        ]);
+
+        $sub = SubWbs::create([
+            'sub_wbs_id' => $main->id,
+            'name' => 'Sub 1',
+            'start' => '2026-10-01',
+            'end' => '2026-10-30',
+        ]);
+
+        $task = Wbs::create([
+            'id' => 'T1',
+            'sub_wbs_id' => $sub->id,
+            'name' => 'Task 1',
+            'start' => '2026-10-01',
+            'end' => '2026-10-10',
+            'duration_days' => 10,
+        ]);
+
+        (new DependencyScheduler())->syncParentWbsDates($task);
+
+        $main->refresh();
+        $sub->refresh();
+
+        // Target planned end dates MUST remain 2026-10-30, not shrunk to 2026-10-10
+        $this->assertSame('2026-10-30', $main->end->toDateString());
+        $this->assertSame('2026-10-30', $sub->end->toDateString());
+
+        // Actual end dates reflect child execution
+        $this->assertSame('2026-10-10', $main->actual_end->toDateString());
+        $this->assertSame('2026-10-10', $sub->actual_end->toDateString());
     }
 }

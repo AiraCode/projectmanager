@@ -17,6 +17,7 @@ use App\Models\BudgetEntry;
 use App\Models\WeeklyProgress;
 use App\Models\TaskDependency;
 use App\Models\TaskDependencyGroup;
+use App\Models\User;
 use App\Services\ProgressService;
 use App\Services\ProjectTemplateService;
 use App\Services\DependencyScheduler;
@@ -30,9 +31,12 @@ class ProjectController extends Controller
      * Project card selector (ProjectListPage) — shown to Admin Utama & Admin Progres.
      * PIC is redirected directly to their project dashboard (or creation page if none).
      * Worker is redirected directly to their company's tasks.
+     *
+     * @suppress PHP6613
      */
     public function projectListPage(Request $request)
     {
+        /** @var User|null $user */
         $user = Auth::user();
         $role = $user->role->name ?? '';
 
@@ -46,7 +50,7 @@ class ProjectController extends Controller
                 return back()->withErrors(['message' => 'Anda belum diberikan akses ke proyek manapun. Silakan hubungi Administrator.']);
             }
 
-            $mappedProjects = $projects->map(function ($p) {
+            $mappedProjects = $projects->map(function (Project $p) {
                 return [
                     'id'               => $p->id,
                     'name'             => $p->title,
@@ -88,7 +92,7 @@ class ProjectController extends Controller
             $picProjects = $picProjectsQuery->with(['manager', 'company'])->get();
 
             $companies = Company::select('id', 'name')->get();
-            $mappedProjects = $picProjects->map(function ($p) {
+            $mappedProjects = $picProjects->map(function (Project $p) {
                 return [
                     'id'               => $p->id,
                     'name'             => $p->title,
@@ -118,7 +122,7 @@ class ProjectController extends Controller
         if ($role !== 'SuperAdmin') {
             $query->where('is_private', false);
         }
-        $projects = $query->get()->map(function ($p) {
+        $projects = $query->get()->map(function (Project $p) {
             return [
                 'id'          => $p->id,
                 'name'        => $p->title,
@@ -243,7 +247,6 @@ class ProjectController extends Controller
         }
 
         $divisions = Division::select('id', 'divisi')->get();
-        $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
 
         $availableProjects = [];
         if ($role === 'worker') {
@@ -430,7 +433,7 @@ class ProjectController extends Controller
      */
     public function store(Request $request)
     {
-        /** @var \App\Models\User $user */
+        /** @var User $user */
         $user = Auth::user();
         $role = $user->role->name ?? '';
 
@@ -762,7 +765,7 @@ class ProjectController extends Controller
         $predecessors = TaskDependency::where('successor_wbs_id', $taskId)
             ->with(['predecessor', 'group'])
             ->get()
-            ->map(function ($d) {
+            ->map(function (TaskDependency $d) {
                 return [
                     'id'                 => $d->id,
                     'dependency_group_id' => $d->dependency_group_id,
@@ -776,7 +779,7 @@ class ProjectController extends Controller
         $successors = TaskDependency::where('predecessor_wbs_id', $taskId)
             ->with(['successor', 'group'])
             ->get()
-            ->map(function ($d) {
+            ->map(function (TaskDependency $d) {
                 return [
                     'id'               => $d->id,
                     'successor_wbs_id' => $d->successor_wbs_id,
@@ -910,7 +913,7 @@ class ProjectController extends Controller
     /**
      * Remove a task dependency.
      */
-    public function removeTaskDependency(Request $request, int|string $projectId, string $taskId, string $depId)
+    public function removeTaskDependency(int|string $projectId, string $taskId, string $depId)
     {
         $user = Auth::user();
         $role = $user->role->name ?? '';
@@ -920,9 +923,10 @@ class ProjectController extends Controller
             return back()->withErrors(['message' => 'Access Denied: Only PIC can manage dependencies.']);
         }
 
-        $dep = TaskDependency::whereHas('successor.parentSubWbs.mainWbs', function ($query) use ($projectId) {
-            $query->where('projects_id', $projectId);
-        })->findOrFail($depId);
+        $dep = TaskDependency::where('successor_wbs_id', $taskId)
+            ->whereHas('successor.parentSubWbs.mainWbs', function ($query) use ($projectId) {
+                $query->where('projects_id', $projectId);
+            })->findOrFail($depId);
         $succId = $dep->successor_wbs_id;
         $groupId = $dep->dependency_group_id;
         $dep->delete();
@@ -1172,9 +1176,36 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'main_wbs_id' => 'required|exists:main_wbs,id',
             'name'        => 'required|string|max:255',
+            'start'       => 'nullable|date',
+            'end'         => 'nullable|date',
         ]);
 
         $mainWbs = MainWbs::findOrFail($validated['main_wbs_id']);
+
+        $start = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($mainWbs->start ? Carbon::parse($mainWbs->start)->startOfDay() : Carbon::now()->startOfDay());
+        $end   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : ($mainWbs->end ? Carbon::parse($mainWbs->end)->startOfDay() : Carbon::now()->addMonths(1)->startOfDay());
+
+        if ($mainWbs->start) {
+            $mainStart = Carbon::parse($mainWbs->start)->startOfDay();
+            if ($start->lt($mainStart)) {
+                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh lebih awal dari Start Date Main Task ({$mainStart->format('d/m/Y')})."]);
+            }
+        }
+
+        if ($mainWbs->end) {
+            $mainEnd = Carbon::parse($mainWbs->end)->startOfDay();
+            if ($end->gt($mainEnd)) {
+                return back()->withErrors(['end' => "End date Sub Task ({$end->format('d/m/Y')}) tidak boleh melebihi Target Finish Date Main Task ({$mainEnd->format('d/m/Y')})."]);
+            }
+            if ($start->gt($mainEnd)) {
+                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh melebihi Target Finish Date Main Task ({$mainEnd->format('d/m/Y')})."]);
+            }
+        }
+
+        if ($end->lte($start)) {
+            return back()->withErrors(['end' => 'End date Sub Task harus setelah Start date (minimal 1 hari setelahnya).']);
+        }
+
         $listMainId = $mainWbs->list_main_wbs_names_id;
         if (!$listMainId) {
             $firstListMain = ListMainWbsName::firstOrCreate(['name' => $mainWbs->name]);
@@ -1192,10 +1223,10 @@ class ProjectController extends Controller
             'name'                   => $validated['name'],
             'predecessor'            => '-',
             'predecessor_type'       => 'FS',
-            'start'                  => $mainWbs->start ?? $mainWbs->actual_start ?? Carbon::now(),
-            'end'                    => $mainWbs->end ?? $mainWbs->actual_end ?? Carbon::now()->addMonths(1),
-            'actual_start'           => $mainWbs->start ?? $mainWbs->actual_start ?? Carbon::now(),
-            'actual_end'             => $mainWbs->end ?? $mainWbs->actual_end ?? Carbon::now()->addMonths(1),
+            'start'                  => $start,
+            'end'                    => $end,
+            'actual_start'           => $start,
+            'actual_end'             => $end,
             'progress'               => 0,
             'status'                 => 'Open',
             'weight'                 => 0, // Auto-calculated below by ProgressService
@@ -1301,7 +1332,7 @@ class ProjectController extends Controller
      * PIC only!
      */
 
-    private function cascadeTaskDates($taskId)
+    private function cascadeTaskDates(string $taskId): void
     {
         app(DependencyScheduler::class)->propagate($taskId);
     }
@@ -1482,8 +1513,6 @@ class ProjectController extends Controller
         ]);
 
         $oldPredecessorId  = $task->predecessor;
-        $oldDependencyType = $task->dep_type ?: 'FS';
-        $oldLagDays        = (int) ($task->lag ?? 0) - (int) ($task->lead ?? 0);
 
         $task->name = $validated['name'];
         if (isset($validated['divisions_id'])) {
@@ -1939,7 +1968,7 @@ class ProjectController extends Controller
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
                 if (!$this->isPicAuthorizedForProject($user, $project)) {
-                    return back()->withErrors(['message' => 'Access Denied: PICs cannot access projects belonging to another company.']);
+                    abort(403, 'Access Denied: PICs cannot access projects belonging to another company.');
                 }
 
                 return $project;
@@ -1961,12 +1990,12 @@ class ProjectController extends Controller
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
                 if ($project->companies_id != $user->companies_id) {
-                    return back()->withErrors(['message' => 'Access Denied: Workers can only access projects belonging to their assigned company.']);
+                    abort(403, 'Access Denied: Workers can only access projects belonging to their assigned company.');
                 }
 
                 $projectAccess = $user->permission_matrix['project_access'] ?? [];
                 if (empty($projectAccess[$id]['view_project'])) {
-                    return back()->withErrors(['message' => 'Access Denied: You do not have permission to view this project.']);
+                    abort(403, 'Access Denied: You do not have permission to view this project.');
                 }
 
                 return $project;
@@ -1993,6 +2022,8 @@ class ProjectController extends Controller
 
     /**
      * Transform DB project model into clean JSON structure expected by React frontend.
+     *
+     * @suppress PHP6613
      */
     private function transformProjectData(Project $p, int|string|null $workerDivisionId = null)
     {
@@ -2398,11 +2429,11 @@ class ProjectController extends Controller
         ]);
     }
 
-    public function togglePrivate(Request $request, $id)
+    public function togglePrivate($id)
     {
         $project = Project::findOrFail($id);
 
-        $user = auth()->user();
+        $user = Auth::user();
         if ($user->role->name !== 'pic' && $user->role->name !== 'SuperAdmin') {
             abort(403);
         }

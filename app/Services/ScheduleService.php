@@ -3,9 +3,7 @@
 namespace App\Services;
 
 use App\Models\Project;
-use App\Models\SubWbs;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Log;
 
 class ScheduleService
 {
@@ -27,7 +25,7 @@ class ScheduleService
 
         $changed = true;
         $iterations = 0;
-        $maxIter = count($taskMap) + 1;
+        $maxIter = \count($taskMap) + 1;
 
         // 2. Relaxation Algorithm
         while ($changed && $iterations < $maxIter) {
