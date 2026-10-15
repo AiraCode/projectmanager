@@ -39,7 +39,7 @@ class ProjectController extends Controller
         if ($role === 'worker') {
             $projectAccess = $user->permission_matrix['project_access'] ?? [];
             $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
-            
+
             $projectsQuery = Project::where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->with(['manager', 'company']);
             $projects = $projectsQuery->get();
             if ($projects->count() === 0) {
@@ -893,8 +893,9 @@ class ProjectController extends Controller
 
             $task->update([
                 'predecessor' => $predecessorIds[0],
-                'dep_type' => $validated['dependency_type'],
-                'lag' => $lagDays,
+                'dep_type'    => $validated['dependency_type'],
+                'lag'         => $lagDays > 0 ? $lagDays : 0,
+                'lead'        => $lagDays < 0 ? abs($lagDays) : 0,
             ]);
         });
 
@@ -935,16 +936,19 @@ class ProjectController extends Controller
                 ->with('group')
                 ->first();
             if ($remaining) {
+                $effLag = $remaining->effectiveLagDays();
                 $task->update([
                     'predecessor' => $remaining->predecessor_wbs_id,
                     'dep_type'    => $remaining->effectiveDependencyType(),
-                    'lag'         => $remaining->effectiveLagDays(),
+                    'lag'         => $effLag > 0 ? $effLag : 0,
+                    'lead'        => $effLag < 0 ? abs($effLag) : 0,
                 ]);
             } else {
                 $task->update([
                     'predecessor' => null,
                     'dep_type'    => 'FS',
                     'lag'         => 0,
+                    'lead'        => 0,
                 ]);
             }
 
@@ -1393,7 +1397,7 @@ class ProjectController extends Controller
             'vendor'       => $validated['vendor'] ?? 'INTERNAL',
             'start'        => $startDate,
             'end'          => $endDate,
-            'duration_days'=> max(1, $startDate->diffInDays($endDate) + 1),
+            'duration_days' => max(1, $startDate->diffInDays($endDate) + 1),
             'is_completed' => false,
             'status'       => 'Open',
             'predecessor'  => $primaryPredecessor,
@@ -1402,7 +1406,7 @@ class ProjectController extends Controller
             'lead'         => $primaryLead,
             'requires_evidence' => $validated['requires_evidence'] ?? false,
         ]);
-        
+
         $scheduler = app(DependencyScheduler::class);
         $hasDependencies = false;
 
@@ -1464,125 +1468,155 @@ class ProjectController extends Controller
         })->where('id', $taskId)->firstOrFail();
 
         $validated = $request->validate([
-            'name'         => 'required|string|max:255',
-            'divisions_id' => 'nullable|exists:divisions,id',
-            'duration'     => 'nullable|integer|min:1',
-            'start'        => 'nullable|date',
-            'end'          => 'nullable|date',
-            'vendor'       => 'nullable|string|max:255',
-            'predecessor'  => 'nullable|string|max:50',
-            'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
-            'lag'          => 'nullable|integer',
-            'lead'         => 'nullable|integer',
+            'name'              => 'required|string|max:255',
+            'divisions_id'      => 'nullable|exists:divisions,id',
+            'duration'          => 'nullable|integer|min:1',
+            'start'             => 'nullable|date',
+            'end'               => 'nullable|date',
+            'vendor'            => 'nullable|string|max:255',
+            'predecessor'       => 'nullable|string|max:50',
+            'dep_type'          => 'nullable|string|in:FS,SS,FF,SF',
+            'lag'               => 'nullable|integer',
+            'lead'              => 'nullable|integer',
             'requires_evidence' => 'nullable|boolean',
         ]);
 
-        $oldPredecessorId = $task->predecessor;
+        $oldPredecessorId  = $task->predecessor;
         $oldDependencyType = $task->dep_type ?: 'FS';
-        $oldLagDays = (int) ($task->lag ?? 0) - (int) ($task->lead ?? 0);
+        $oldLagDays        = (int) ($task->lag ?? 0) - (int) ($task->lead ?? 0);
+
         $task->name = $validated['name'];
         if (isset($validated['divisions_id'])) {
             $task->divisions_id = $validated['divisions_id'];
         }
-        $newStart = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($task->start ? Carbon::parse($task->start)->startOfDay() : null);
-        $newEnd   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : ($task->end ? Carbon::parse($task->end)->startOfDay() : null);
 
-        $mainWbs = $task->parentSubWbs?->mainWbs;
-        $minLimit = $mainWbs?->start ? Carbon::parse($mainWbs->start)->startOfDay() : ($project->start ? Carbon::parse($project->start)->startOfDay() : null);
-        $maxLimit = $mainWbs?->end ? Carbon::parse($mainWbs->end)->startOfDay() : ($project->end ? Carbon::parse($project->end)->startOfDay() : null);
+        $newStart = !empty($validated['start'])
+            ? Carbon::parse($validated['start'])->startOfDay()
+            : ($task->start ? Carbon::parse($task->start)->startOfDay() : null);
 
-        if ($minLimit && $newStart && $newStart->lt($minLimit)) {
-            return back()->withErrors(['start' => "Start date Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari jadwal mulai Main Task / Proyek ({$minLimit->format('d/m/Y')})."]);
-        }
+        $newEnd = !empty($validated['end'])
+            ? Carbon::parse($validated['end'])->startOfDay()
+            : ($task->end ? Carbon::parse($task->end)->startOfDay() : null);
 
-        if ($maxLimit) {
-            if ($newStart && $newStart->gt($maxLimit)) {
-                return back()->withErrors(['start' => "Start date Task ({$newStart->format('d/m/Y')}) tidak boleh dimulai lebih lama dari waktu selesai Main Task ({$maxLimit->format('d/m/Y')})."]);
+        // Cek apakah task ini akan memiliki predecessor setelah diupdate
+        $effectivePredecessor = array_key_exists('predecessor', $validated)
+            ? $validated['predecessor']
+            : $task->predecessor;
+        $hasPredecessor = !empty($effectivePredecessor) && $effectivePredecessor !== '-';
+
+        // Hanya validasi batas tanggal manual jika task TIDAK dikendalikan otomatis oleh Predecessor
+        if (!$hasPredecessor) {
+            $minLimit = $project->start ? Carbon::parse($project->start)->startOfDay() : null;
+
+            if ($minLimit && $newStart && $newStart->lt($minLimit)) {
+                return back()->withErrors([
+                    'start' => "Start date Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari jadwal mulai Proyek ({$minLimit->format('d/m/Y')})."
+                ]);
             }
-            if ($newEnd && $newEnd->gt($maxLimit)) {
-                return back()->withErrors(['end' => "End date Task ({$newEnd->format('d/m/Y')}) tidak boleh melebihi batas waktu selesai Main Task ({$maxLimit->format('d/m/Y')})."]);
-            }
-        }
 
-        if ($newStart && $newEnd && $newEnd->lt($newStart)) {
-            return back()->withErrors(['end' => 'End date Task tidak boleh lebih awal dari Start date.']);
+            if ($newStart && $newEnd && $newEnd->lt($newStart)) {
+                return back()->withErrors([
+                    'end' => 'End date Task tidak boleh lebih awal dari Start date.'
+                ]);
+            }
         }
 
         if ($newStart) {
-            $task->start = $newStart;
+            $task->start = $newStart->format('Y-m-d');
         }
         if ($newEnd) {
-            $task->end = $newEnd;
+            $task->end = $newEnd->format('Y-m-d');
         }
-        if ($task->start && $task->end) {
-            $task->duration_days = !empty($validated['duration']) ? (int) $validated['duration'] : max(1, $task->start->diffInDays($task->end) + 1);
+
+        // Prioritaskan input duration jika ada.
+        // Jika tidak ada input duration dan task tidak punya predecessor, hitung dari selisih start & end.
+        if (!empty($validated['duration'])) {
+            $task->duration_days = max(1, (int) $validated['duration']);
+        } elseif (!$hasPredecessor && $newStart && $newEnd) {
+            $task->duration_days = max(1, $newStart->diffInDays($newEnd) + 1);
+        } elseif (!$task->duration_days || $task->duration_days <= 0) {
+            $task->duration_days = ($newStart && $newEnd) ? max(1, $newStart->diffInDays($newEnd) + 1) : 1;
         }
 
         if (array_key_exists('predecessor', $validated)) {
-            $task->predecessor = $validated['predecessor'];
+            $task->predecessor = ($validated['predecessor'] === '-' || empty($validated['predecessor']))
+                ? null
+                : $validated['predecessor'];
         }
-        if (isset($validated['dep_type'])) {
-            $task->dep_type = $validated['dep_type'];
+        if (array_key_exists('dep_type', $validated)) {
+            $task->dep_type = $validated['dep_type'] ?: 'FS';
         }
-        if (isset($validated['lag'])) {
-            $task->lag = $validated['lag'];
+        if (array_key_exists('lag', $validated)) {
+            $task->lag = (int) ($validated['lag'] ?? 0);
         }
-        if (isset($validated['lead'])) {
-            $task->lead = $validated['lead'];
+        if (array_key_exists('lead', $validated)) {
+            $task->lead = (int) ($validated['lead'] ?? 0);
         }
-        if (isset($validated['requires_evidence'])) {
-            $task->requires_evidence = $validated['requires_evidence'];
+        if (array_key_exists('requires_evidence', $validated)) {
+            $task->requires_evidence = (bool) $validated['requires_evidence'];
         }
-        if (isset($validated['vendor'])) {
+        if (array_key_exists('vendor', $validated)) {
             $task->vendor = $validated['vendor'] ?: 'INTERNAL';
         }
 
+        // Cek Circular Dependency jika predecessor berubah
         if (!empty($task->predecessor) && $task->predecessor !== $oldPredecessorId) {
             if (app(DependencyScheduler::class)->wouldCauseCycle($task->predecessor, $task->id)) {
                 return back()->withErrors([
-                    'predecessor' => 'Ketergantungan tidak dapat diubah: terdeteksi circular dependency.',
+                    'predecessor' => 'Ketergantungan tidak dapat diubah: terdeteksi circular dependency (siklus berulang).'
                 ]);
             }
         }
 
         $task->save();
 
-        if (array_key_exists('predecessor', $validated)) {
-            $newPredecessorId = $task->predecessor;
+        // Sinkronisasi ke tabel task_dependencies dan task_dependency_groups
+        // (Berjalan baik ketika predecessor diubah maupun ketika hanya lag, lead, atau dep_type yang diubah)
+        $dependencyFieldsUpdated = array_key_exists('predecessor', $validated)
+            || array_key_exists('dep_type', $validated)
+            || array_key_exists('lag', $validated)
+            || array_key_exists('lead', $validated);
+
+        if ($dependencyFieldsUpdated) {
+            $newPredecessorId  = $task->predecessor;
             $newDependencyType = $task->dep_type ?: 'FS';
-            $newLagDays = (int) ($task->lag ?? 0) - (int) ($task->lead ?? 0);
-            $oldDependency = $oldPredecessorId
-                ? TaskDependency::where('successor_wbs_id', $task->id)
-                    ->where('predecessor_wbs_id', $oldPredecessorId)
-                    ->with('group')
-                    ->first()
-                : null;
+            $newLagDays        = (int) ($task->lag ?? 0) - (int) ($task->lead ?? 0);
 
             if (empty($newPredecessorId) || $newPredecessorId === '-') {
                 $this->deleteTaskDependencies($task);
             } elseif ($newPredecessorId !== $oldPredecessorId) {
                 $this->deleteTaskDependencies($task);
                 $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
-            } elseif ($oldDependency && ($newDependencyType !== $oldDependencyType || $newLagDays !== $oldLagDays)) {
-                $group = $oldDependency->group;
-                if ($group) {
-                    $group->update([
-                        'dependency_type' => $newDependencyType,
-                        'lag_days' => $newLagDays,
-                    ]);
-                    TaskDependency::where('dependency_group_id', $group->id)->update([
-                        'dependency_type' => $newDependencyType,
-                        'lag_days' => $newLagDays,
-                    ]);
+            } else {
+                // Jika predecessor tetap sama, update nilai lag_days dan dependency_type di tabel relasi
+                $oldDependency = TaskDependency::where('successor_wbs_id', $task->id)
+                    ->where('predecessor_wbs_id', $newPredecessorId)
+                    ->with('group')
+                    ->first();
+
+                if ($oldDependency) {
+                    $group = $oldDependency->group;
+                    if ($group) {
+                        $group->update([
+                            'dependency_type' => $newDependencyType,
+                            'lag_days'        => $newLagDays,
+                        ]);
+                        TaskDependency::where('dependency_group_id', $group->id)->update([
+                            'dependency_type' => $newDependencyType,
+                            'lag_days'        => $newLagDays,
+                        ]);
+                    } else {
+                        $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
+                    }
                 } else {
                     $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
                 }
-            } elseif (!$oldDependency) {
-                $this->storeSingleTaskDependency($task, $newPredecessorId, $newDependencyType, $newLagDays);
             }
         }
 
-        app(DependencyScheduler::class)->recalculateTaskDates($task);
+        // Hitung ulang tanggal task ini berdasarkan Predecessor + Lag/Lead, lalu teruskan (cascade) ke successor-nya
+        $scheduler = app(DependencyScheduler::class);
+        $scheduler->recalculateTaskDates($task);
         $this->cascadeTaskDates($task->id);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
@@ -1776,7 +1810,7 @@ class ProjectController extends Controller
 
             $task->is_completed = ($task->progress == 100);
             $task->status = $task->is_completed ? 'Completed' : ($task->progress > 0 ? 'On Track' : 'Open');
-            
+
             if ($task->is_completed && !$task->completed_by) {
                 $task->completed_by = Auth::id();
                 $task->completed_at = now();
@@ -1794,7 +1828,7 @@ class ProjectController extends Controller
             $task->is_completed = !$task->is_completed;
             $task->progress = $task->is_completed ? 100 : 0;
             $task->status = $task->is_completed ? 'Completed' : 'Open';
-            
+
             if ($task->is_completed) {
                 $task->completed_by = Auth::id();
                 $task->completed_at = now();
@@ -1836,7 +1870,7 @@ class ProjectController extends Controller
             'wbs_id' => $task->id,
             'user_id' => Auth::id(),
             'action' => $task->is_completed ? 'task_completed' : 'task_updated',
-            'description' => $task->is_completed 
+            'description' => $task->is_completed
                 ? "Task '{$task->name}' ditandai selesai (100%)."
                 : "Task '{$task->name}' diupdate progressnya menjadi {$task->progress}%.",
         ]);
@@ -1914,7 +1948,7 @@ class ProjectController extends Controller
                 if ($user->companies_id) {
                     $project = $queryPic->where(function ($q) use ($user) {
                         $q->where('companies_id', $user->companies_id)
-                          ->orWhere('project_manager', $user->id);
+                            ->orWhere('project_manager', $user->id);
                     })->first();
                 } else {
                     $project = $queryPic->where('project_manager', $user->id)->first();
@@ -1929,12 +1963,12 @@ class ProjectController extends Controller
                 if ($project->companies_id != $user->companies_id) {
                     return back()->withErrors(['message' => 'Access Denied: Workers can only access projects belonging to their assigned company.']);
                 }
-                
+
                 $projectAccess = $user->permission_matrix['project_access'] ?? [];
                 if (empty($projectAccess[$id]['view_project'])) {
                     return back()->withErrors(['message' => 'Access Denied: You do not have permission to view this project.']);
                 }
-                
+
                 return $project;
             } else {
                 $projectAccess = $user->permission_matrix['project_access'] ?? [];
@@ -1998,7 +2032,7 @@ class ProjectController extends Controller
                         'depType'     => $st->dep_type ?? 'FS',
                         'lag'         => (int) ($st->lag ?? 0),
                         'lead'        => (int) ($st->lead ?? 0),
-                        'dependencies'=> $st->predecessorDependencies ? $st->predecessorDependencies->map(function ($d) {
+                        'dependencies' => $st->predecessorDependencies ? $st->predecessorDependencies->map(function ($d) {
                             return [
                                 'id'                 => $d->id,
                                 'dependency_group_id' => $d->dependency_group_id,
@@ -2012,13 +2046,13 @@ class ProjectController extends Controller
                         'checked'     => (bool) $st->is_completed,
                         'requiresEvidence' => (bool) $st->requires_evidence,
                         'division'    => $st->division?->divisi ?? 'General',
-                        'evidences'   => $st->evidence_path ? (function() use ($st) {
+                        'evidences'   => $st->evidence_path ? (function () use ($st) {
                             $decoded = json_decode($st->evidence_path, true);
                             if (is_array($decoded)) {
                                 $names = json_decode($st->evidence_name, true) ?? [];
-                                return collect($decoded)->map(function($path, $idx) use ($names) {
+                                return collect($decoded)->map(function ($path, $idx) use ($names) {
                                     return [
-                                        'name' => $names[$idx] ?? 'evidence-'.$idx,
+                                        'name' => $names[$idx] ?? 'evidence-' . $idx,
                                         'previewUrl' => asset('storage/' . $path),
                                     ];
                                 })->toArray();
@@ -2367,7 +2401,7 @@ class ProjectController extends Controller
     public function togglePrivate(Request $request, $id)
     {
         $project = Project::findOrFail($id);
-        
+
         $user = auth()->user();
         if ($user->role->name !== 'pic' && $user->role->name !== 'SuperAdmin') {
             abort(403);

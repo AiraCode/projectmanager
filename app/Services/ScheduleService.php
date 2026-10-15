@@ -38,7 +38,7 @@ class ScheduleService
                 foreach ($mainWbs->subWbs as $st) {
                     $newStart = $st->start ? Carbon::parse($st->start) : null;
                     $newEnd = $st->end ? Carbon::parse($st->end) : null;
-                    
+
                     // Duration in days based on current start/end, default 1 if empty
                     $duration = 1;
                     if ($newStart && $newEnd) {
@@ -55,16 +55,16 @@ class ScheduleService
                             $predEnd = Carbon::parse($pred->end);
 
                             if ($depType === 'FS') {
-                                $newStart = $predEnd->copy()->subDays($lag);
+                                $newStart = $predEnd->copy()->addDays(1 + $lag);
                                 $newEnd = $newStart->copy()->addDays(max(0, $duration - 1));
                             } elseif ($depType === 'SS') {
-                                $newStart = $predStart->copy()->subDays($lag);
+                                $newStart = $predStart->copy()->addDays($lag);
                                 $newEnd = $newStart->copy()->addDays(max(0, $duration - 1));
                             } elseif ($depType === 'FF') {
-                                $newEnd = $predEnd->copy()->subDays($lag);
+                                $newEnd = $predEnd->copy()->addDays($lag);
                                 $newStart = $newEnd->copy()->subDays(max(0, $duration - 1));
                             } elseif ($depType === 'SF') {
-                                $newEnd = $predStart->copy()->subDays($lag);
+                                $newEnd = $predStart->copy()->addDays($lag);
                                 $newStart = $newEnd->copy()->subDays(max(0, $duration - 1));
                             }
                         }
@@ -77,7 +77,7 @@ class ScheduleService
                     if ($isStartChanged || $isEndChanged) {
                         $st->start = $newStart ? $newStart->startOfDay() : $st->start;
                         $st->end = $newEnd ? $newEnd->endOfDay() : $st->end;
-                        
+
                         $changed = true;
                         $taskMap[$st->id] = $st;
                     }

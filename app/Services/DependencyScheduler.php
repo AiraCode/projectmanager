@@ -101,7 +101,7 @@ class DependencyScheduler
             ->with(['predecessor', 'group'])
             ->get();
 
-        // Also check legacy predecessor field if no TaskDependency rows exist
+        // Fallback jika belum ada baris di task_dependencies tapi kolom predecessor terisi
         if ($predecessorDeps->isEmpty() && !empty($task->predecessor) && $task->predecessor !== '-') {
             $predTask = Wbs::find($task->predecessor);
             if ($predTask) {
@@ -109,15 +109,15 @@ class DependencyScheduler
                 $depType = $task->dep_type ?: 'FS';
                 $group = TaskDependencyGroup::create([
                     'successor_wbs_id' => $task->id,
-                    'dependency_type'    => $depType,
-                    'lag_days'           => $lag,
+                    'dependency_type'  => $depType,
+                    'lag_days'         => $lag,
                 ]);
                 TaskDependency::create([
-                    'predecessor_wbs_id' => $predTask->id,
-                    'successor_wbs_id' => $task->id,
+                    'predecessor_wbs_id'  => $predTask->id,
+                    'successor_wbs_id'    => $task->id,
                     'dependency_group_id' => $group->id,
-                    'dependency_type' => $depType,
-                    'lag_days' => $lag,
+                    'dependency_type'     => $depType,
+                    'lag_days'            => $lag,
                 ]);
 
                 $predecessorDeps = TaskDependency::where('successor_wbs_id', $task->id)
@@ -130,12 +130,12 @@ class DependencyScheduler
             return false;
         }
 
-        $currentStart = Carbon::parse($task->start);
-        $currentEnd   = Carbon::parse($task->end);
+        $currentStart = Carbon::parse($task->start)->startOfDay();
+        $currentEnd   = Carbon::parse($task->end)->startOfDay();
 
-        // Compute current duration (minimum 1 day: diff + 1)
-        $durationDays = $task->duration_days;
-        if (!$durationDays || $durationDays <= 0) {
+        // Pertahankan durasi tugas (minimal 1 hari)
+        $durationDays = (int) $task->duration_days;
+        if ($durationDays <= 0) {
             $durationDays = max(1, $currentStart->diffInDays($currentEnd) + 1);
         }
 
@@ -147,35 +147,44 @@ class DependencyScheduler
                 continue;
             }
 
-            $predStart = Carbon::parse($pred->start);
-            $predEnd   = Carbon::parse($pred->end);
-            $lag       = $dep->effectiveLagDays();
+            $predStart = Carbon::parse($pred->start)->startOfDay();
+            $predEnd   = Carbon::parse($pred->end)->startOfDay();
+
+            // Positif = Lag (jeda maju), Negatif = Lead (percepatan mundur)
+            $lag = (int) $dep->effectiveLagDays();
 
             $reqStart = null;
             switch ($dep->effectiveDependencyType()) {
                 case 'FS':
-                    // Finish-to-Start: Successor start must be after Predecessor end - lag
-                    $reqStart = $predEnd->copy()->subDays($lag);
+                    // Finish-to-Start standar:
+                    // Jika Predecessor selesai hari H dan Lag = 0, Successor mulai H + 1 hari.
+                    // Jika ingin ketika Lag = 0 mulai di hari yang sama (H), ubah (1 + $lag) menjadi ($lag).
+                    $reqStart = $predEnd->copy()->addDays(1 + $lag);
                     break;
+
                 case 'SS':
-                    // Start-to-Start: Successor start must be on or after Predecessor start - lag
-                    $reqStart = $predStart->copy()->subDays($lag);
+                    // Start-to-Start: Mulai dari Start Predecessor + Lag/Lead
+                    $reqStart = $predStart->copy()->addDays($lag);
                     break;
+
                 case 'FF':
-                    // Preserve task duration while enforcing the finish-date constraint.
-                    // End = predEnd - lag => Start = End - (durationDays - 1)
-                    $reqStart = $predEnd->copy()->subDays($lag + ($durationDays - 1));
+                    // Finish-to-Finish: End = predEnd + Lag/Lead
+                    // Maka Start = End - (durationDays - 1)
+                    $reqEnd   = $predEnd->copy()->addDays($lag);
+                    $reqStart = $reqEnd->copy()->subDays(max(0, $durationDays - 1));
                     break;
+
                 case 'SF':
-                    // Preserve task duration while enforcing the finish-date constraint.
-                    // End = predStart - lag => Start = End - (durationDays - 1)
-                    $reqStart = $predStart->copy()->subDays($lag + ($durationDays - 1));
+                    // Start-to-Finish: End = predStart + Lag/Lead
+                    // Maka Start = End - (durationDays - 1)
+                    $reqEnd   = $predStart->copy()->addDays($lag);
+                    $reqStart = $reqEnd->copy()->subDays(max(0, $durationDays - 1));
                     break;
             }
 
             if ($reqStart) {
                 if ($newStart === null || $reqStart->gt($newStart)) {
-                    $newStart = $reqStart->copy();
+                    $newStart = $reqStart->copy()->startOfDay();
                 }
             }
         }
@@ -184,41 +193,38 @@ class DependencyScheduler
             $newStart = $currentStart->copy();
         }
 
-        $mainWbs = $task->parentSubWbs?->mainWbs;
-        $project = $mainWbs?->project;
-        $minLimit = $mainWbs?->start ? Carbon::parse($mainWbs->start)->startOfDay() : ($project?->start ? Carbon::parse($project->start)->startOfDay() : null);
-        $maxLimit = $mainWbs?->end ? Carbon::parse($mainWbs->end)->startOfDay() : ($project?->end ? Carbon::parse($project->end)->startOfDay() : null);
-
-        // Clamp: never start before minLimit (Project / Main Task start)
-        if ($minLimit && $newStart->lt($minLimit)) {
-            $newStart = $minLimit->copy();
+        // Batas bawah hanya mengikuti Project Start (jika ada) agar Lead tidak mundur sebelum proyek dimulai.
+        // JANGAN di-clamp ke MainWbs->end agar saat diberi Lag, tanggal tidak tertahan/kacau!
+        $project = $task->parentSubWbs?->mainWbs?->project;
+        if ($project && $project->start) {
+            $projStart = Carbon::parse($project->start)->startOfDay();
+            if ($newStart->lt($projStart)) {
+                $newStart = $projStart->copy();
+            }
         }
 
-        // Clamp: never start after maxLimit (Main Task finish date)
-        if ($maxLimit && $newStart->gt($maxLimit)) {
-            $newStart = $maxLimit->copy();
-        }
+        // Hitung End Date berdasarkan Start Date baru + Durasi
+        $newEnd = $newStart->copy()->addDays(max(0, $durationDays - 1))->startOfDay();
 
-        // End = Start + Duration - 1
-        $newEnd = $newStart->copy()->addDays(max(0, $durationDays - 1));
-
-        // Guarantee end is not earlier than start
         if ($newEnd->lt($newStart)) {
             $newEnd = $newStart->copy();
         }
 
         $diffDays = max(1, $newStart->diffInDays($newEnd) + 1);
 
-        // Check if changed
-        $hasChanged = !$currentStart->equalTo($newStart) || !$currentEnd->equalTo($newEnd);
+        // Cek apakah tanggal berubah (gunakan isSameDay agar tidak terpengaruh jam)
+        $hasChanged = !$currentStart->isSameDay($newStart) || !$currentEnd->isSameDay($newEnd) || (int)$task->duration_days !== $diffDays;
 
         if ($hasChanged) {
             $task->update([
-                'start'         => $newStart,
-                'end'           => $newEnd,
+                'start'         => $newStart->format('Y-m-d'),
+                'end'           => $newEnd->format('Y-m-d'),
                 'duration_days' => $diffDays,
             ]);
         }
+
+        // Sinkronkan tanggal parent (SubWbs & MainWbs)
+        $this->syncParentWbsDates($task);
 
         return $hasChanged;
     }
@@ -322,12 +328,14 @@ class DependencyScheduler
             ->get();
 
         if ($childWbs->isNotEmpty()) {
-            $minStart = $childWbs->min('start');
-            $maxEnd   = $childWbs->max('end');
+            $minStart = Carbon::parse($childWbs->min('start'))->startOfDay();
+            $maxEnd   = Carbon::parse($childWbs->max('end'))->startOfDay();
 
             $subWbs->update([
-                'start' => $minStart,
-                'end'   => $maxEnd,
+                'start'        => $minStart->format('Y-m-d'),
+                'end'          => $maxEnd->format('Y-m-d'),
+                'actual_start' => $minStart->format('Y-m-d'),
+                'actual_end'   => $maxEnd->format('Y-m-d'),
             ]);
 
             $mainWbs = $subWbs->mainWbs;
@@ -338,28 +346,15 @@ class DependencyScheduler
                     ->get();
 
                 if ($siblingSubs->isNotEmpty()) {
-                    $mainStart = $siblingSubs->min('start');
-                    $mainEnd   = $siblingSubs->max('end');
+                    $mainStart = Carbon::parse($siblingSubs->min('start'))->startOfDay();
+                    $mainEnd   = Carbon::parse($siblingSubs->max('end'))->startOfDay();
 
-                    $project = $mainWbs->project;
-                    if ($project && $project->end && $mainEnd && Carbon::parse($mainEnd)->gt(Carbon::parse($project->end))) {
-                        $mainEnd = Carbon::parse($project->end);
-                    }
-                    if ($project && $project->start && $mainStart && Carbon::parse($mainStart)->lt(Carbon::parse($project->start))) {
-                        $mainStart = Carbon::parse($project->start);
-                    }
-
-                    $updates = [];
-                    if (!$mainWbs->start || ($mainStart && Carbon::parse($mainStart)->lt(Carbon::parse($mainWbs->start)))) {
-                        $updates['start'] = $mainStart;
-                    }
-                    if (!$mainWbs->end || ($mainEnd && Carbon::parse($mainEnd)->gt(Carbon::parse($mainWbs->end)))) {
-                        $updates['end'] = $mainEnd;
-                    }
-
-                    if (!empty($updates)) {
-                        $mainWbs->update($updates);
-                    }
+                    $mainWbs->update([
+                        'start'        => $mainStart->format('Y-m-d'),
+                        'end'          => $mainEnd->format('Y-m-d'),
+                        'actual_start' => $mainStart->format('Y-m-d'),
+                        'actual_end'   => $mainEnd->format('Y-m-d'),
+                    ]);
                 }
             }
         }
