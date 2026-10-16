@@ -1,13 +1,5 @@
 import { Project, WeekData } from '../data/mockData';
 
-// Helper to add days to a YYYY-MM-DD string
-function addDays(dateStr: string, days: number): string {
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return dateStr;
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
 function parseUtcDate(dateStr: string): number {
   if (!dateStr) return NaN;
   const parts = dateStr.slice(0, 10).split('-').map(Number);
@@ -16,7 +8,29 @@ function parseUtcDate(dateStr: string): number {
 }
 
 function getDaysDiffInclusive(startMs: number, endMs: number): number {
-  return Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.round((endMs - startMs) / 86400000) + 1;
+}
+
+function formatUtcDate(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function addDaysUtc(dateStr: string, days: number): string {
+  const ms = parseUtcDate(dateStr);
+  if (isNaN(ms)) return dateStr;
+  return formatUtcDate(ms + days * 86400000);
+}
+
+interface SchedulableItem {
+  id: string;
+  name: string;
+  weight: number;
+  startDate: string;
+  finishDate: string;
 }
 
 export function recalculateWeeklyData(project: Project): Project {
@@ -27,7 +41,7 @@ export function recalculateWeeklyData(project: Project): Project {
   let minDateStr = newProject.startDate || '';
   let maxDateStr = newProject.endDate || '';
 
-  newProject.mainJobs.forEach(mj => {
+  newProject.mainJobs?.forEach(mj => {
     // If mj missing start/finish, look into children
     if (!mj.startDate || !mj.finishDate) {
       let minS = mj.startDate;
@@ -49,7 +63,7 @@ export function recalculateWeeklyData(project: Project): Project {
   });
 
   if (!minDateStr) minDateStr = new Date().toISOString().slice(0, 10);
-  if (!maxDateStr || maxDateStr < minDateStr) maxDateStr = addDays(minDateStr, 6);
+  if (!maxDateStr || maxDateStr < minDateStr) maxDateStr = addDaysUtc(minDateStr, 6);
 
   newProject.startDate = minDateStr;
   newProject.endDate = maxDateStr;
@@ -59,33 +73,96 @@ export function recalculateWeeklyData(project: Project): Project {
   let currentStart = minDateStr;
   let weekNum = 1;
   
-  // Create weeks until we cover the maxDateStr
+  // Create weeks until we cover maxDateStr
   while (currentStart <= maxDateStr) {
-    const currentEnd = addDays(currentStart, 6); // 7 days inclusive (e.g., Mon-Sun)
+    const currentEnd = addDaysUtc(currentStart, 6); // 7 days inclusive
     weeks.push({
       week: weekNum,
       startDate: currentStart,
       endDate: currentEnd,
     });
-    currentStart = addDays(currentEnd, 1);
+    currentStart = addDaysUtc(currentEnd, 1);
     weekNum++;
   }
 
-  // 3. Distribute Planned Progress and recalculate cumulatives
-  const weeklyData: WeekData[] = [];
-  let plannedCumulative = 0;
-  let actualCumulative = 0;
+  // 3. Extract Schedulable Leaf Items with Daily Rate ("Dibagi Hari")
+  const schedulableItems: SchedulableItem[] = [];
 
-  // Normalize total weights across all Main Jobs to 100%
-  const rawTotalWeight = newProject.mainJobs.reduce((sum, mj) => sum + (Number(mj.weight) || 0), 0);
-  const weightNormalizer = rawTotalWeight > 0 ? 100 / rawTotalWeight : 1;
+  newProject.mainJobs?.forEach(mj => {
+    const mjWeight = Number(mj.weight) || 0;
+    if (mjWeight <= 0) return;
 
-  // Total schedulable weight for jobs with dates
-  const totalSchedulableWeight = newProject.mainJobs.reduce((sum, mj) => {
-    if (!mj.startDate || !mj.finishDate || (Number(mj.weight) || 0) <= 0) return sum;
-    return sum + (Number(mj.weight) || 0) * weightNormalizer;
-  }, 0);
-  const targetTotal = totalSchedulableWeight > 0 ? Math.min(100, parseFloat(totalSchedulableWeight.toFixed(2))) : 0;
+    let hasSubItems = false;
+    const subItems: SchedulableItem[] = [];
+
+    mj.subMainJobs?.forEach(smj => {
+      let hasTaskItems = false;
+      const taskItems: SchedulableItem[] = [];
+
+      smj.subtasks?.forEach(st => {
+        if (st.startDate && st.finishDate) {
+          taskItems.push({
+            id: st.id,
+            name: st.name,
+            weight: Number(st.weight) || 0,
+            startDate: st.startDate,
+            finishDate: st.finishDate,
+          });
+          hasTaskItems = true;
+        }
+      });
+
+      if (hasTaskItems && taskItems.length > 0) {
+        const smjWeight = Number(smj.weight) || (mjWeight / Math.max(1, mj.subMainJobs?.length || 1));
+        const rawTaskSum = taskItems.reduce((sum, t) => sum + t.weight, 0);
+        const norm = rawTaskSum > 0 ? (smjWeight / rawTaskSum) : (smjWeight / taskItems.length);
+
+        taskItems.forEach(t => {
+          subItems.push({
+            ...t,
+            weight: rawTaskSum > 0 ? t.weight * norm : norm,
+          });
+        });
+        hasSubItems = true;
+      } else if (smj.startDate && smj.finishDate) {
+        subItems.push({
+          id: smj.id,
+          name: smj.name,
+          weight: Number(smj.weight) || (mjWeight / Math.max(1, mj.subMainJobs?.length || 1)),
+          startDate: smj.startDate,
+          finishDate: smj.finishDate,
+        });
+        hasSubItems = true;
+      }
+    });
+
+    if (hasSubItems && subItems.length > 0) {
+      const rawSubSum = subItems.reduce((sum, s) => sum + s.weight, 0);
+      const norm = rawSubSum > 0 ? (mjWeight / rawSubSum) : (mjWeight / subItems.length);
+      subItems.forEach(s => {
+        schedulableItems.push({
+          ...s,
+          weight: rawSubSum > 0 ? s.weight * norm : norm,
+        });
+      });
+    } else if (mj.startDate && mj.finishDate) {
+      schedulableItems.push({
+        id: mj.id,
+        name: mj.name,
+        weight: mjWeight,
+        startDate: mj.startDate,
+        finishDate: mj.finishDate,
+      });
+    }
+  });
+
+  // Normalize across all items so total weight is exactly 100.0%
+  const totalRawWeight = schedulableItems.reduce((sum, item) => sum + item.weight, 0);
+  const globalNorm = totalRawWeight > 0 ? (100.0 / totalRawWeight) : 1.0;
+
+  schedulableItems.forEach(item => {
+    item.weight = item.weight * globalNorm;
+  });
 
   // Identify current week index based on today's date
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -106,70 +183,67 @@ export function recalculateWeeklyData(project: Project): Project {
 
   const overallActual = Number(newProject.overallProgress || 0);
 
+  // 4. Distribute Planned Progress across weeks (Pure Daily Division + Telescoping Delta)
+  const weeklyData: WeekData[] = [];
+  let rawCumulative = 0;
+  let prevPlannedCum = 0;
+  let actualCumulative = 0;
+
   weeks.forEach((w, idx) => {
-    let weekPlanned = 0;
+    let weekPlannedRaw = 0;
     const wStartMs = parseUtcDate(w.startDate);
     const wEndMs = parseUtcDate(w.endDate);
 
-    newProject.mainJobs.forEach(mj => {
-      const mjWeight = (Number(mj.weight) || 0) * weightNormalizer;
-      if (!mj.startDate || !mj.finishDate || mjWeight <= 0) return;
+    schedulableItems.forEach(item => {
+      const itemStartMs = parseUtcDate(item.startDate);
+      const itemEndMs = parseUtcDate(item.finishDate);
+      if (isNaN(itemStartMs) || isNaN(itemEndMs) || itemStartMs > itemEndMs) return;
 
-      const mjStartMs = parseUtcDate(mj.startDate);
-      const mjEndMs = parseUtcDate(mj.finishDate);
+      const itemDurationDays = getDaysDiffInclusive(itemStartMs, itemEndMs);
+      if (itemDurationDays <= 0) return;
 
-      if (isNaN(mjStartMs) || isNaN(mjEndMs) || mjStartMs > mjEndMs) return;
-
-      const mjDurationDays = getDaysDiffInclusive(mjStartMs, mjEndMs);
-      if (mjDurationDays <= 0) return;
-
-      // Check if this Main Job overlaps during this week
-      const overlapStartMs = Math.max(mjStartMs, wStartMs);
-      const overlapEndMs = Math.min(mjEndMs, wEndMs);
+      const overlapStartMs = Math.max(itemStartMs, wStartMs);
+      const overlapEndMs = Math.min(itemEndMs, wEndMs);
 
       if (overlapStartMs <= overlapEndMs) {
         const overlapDays = getDaysDiffInclusive(overlapStartMs, overlapEndMs);
         if (overlapDays > 0) {
-          // Daily pro-rata weight distribution to eliminate boundary overlap duplication
-          weekPlanned += mjWeight * (overlapDays / mjDurationDays);
+          // Bobot dibagi hari dikali jumlah hari aktif dalam minggu ini
+          const dailyRate = item.weight / itemDurationDays;
+          weekPlannedRaw += dailyRate * overlapDays;
         }
       }
     });
 
-    weekPlanned = parseFloat(weekPlanned.toFixed(2));
-    plannedCumulative += weekPlanned;
-    plannedCumulative = parseFloat(plannedCumulative.toFixed(2));
+    rawCumulative += weekPlannedRaw;
 
-    // Reconcile rounding on final week so total planned equals targetTotal (usually 100%)
-    if (idx === weeks.length - 1 && targetTotal > 0) {
-      const residual = parseFloat((targetTotal - plannedCumulative).toFixed(2));
-      if (Math.abs(residual) <= 1.0) {
-        weekPlanned = Math.max(0, parseFloat((weekPlanned + residual).toFixed(2)));
-        plannedCumulative = targetTotal;
-      }
-    } else if (plannedCumulative > targetTotal && targetTotal > 0) {
-      plannedCumulative = targetTotal;
+    let plannedCumulative = 0;
+    let weekPlanned = 0;
+
+    if (idx === weeks.length - 1) {
+      plannedCumulative = 100.00;
+      weekPlanned = parseFloat(Math.max(0, 100.00 - prevPlannedCum).toFixed(2));
+    } else {
+      plannedCumulative = parseFloat(Math.min(100.00, Math.round(rawCumulative * 100) / 100).toFixed(2));
+      weekPlanned = parseFloat(Math.max(0, plannedCumulative - prevPlannedCum).toFixed(2));
     }
+    prevPlannedCum = plannedCumulative;
 
     // Determine actual progress for this week:
     let actualValue = 0;
     const isElapsed = idx <= currentWeekIdx;
 
     if (hasSavedActuals) {
-      // Use explicitly saved weekly actuals from DB
       const existingWeek = newProject.weeklyData?.find(ew => ew.week === w.week);
       const saved = savedActuals[w.week];
       actualValue = saved !== undefined ? Number(saved) : (existingWeek?.actual || 0);
       actualCumulative += actualValue;
-      actualCumulative = parseFloat(actualCumulative.toFixed(2));
+      actualCumulative = Math.min(100, parseFloat(actualCumulative.toFixed(2)));
     } else if (isElapsed && overallActual > 0) {
-      // If no explicit weekly actuals saved yet, distribute the project's actual overallProgress
-      // smoothly up to the current week
       const targetCumulative = parseFloat(
-        (((idx + 1) / (currentWeekIdx + 1)) * overallActual).toFixed(2)
+        Math.min(overallActual, (((idx + 1) / (currentWeekIdx + 1)) * overallActual)).toFixed(2)
       );
-      actualValue = parseFloat((targetCumulative - actualCumulative).toFixed(2));
-      if (actualValue < 0) actualValue = 0;
+      actualValue = parseFloat(Math.max(0, targetCumulative - actualCumulative).toFixed(2));
       actualCumulative = targetCumulative;
     } else {
       actualValue = 0;

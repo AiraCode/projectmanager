@@ -324,7 +324,7 @@ export default function SCurvePage() {
           const dayDiff = Math.max(0, Math.min(6, Math.round((curr.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24))));
           const prevWeekPlan = wIdx > 0 ? weeks[wIdx - 1].plannedCumulative : 0;
 
-          planCum = Number((prevWeekPlan + (w.planned * (dayDiff + 1) / 7)).toFixed(2));
+          planCum = Math.min(100, Number((prevWeekPlan + (w.planned * (dayDiff + 1) / 7)).toFixed(2)));
           dailyPlan = Number((w.planned / 7).toFixed(2));
 
           if (dStr <= todayStr) {
