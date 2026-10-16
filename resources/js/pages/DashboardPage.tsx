@@ -1,7 +1,7 @@
 import { Calendar, Clock, TrendingUp, DollarSign, CheckCircle2, AlertTriangle, XCircle, Layers, ArrowUpRight, Users } from 'lucide-react';
 import { Link, usePage } from '@inertiajs/react';
 import { useState, useEffect, useMemo } from 'react';
-import { Project, PROJECT } from '@/data/mockData';
+import { Project, PROJECT, scaleProjectTemplateDates } from '@/data/mockData';
 import { StatusBadge, ProgressBar, formatRupiah, PageHeader, Card, KpiCard, formatDateDisplay, formatDivisionName } from '@/components/ui';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { recalculateProgress } from '@/utils/progressEngine';
@@ -16,14 +16,19 @@ export default function DashboardPage() {
 
   // Initialize with recalculated progress and schedule using the project from DB
   const [p, setP] = useState<Project>(() => {
-    const raw = project && project.mainJobs ? project : PROJECT;
+    const raw = project && project.mainJobs?.length
+      ? project
+      : scaleProjectTemplateDates(project || PROJECT, project?.startDate, project?.endDate);
     const dbProject = { ...raw, weeklyData: raw.weeklyData?.length ? raw.weeklyData : PROJECT.weeklyData, budgetEntries: raw.budgetEntries?.length ? raw.budgetEntries : PROJECT.budgetEntries };
     return recalculateWeeklyData(recalculateSchedule(recalculateProgress(dbProject)));
   });
 
   useEffect(() => {
-    if (project && project.mainJobs) {
-      const dbProject = { ...project, weeklyData: project.weeklyData?.length ? project.weeklyData : PROJECT.weeklyData, budgetEntries: project.budgetEntries?.length ? project.budgetEntries : PROJECT.budgetEntries };
+    if (project) {
+      const raw = project.mainJobs?.length
+        ? project
+        : scaleProjectTemplateDates(project, project?.startDate, project?.endDate);
+      const dbProject = { ...raw, weeklyData: raw.weeklyData?.length ? raw.weeklyData : PROJECT.weeklyData, budgetEntries: raw.budgetEntries?.length ? raw.budgetEntries : PROJECT.budgetEntries };
       setP(recalculateWeeklyData(recalculateSchedule(recalculateProgress(dbProject))));
     }
   }, [project]);

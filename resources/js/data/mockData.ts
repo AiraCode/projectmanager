@@ -640,3 +640,52 @@ export const PIC_USER = {
   role: 'PIC' as Role,
   pic: 'Engineering',
 };
+
+/**
+ * Scales all tasks, sub-tasks, and main jobs in a project template so that
+ * they strictly follow the given project start and end dates.
+ */
+export function scaleProjectTemplateDates(project: Project, targetStartDate?: string, targetEndDate?: string): Project {
+  if (!targetStartDate || !targetEndDate) return project;
+  const clone: Project = JSON.parse(JSON.stringify(project));
+  clone.startDate = targetStartDate;
+  clone.endDate = targetEndDate;
+
+  const tStart = new Date(targetStartDate).getTime();
+  const tEnd = new Date(targetEndDate).getTime();
+  if (isNaN(tStart) || isNaN(tEnd) || tEnd <= tStart) return project;
+
+  const origStart = new Date(project.startDate || '2024-01-15').getTime();
+  const origEnd = new Date(project.endDate || '2026-12-31').getTime();
+  const origSpan = Math.max(1, origEnd - origStart);
+  const targetSpan = tEnd - tStart;
+
+  const scaleDateStr = (dateStr?: string): string => {
+    if (!dateStr) return '';
+    const dMs = new Date(dateStr).getTime();
+    if (isNaN(dMs)) return dateStr;
+    const ratio = Math.max(0, Math.min(1, (dMs - origStart) / origSpan));
+    const newMs = tStart + ratio * targetSpan;
+    return new Date(newMs).toISOString().slice(0, 10);
+  };
+
+  clone.mainJobs?.forEach(mj => {
+    mj.startDate = scaleDateStr(mj.startDate);
+    mj.finishDate = scaleDateStr(mj.finishDate);
+    mj.subMainJobs?.forEach(smj => {
+      smj.startDate = scaleDateStr(smj.startDate);
+      smj.finishDate = scaleDateStr(smj.finishDate);
+      smj.subtasks?.forEach(st => {
+        st.startDate = scaleDateStr(st.startDate);
+        st.finishDate = scaleDateStr(st.finishDate);
+        if (st.startDate && st.finishDate) {
+          const s = new Date(st.startDate).getTime();
+          const f = new Date(st.finishDate).getTime();
+          st.duration = Math.max(1, Math.round((f - s) / (1000 * 60 * 60 * 24)) + 1);
+        }
+      });
+    });
+  });
+
+  return clone;
+}

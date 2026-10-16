@@ -247,12 +247,53 @@ class ProjectTemplateService
             $defaultDivId = Division::first()?->id;
             $taskCounter = 1;
 
+            $projStart = Carbon::parse($project->start ?? Carbon::now())->startOfDay();
+            $projEnd   = Carbon::parse($project->end ?? (clone $projStart)->addMonths(6))->startOfDay();
+            if ($projEnd->lessThanOrEqualTo($projStart)) {
+                $projEnd = (clone $projStart)->addDays(180);
+            }
+            $totalDays = max(1, $projStart->diffInDays($projEnd));
+
+            // Master timeline phase allocation (normalized to [0.0, 1.0] across project duration)
+            $mjTimelineWindows = [
+                '1'  => [0.00, 0.20], // BUSINESS DEVELOPMENT (PROJECT DOCUMENT PREPARATION)
+                '2'  => [0.10, 0.30], // FACTORY LAYOUT & PROCESS DESIGN
+                '3'  => [0.20, 0.60], // CIVIL WORKS
+                '4'  => [0.35, 0.75], // PRODUCTION MACHINE & INSTALLATION
+                '5'  => [0.40, 0.75], // UTILITY & FACILITY
+                '6'  => [0.20, 0.60], // PURCHASING JOBS
+                '7'  => [0.45, 0.75], // PROCUREMENT (RAW & SUB MATERIAL)
+                '8'  => [0.45, 0.75], // MECHANICAL WORKS
+                '9'  => [0.45, 0.75], // ELECTRICAL WORKS
+                '10' => [0.55, 0.80], // ENVIRONMENT FACILITY WORKS
+                '11' => [0.05, 0.45], // LEGAL
+                '12' => [0.40, 0.85], // PEOPLE & ORGANIZATION
+                '13' => [0.70, 0.88], // TRIAL
+                '14' => [0.82, 0.95], // COMMISSIONING
+                '15' => [0.65, 0.98], // SALES & MARKETING
+                '16' => [0.25, 0.90], // SYSTEM DEVELOPMENT
+                '17' => [0.85, 1.00], // CERTIFICATION
+            ];
+
             foreach ($template as $mjData) {
+                $window = $mjTimelineWindows[$mjData['code']] ?? [0.0, 1.0];
+                $mjStartOffset = (int) round($window[0] * $totalDays);
+                $mjEndOffset   = (int) round($window[1] * $totalDays);
+                if ($mjEndOffset <= $mjStartOffset) {
+                    $mjEndOffset = min($totalDays, $mjStartOffset + 1);
+                }
+
+                $mjStart = (clone $projStart)->addDays($mjStartOffset);
+                $mjEnd   = (clone $projStart)->addDays($mjEndOffset);
+                if ($mjEnd->greaterThan($projEnd)) {
+                    $mjEnd = clone $projEnd;
+                }
+                $mjDurationDays = max(1, $mjStart->diffInDays($mjEnd));
+
                 $listMain = ListMainWbsName::firstOrCreate([
                     'name' => $mjData['name'],
                 ]);
 
-                // Ubah menjadi updateOrCreate
                 $mainWbs = MainWbs::updateOrCreate(
                     [
                         'projects_id'            => $project->id,
@@ -261,22 +302,44 @@ class ProjectTemplateService
                     [
                         'name'                   => $mjData['name'],
                         'percentage'             => $mjData['weight'],
-                        'start'                  => $project->start ?? Carbon::now(),
-                        'end'                    => $project->end ?? Carbon::now()->addMonths(6),
-                        'actual_start'           => $project->start ?? Carbon::now(),
-                        'actual_end'             => $project->end ?? Carbon::now()->addMonths(6),
+                        'start'                  => $mjStart,
+                        'end'                    => $mjEnd,
+                        'actual_start'           => $mjStart,
+                        'actual_end'             => $mjEnd,
                         'progress'               => 0,
                         'status'                 => 'Open',
                     ]
                 );
 
-                foreach ($mjData['sub_main_jobs'] as $smjData) {
+                $smjList = $mjData['sub_main_jobs'] ?? [];
+                $smjCount = count($smjList);
+                $prevSmjStart = null;
+                $prevSmjEnd = null;
+                $prevTaskId = null;
+
+                foreach ($smjList as $smjIdx => $smjData) {
                     $listSub = ListSubWbsName::firstOrCreate([
                         'name'                         => $smjData['name'],
                         'list_main_wbs_names_copy1_id' => $listMain->id,
                     ]);
 
-                    // Ubah menjadi updateOrCreate
+                    if ($smjCount <= 1) {
+                        $smjStart = clone $mjStart;
+                        $smjEnd   = clone $mjEnd;
+                    } else {
+                        // Healthy proportional duration for each sub main job within the Main Job window
+                        $smjDurationDays = max(1, (int) round($mjDurationDays * 0.40));
+                        $maxStartOffset  = max(0, $mjDurationDays - $smjDurationDays);
+                        $smjStartOffset  = (int) round(($smjIdx / ($smjCount - 1)) * $maxStartOffset);
+
+                        $smjStart = (clone $mjStart)->addDays($smjStartOffset);
+                        $smjEnd   = (clone $smjStart)->addDays($smjDurationDays);
+                        if ($smjEnd->greaterThan($mjEnd)) {
+                            $smjEnd = clone $mjEnd;
+                        }
+                    }
+                    $taskDurationDays = max(1, $smjStart->diffInDays($smjEnd) + 1);
+
                     $subWbs = SubWbs::updateOrCreate(
                         [
                             'sub_wbs_id'            => $mainWbs->id,
@@ -284,12 +347,12 @@ class ProjectTemplateService
                         ],
                         [
                             'name'                  => $smjData['name'],
-                            'predecessor'           => '-',
+                            'predecessor'           => $prevTaskId ? $prevTaskId : '-',
                             'predecessor_type'      => 'FS',
-                            'start'                 => $project->start ?? Carbon::now(),
-                            'end'                   => $project->end ?? Carbon::now()->addMonths(6),
-                            'actual_start'          => $project->start ?? Carbon::now(),
-                            'actual_end'            => $project->end ?? Carbon::now()->addMonths(6),
+                            'start'                 => $smjStart,
+                            'end'                   => $smjEnd,
+                            'actual_start'          => $smjStart,
+                            'actual_end'            => $smjEnd,
                             'weight'                => $smjData['weight'],
                             'progress'              => 0,
                             'status'                => 'Open',
@@ -300,14 +363,20 @@ class ProjectTemplateService
                     $divName = $picToDiv[$picKey] ?? $picKey;
                     $divId = $divisions->get($divName)?->id ?? $defaultDivId;
 
-                    // Buat sequential ID dan hubungkan dengan predecessor (tugas sebelumnya)
-                    $previousTaskId = $taskCounter > 1 ? 'st-' . $project->id . '-seq-' . ($taskCounter - 1) : null;
                     $wbsId = 'st-' . $project->id . '-seq-' . $taskCounter;
-                    
-                    // Buat tanggal chronological (Maju berurutan)
-                    $baseStart = $project->start ? clone $project->start : Carbon::now();
-                    $taskStart = $baseStart->addDays(($taskCounter - 1) * 7); // Setiap task mulai 7 hari setelah task sebelumnya
-                    $taskEnd = (clone $taskStart)->addDays(4); // Durasi 5 hari: End = Start + 5 - 1
+
+                    // Calculate dependency relationship with previous task in the same Main Job
+                    $depType = 'FS';
+                    $lagDays = 0;
+                    if ($prevTaskId && $prevSmjStart && $prevSmjEnd) {
+                        if ($smjStart->greaterThanOrEqualTo($prevSmjEnd)) {
+                            $depType = 'FS';
+                            $lagDays = (int) $prevSmjEnd->diffInDays($smjStart);
+                        } else {
+                            $depType = 'SS';
+                            $lagDays = (int) max(0, $prevSmjStart->diffInDays($smjStart));
+                        }
+                    }
 
                     Wbs::withTrashed()->updateOrCreate(
                         ['id' => $wbsId],
@@ -316,41 +385,44 @@ class ProjectTemplateService
                             'divisions_id' => $divId,
                             'name'         => $smjData['name'] . ' (Execution)',
                             'vendor'       => 'INTERNAL',
-                            'start'        => $taskStart,
-                            'end'          => $taskEnd,
+                            'start'        => $smjStart,
+                            'end'          => $smjEnd,
                             'is_completed' => false,
                             'status'       => 'Open',
-                            'predecessor'  => $previousTaskId,
-                            'dep_type'     => 'FS',
-                            'lag'          => 2, // Simulasi lag 2 hari untuk keperluan testing UI
+                            'predecessor'  => $prevTaskId,
+                            'dep_type'     => $prevTaskId ? $depType : 'FS',
+                            'lag'          => $lagDays,
                             'lead'         => 0,
-                            'duration_days'=> 5,
+                            'duration_days'=> $taskDurationDays,
                             'requires_evidence' => false,
                             'deleted_at'   => null,
                         ]
                     );
 
-                    if ($previousTaskId) {
+                    if ($prevTaskId) {
                         $group = \App\Models\TaskDependencyGroup::firstOrCreate(
                             [
                                 'successor_wbs_id' => $wbsId,
-                                'dependency_type' => 'FS',
-                                'lag_days' => 2,
+                                'dependency_type'  => $depType,
+                                'lag_days'         => $lagDays,
                             ],
                         );
                         \App\Models\TaskDependency::updateOrCreate(
                             [
-                                'predecessor_wbs_id' => $previousTaskId,
-                                'successor_wbs_id' => $wbsId,
+                                'predecessor_wbs_id' => $prevTaskId,
+                                'successor_wbs_id'   => $wbsId,
                             ],
                             [
                                 'dependency_group_id' => $group->id,
-                                'dependency_type' => 'FS',
-                                'lag_days' => 2,
+                                'dependency_type'     => $depType,
+                                'lag_days'            => $lagDays,
                             ]
                         );
                     }
 
+                    $prevSmjStart = clone $smjStart;
+                    $prevSmjEnd   = clone $smjEnd;
+                    $prevTaskId   = $wbsId;
                     $taskCounter++;
                 }
             }

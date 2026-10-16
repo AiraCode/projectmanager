@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { usePage, router } from '@inertiajs/react';
-import { Project, PROJECT, WeekData, SubSubtask } from '@/data/mockData';
+import { Project, PROJECT, WeekData, SubSubtask, scaleProjectTemplateDates } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { PageHeader, Card, Button, Toast, formatDateDisplay, StatusBadge } from '@/components/ui';
 import { Info, ChevronLeft, ChevronRight, ChevronDown, Check, Calendar, TrendingUp, Edit3, X, Loader2, Layers } from 'lucide-react';
@@ -12,13 +12,18 @@ export default function WeeklyPage() {
   const project = pageProps?.project;
 
   const [projectData, setProjectData] = useState<Project>(() => {
-    const raw = project && project.mainJobs ? project : PROJECT;
+    const raw = project && project.mainJobs?.length
+      ? project
+      : scaleProjectTemplateDates(project || PROJECT, project?.startDate, project?.endDate);
     return recalculateWeeklyData(raw);
   });
 
   useEffect(() => {
-    if (project && project.mainJobs) {
-      setProjectData(recalculateWeeklyData(project));
+    if (project) {
+      const raw = project.mainJobs?.length
+        ? project
+        : scaleProjectTemplateDates(project, project?.startDate, project?.endDate);
+      setProjectData(recalculateWeeklyData(raw));
     }
   }, [project]);
 
@@ -84,8 +89,12 @@ export default function WeeklyPage() {
 
 
 
-  const totalPlanned = weeks.reduce((a, w) => a + w.planned, 0);
-  const totalActual = weeks.filter(w => w.actual > 0).reduce((a, w) => a + w.actual, 0);
+  const totalPlanned = weeks.length > 0
+    ? Math.min(100, Math.max(0, parseFloat(weeks.reduce((a, w) => a + w.planned, 0).toFixed(1))))
+    : 0;
+  const totalActual = weeks.length > 0
+    ? Math.min(100, Math.max(0, parseFloat(weeks.filter(w => w.actual > 0).reduce((a, w) => a + w.actual, 0).toFixed(1))))
+    : 0;
 
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">

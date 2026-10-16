@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Project, PROJECT } from '@/data/mockData';
+import { Project, PROJECT, scaleProjectTemplateDates } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { exportToCSV } from '@/utils/exportEngine';
 import { PageHeader, Card, Button, formatDateDisplay } from '@/components/ui';
@@ -47,12 +47,18 @@ export default function SCurvePage() {
   
   // Use engine to calculate exact cumulative values
   const [projectData, setProjectData] = useState<Project>(() => {
-    return recalculateWeeklyData(project || PROJECT);
+    const raw = project && project.mainJobs?.length
+      ? project
+      : scaleProjectTemplateDates(project || PROJECT, project?.startDate, project?.endDate);
+    return recalculateWeeklyData(raw);
   });
 
   useEffect(() => {
     if (project) {
-      setProjectData(recalculateWeeklyData(project));
+      const raw = project.mainJobs?.length
+        ? project
+        : scaleProjectTemplateDates(project, project?.startDate, project?.endDate);
+      setProjectData(recalculateWeeklyData(raw));
     }
   }, [project]);
 
