@@ -185,7 +185,6 @@ export default function LoginPage() {
               ) : (
                 <>
                   <span>Sign In</span>
-                  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
                 </>
               )}
             </button>

@@ -102,7 +102,7 @@ export default function SuperAdminDashboardPage({
                 <h2 className="font-bold text-[14px] text-neutral-900">Recently Created Users</h2>
               </div>
               <a href="/admin/users" className="text-[12px] font-semibold hover:underline" style={{ color: '#7c3aed' }}>
-                View all →
+                View all
               </a>
             </div>
             <div className="overflow-x-auto">
@@ -112,7 +112,7 @@ export default function SuperAdminDashboardPage({
                     <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">User</th>
                     <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Role</th>
                     <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Created By</th>
-                    <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">When</th>
+                    <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Date Joined</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-50">
@@ -147,7 +147,7 @@ export default function SuperAdminDashboardPage({
                 <h2 className="font-bold text-[14px] text-neutral-900">Recent Activity Log</h2>
               </div>
               <a href="/admin/audit-log" className="text-[12px] font-semibold hover:underline" style={{ color: '#7c3aed' }}>
-                View all →
+                View all
               </a>
             </div>
             <div className="overflow-x-auto">
@@ -156,7 +156,7 @@ export default function SuperAdminDashboardPage({
                   <tr style={{ background: 'rgba(139,92,246,0.03)' }}>
                     <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Actor</th>
                     <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Action</th>
-                    <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">When</th>
+                    <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Timestamp</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-50">

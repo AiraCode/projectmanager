@@ -49,7 +49,7 @@ export default function CompaniesPage({ companies }: { companies: Company[] }) {
           <button onClick={openCreate}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-white text-[13px] font-semibold hover:opacity-90 transition-opacity"
             style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}>
-            <Plus size={15} /> Add Company
+             Add Company
           </button>
         </div>
 

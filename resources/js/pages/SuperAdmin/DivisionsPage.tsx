@@ -49,7 +49,7 @@ export default function DivisionsPage({ divisions }: { divisions: Division[] }) 
           <button onClick={openCreate}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-white text-[13px] font-semibold hover:opacity-90 transition-opacity"
             style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}>
-            <Plus size={15} /> Add Division
+               Add Division
           </button>
         </div>
 

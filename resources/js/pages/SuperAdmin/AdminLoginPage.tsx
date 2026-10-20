@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { usePage, router } from '@inertiajs/react';
-import { Eye, EyeOff, AlertCircle, Loader2, Mail, Lock, Layers, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Loader2, Mail, Lock, Layers } from 'lucide-react';
 
 export default function AdminLoginPage() {
   const { auth, errors } = usePage().props as any;
@@ -183,10 +183,7 @@ export default function AdminLoginPage() {
                   <span>Signing in…</span>
                 </>
               ) : (
-                <>
-                  <span>Sign In</span>
-                  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-                </>
+                <span>Sign In</span>
               )}
             </button>
           </form>

@@ -134,7 +134,7 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1 text-[11.5px] text-neutral-500">
                       <Calendar size={11} className="text-neutral-400" />
-                      {p.start_date ?? '?'} → {p.end_date ?? '?'}
+                      {p.start_date ?? '—'} - {p.end_date ?? '—'}
                     </div>
                   </td>
                   <td className="px-5 py-3.5">

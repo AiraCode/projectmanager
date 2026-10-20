@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
+import CustomSelect from '@/components/CustomSelect';
 import { Plus, Edit2, Trash2, Shield, FolderOpen, Search, ChevronDown, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface Role { id: number; name: string; }
@@ -363,7 +364,7 @@ export default function SuperAdminUserManagementPage({
               onClick={toggleCustomDomain}
               className="text-[11px] font-semibold text-violet-600 hover:text-violet-800 hover:underline transition-colors"
             >
-              {isCustomDomain ? '← Gunakan @provis.id' : 'Ganti domain'}
+              {isCustomDomain ? 'Use @provis.id' : 'Change domain'}
             </button>
           </div>
           {!isCustomDomain ? (
@@ -379,21 +380,22 @@ export default function SuperAdminUserManagementPage({
                   setData('email', val ? `${val}${selectedDomain}` : '');
                 }}
                 required
-                placeholder="nama.user"
+                placeholder="username"
                 className="w-full border-none px-3 py-2 text-[13px] focus:outline-none focus:ring-0 text-neutral-800 placeholder-neutral-400 bg-transparent"
               />
-              <select
+              <CustomSelect
                 value={selectedDomain}
-                onChange={e => handleDomainChange(e.target.value)}
-                className="bg-neutral-100 text-neutral-700 text-[12px] font-bold border-l border-neutral-200 px-2 py-2 cursor-pointer focus:outline-none hover:bg-neutral-200 transition-colors"
-                title="Select email domain"
-              >
-                <option value="@provis.id">@provis.id (Default)</option>
-                <option value="@gmail.com">@gmail.com</option>
-                <option value="@yahoo.com">@yahoo.com</option>
-                <option value="@outlook.com">@outlook.com</option>
-                <option value="custom">Other Domain...</option>
-              </select>
+                onChange={handleDomainChange}
+                variant="inline"
+                className="w-auto shrink-0"
+                options={[
+                  { value: '@provis.id', label: '@provis.id (Default)' },
+                  { value: '@gmail.com', label: '@gmail.com' },
+                  { value: '@yahoo.com', label: '@yahoo.com' },
+                  { value: '@outlook.com', label: '@outlook.com' },
+                  { value: 'custom', label: 'Other Domain...' },
+                ]}
+              />
             </div>
           ) : (
             <input
@@ -446,10 +448,17 @@ export default function SuperAdminUserManagementPage({
         </div>
         <div>
           <label className="block text-[12px] font-bold text-neutral-700 mb-1">Role</label>
-          <select value={data.roles_id} onChange={e => setData('roles_id', e.target.value)} required className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
-            <option value="">Select Role</option>
-            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-          </select>
+          <CustomSelect
+            value={data.roles_id}
+            onChange={val => setData('roles_id', val)}
+            required
+            placeholder="Select Role"
+            options={roles.map(r => ({
+              value: r.id.toString(),
+              label: r.name,
+              badgeColor: ROLE_COLORS[r.name],
+            }))}
+          />
         </div>
         {showCompany && (
           <div className="md:col-span-2 space-y-3 pt-1">
@@ -513,34 +522,38 @@ export default function SuperAdminUserManagementPage({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-[12px] font-bold text-neutral-700">Company (Single)</label>
-                  <a href="/admin/companies" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Companies &rarr;</a>
+                  <a href="/admin/companies" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Companies</a>
                 </div>
-                <select
-                  value={data.companies_id}
-                  onChange={e => {
-                    const val = e.target.value;
+                <CustomSelect
+                  value={data.companies_id ?? ''}
+                  onChange={val => {
                     setData(prev => ({
                       ...prev,
                       companies_id: val,
-                      company_ids: val ? [Number(val)] : []
+                      company_ids: val ? [Number(val)] : [],
                     }));
                   }}
-                  className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
-                >
-                  <option value="">No Company (Standalone)</option>
-                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                  placeholder="No Company (Standalone)"
+                  searchable={companies.length > 5}
+                  options={[
+                    { value: '', label: 'No Company (Standalone)' },
+                    ...companies.map(c => ({
+                      value: c.id.toString(),
+                      label: c.name,
+                    })),
+                  ]}
+                />
                 <p className="text-[11px] text-neutral-500 mt-1">
-                  Untuk memilih lebih dari 1 company, centang persetujuan multi-company di atas.
+                  To select more than 1 company, check the multi-company agreement above.
                 </p>
               </div>
             ) : (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="block text-[12px] font-bold text-neutral-700">
-                    Pilih Perusahaan ({data.company_ids.length} dipilih)
+                    Select Companies ({data.company_ids.length} selected)
                   </label>
-                  <a href="/admin/companies" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Companies &rarr;</a>
+                  <a href="/admin/companies" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Companies</a>
                 </div>
                 <div className="border border-neutral-200 rounded-xl p-3 bg-neutral-50/50 max-h-52 overflow-y-auto space-y-2">
                   {companies.map(c => {
@@ -583,7 +596,7 @@ export default function SuperAdminUserManagementPage({
                               e.stopPropagation();
                               setData(prev => ({ ...prev, companies_id: c.id.toString() }));
                             }}
-                            title={isPrimary ? 'Perusahaan Utama (Primary)' : 'Klik untuk jadikan Perusahaan Utama'}
+                            title={isPrimary ? 'Primary Company' : 'Click to set as Primary'}
                             className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full cursor-pointer transition-transform active:scale-95 ${isPrimary ? 'bg-violet-600 text-white shadow-2xs' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
                               }`}
                           >
@@ -608,12 +621,20 @@ export default function SuperAdminUserManagementPage({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-[12px] font-bold text-neutral-700">Division</label>
-              <a href="/admin/divisions" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Divisions &rarr;</a>
+              <a href="/admin/divisions" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Divisions</a>
             </div>
-            <select value={data.divisions_id} onChange={e => setData('divisions_id', e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
-              <option value="">No Division</option>
-              {divisions.map(d => <option key={d.id} value={d.id}>{d.divisi}</option>)}
-            </select>
+            <CustomSelect
+              value={data.divisions_id ?? ''}
+              onChange={val => setData('divisions_id', val)}
+              placeholder="No Division"
+              options={[
+                { value: '', label: 'No Division' },
+                ...divisions.map(d => ({
+                  value: d.id.toString(),
+                  label: d.divisi,
+                })),
+              ]}
+            />
           </div>
         )}
       </div>
@@ -843,23 +864,58 @@ export default function SuperAdminUserManagementPage({
                   placeholder="Search users…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-[13px] border rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-600 bg-white"
+                  className="w-full pl-8 pr-3 py-2 text-[13px] border rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-600 bg-white h-[38px]"
                   style={{ borderColor: 'rgba(139,92,246,0.2)' }}
                 />
               </div>
 
-              <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className="w-full md:w-[150px] border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
-                <option value="">All Roles</option>
-                {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
-              </select>
-              <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} className="w-full md:w-[150px] border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
-                <option value="">All Companies</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <select value={filterDivision} onChange={e => setFilterDivision(e.target.value)} className="w-full md:w-[150px] border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
-                <option value="">All Divisions</option>
-                {divisions.map(d => <option key={d.id} value={d.id}>{d.divisi}</option>)}
-              </select>
+              <CustomSelect
+                value={filterRole}
+                onChange={setFilterRole}
+                placeholder="All Roles"
+                variant="filter"
+                clearable
+                className="w-full md:w-[155px]"
+                options={[
+                  { value: '', label: 'All Roles' },
+                  ...roles.map(r => ({
+                    value: r.name,
+                    label: r.name,
+                    badgeColor: ROLE_COLORS[r.name],
+                  })),
+                ]}
+              />
+              <CustomSelect
+                value={filterCompany}
+                onChange={setFilterCompany}
+                placeholder="All Companies"
+                variant="filter"
+                clearable
+                searchable={companies.length > 5}
+                className="w-full md:w-[175px]"
+                options={[
+                  { value: '', label: 'All Companies' },
+                  ...companies.map(c => ({
+                    value: c.id.toString(),
+                    label: c.name,
+                  })),
+                ]}
+              />
+              <CustomSelect
+                value={filterDivision}
+                onChange={setFilterDivision}
+                placeholder="All Divisions"
+                variant="filter"
+                clearable
+                className="w-full md:w-[155px]"
+                options={[
+                  { value: '', label: 'All Divisions' },
+                  ...divisions.map(d => ({
+                    value: d.id.toString(),
+                    label: d.divisi,
+                  })),
+                ]}
+              />
             </div>
 
             {/* Users Table */}

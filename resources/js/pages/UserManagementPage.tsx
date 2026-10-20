@@ -417,7 +417,7 @@ export default function UserManagementPage({
                 onClick={toggleCustomDomain}
                 className="text-[11px] font-semibold text-brand hover:underline transition-colors"
               >
-                {isCustomDomain ? '← Gunakan @provis.id' : 'Ganti domain'}
+                {isCustomDomain ? 'Use @provis.id' : 'Change domain'}
               </button>
             </div>
             {!isCustomDomain ? (
@@ -433,7 +433,7 @@ export default function UserManagementPage({
                     setData('email', val ? `${val}${selectedDomain}` : '');
                   }} 
                   required 
-                  placeholder="nama.user" 
+                  placeholder="username" 
                   className="w-full border-none px-3 py-2 text-[13px] focus:outline-none focus:ring-0 text-neutral-800 placeholder-neutral-400 bg-transparent" 
                 />
                 <select 
