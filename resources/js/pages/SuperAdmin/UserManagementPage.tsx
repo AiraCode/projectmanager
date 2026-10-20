@@ -3,9 +3,9 @@ import { Head, useForm, router, usePage } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
 import { Plus, Edit2, Trash2, Shield, FolderOpen, Search, ChevronDown, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
 
-interface Role    { id: number; name: string; }
+interface Role { id: number; name: string; }
 interface Company { id: number; name: string; }
-interface Division{ id: number; divisi: string; }
+interface Division { id: number; divisi: string; }
 interface Project { id: number; title: string; companies_id: number; }
 interface PermissionMatrix {
   sidebar?: string[];
@@ -20,6 +20,8 @@ interface User {
   role: string;
   company: string | null;
   companies_id: number | null;
+  company_ids?: number[];
+  companies?: { id: number; name: string }[];
   divisions_id: number | null;
   division: string | null;
   created_by: string;
@@ -42,11 +44,11 @@ const MODULE_PERMISSIONS = [
 ];
 
 const ROLE_COLORS: Record<string, string> = {
-  SuperAdmin:    'bg-violet-100 text-violet-700',
-  admin_utama:   'bg-indigo-100 text-indigo-700',
+  SuperAdmin: 'bg-violet-100 text-violet-700',
+  admin_utama: 'bg-indigo-100 text-indigo-700',
   admin_progres: 'bg-amber-100 text-amber-700',
-  pic:           'bg-emerald-100 text-emerald-700',
-  worker:        'bg-neutral-100 text-neutral-600',
+  pic: 'bg-emerald-100 text-emerald-700',
+  worker: 'bg-neutral-100 text-neutral-600',
 };
 
 export default function SuperAdminUserManagementPage({
@@ -54,21 +56,22 @@ export default function SuperAdminUserManagementPage({
 }: { users: User[]; companies: Company[]; divisions: Division[]; roles: Role[]; projects: Project[] }) {
   const { auth } = usePage<any>().props;
   const currentUser = auth.user;
-  
-  const [search, setSearch]       = useState('');
+
+  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [editUser, setEditUser]   = useState<User | null>(null);
-  const [toast, setToast]         = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [editUser, setEditUser] = useState<User | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [isGlobalMatrixOpen, setIsGlobalMatrixOpen] = useState(false);
   const [isProjectAccessOpen, setIsProjectAccessOpen] = useState(false);
-  
+  const [allowMultiCompany, setAllowMultiCompany] = useState(false);
+
   useEffect(() => {
     if (toast) {
       const t = setTimeout(() => setToast(null), 10000);
       return () => clearTimeout(t);
     }
   }, [toast]);
-  
+
   const [viewMode, setViewMode] = useState<'manage' | 'create'>('manage');
   const [filterRole, setFilterRole] = useState('');
   const [filterCompany, setFilterCompany] = useState('');
@@ -82,6 +85,8 @@ export default function SuperAdminUserManagementPage({
     password: '',
     roles_id: '',
     companies_id: '',
+    company_ids: [] as number[],
+    multi_company_agreement: false,
     divisions_id: '',
     permission_matrix: {
       sidebar: [] as string[],
@@ -95,12 +100,15 @@ export default function SuperAdminUserManagementPage({
     setEditUser(null);
     setSelectedDomain('@provis.id');
     setIsCustomDomain(false);
+    setAllowMultiCompany(false);
     setData({
       username: '',
       email: '',
       password: '',
       roles_id: '',
       companies_id: '',
+      company_ids: [],
+      multi_company_agreement: false,
       divisions_id: '',
       permission_matrix: { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
     });
@@ -123,12 +131,21 @@ export default function SuperAdminUserManagementPage({
       setSelectedDomain('@provis.id');
       setIsCustomDomain(false);
     }
+
+    const initialCompanyIds: number[] = (u.company_ids && u.company_ids.length > 0)
+      ? u.company_ids
+      : (u.companies_id ? [u.companies_id] : []);
+    const isMulti = initialCompanyIds.length > 1;
+    setAllowMultiCompany(isMulti);
+
     setData({
       username: u.username,
       email: u.email,
       password: '',
       roles_id: roles.find(r => r.name === u.role)?.id.toString() ?? '',
-      companies_id: u.companies_id?.toString() ?? '',
+      companies_id: u.companies_id?.toString() ?? (initialCompanyIds[0]?.toString() ?? ''),
+      company_ids: initialCompanyIds,
+      multi_company_agreement: isMulti,
       divisions_id: u.divisions_id?.toString() ?? '',
       permission_matrix: u.permission_matrix ?? { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} },
     });
@@ -139,15 +156,15 @@ export default function SuperAdminUserManagementPage({
     e.preventDefault();
     if (editUser) {
       put(`/admin/users/${editUser.id}`, {
-        onSuccess: () => { 
-          if (viewMode !== 'create') setModalOpen(false); 
-          setToast({ msg: `User ${data.username} updated.`, type: 'success' }); 
+        onSuccess: () => {
+          if (viewMode !== 'create') setModalOpen(false);
+          setToast({ msg: `User ${data.username} updated.`, type: 'success' });
         },
-        onError:   () => setToast({ msg: 'Error updating user.', type: 'error' }),
+        onError: () => setToast({ msg: 'Error updating user.', type: 'error' }),
       });
     } else {
       post('/admin/users', {
-        onSuccess: () => { 
+        onSuccess: () => {
           setToast({ msg: `User ${data.username} created.`, type: 'success' });
           if (viewMode === 'create') {
             openCreate();
@@ -155,7 +172,7 @@ export default function SuperAdminUserManagementPage({
             setModalOpen(false);
           }
         },
-        onError:   () => setToast({ msg: 'Error creating user.', type: 'error' }),
+        onError: () => setToast({ msg: 'Error creating user.', type: 'error' }),
       });
     }
   };
@@ -164,7 +181,7 @@ export default function SuperAdminUserManagementPage({
     if (confirm(`Delete user "${name}"? This action cannot be undone.`)) {
       destroy(`/admin/users/${id}`, {
         onSuccess: () => setToast({ msg: 'User deleted.', type: 'success' }),
-        onError:   () => setToast({ msg: 'Error deleting user.', type: 'error' }),
+        onError: () => setToast({ msg: 'Error deleting user.', type: 'error' }),
       });
     }
   };
@@ -172,8 +189,8 @@ export default function SuperAdminUserManagementPage({
   const handleUnifiedViewToggle = (mod: typeof MODULE_PERMISSIONS[0]) => {
     const currentSidebar = data.permission_matrix.sidebar || [];
     const isCurrentlyView = currentSidebar.includes(mod.sidebarKey);
-    
-    const updatedSidebar = isCurrentlyView 
+
+    const updatedSidebar = isCurrentlyView
       ? currentSidebar.filter(s => s !== mod.sidebarKey)
       : [...currentSidebar, mod.sidebarKey];
 
@@ -189,8 +206,8 @@ export default function SuperAdminUserManagementPage({
       }
     }
 
-    setData('permission_matrix', { 
-      ...data.permission_matrix, 
+    setData('permission_matrix', {
+      ...data.permission_matrix,
       sidebar: updatedSidebar,
       features: updatedFeatures
     });
@@ -216,22 +233,22 @@ export default function SuperAdminUserManagementPage({
     setData('permission_matrix', updatedMatrix);
   };
 
-  const toggleProjectAccess = (projId: number, key: 'view_project' | 'view_progress') => {
+  const toggleProjectAccess = (projId: number) => {
     const cur = data.permission_matrix.project_access ?? {};
     const projAcc = cur[projId] ?? { view_project: false, view_progress: false };
-    
-    const newAccess = { ...projAcc, [key]: !projAcc[key] };
-    
-    // If view_project is unchecked, force view_progress to be unchecked too
-    if (key === 'view_project' && !newAccess.view_project) {
-      newAccess.view_progress = false;
-    }
-    
-    setData('permission_matrix', { ...data.permission_matrix, project_access: { ...cur, [projId]: newAccess } });
+    const nextVal = !projAcc.view_project;
+
+    setData('permission_matrix', {
+      ...data.permission_matrix,
+      project_access: {
+        ...cur,
+        [projId]: { view_project: nextVal, view_progress: nextVal },
+      },
+    });
   };
 
   const selectedRoleName = roles.find(r => r.id.toString() === data.roles_id)?.name;
-  
+
   // Set default permissions for worker to prevent "broken worker" on login (403)
   useEffect(() => {
     if (selectedRoleName === 'worker' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
@@ -246,26 +263,36 @@ export default function SuperAdminUserManagementPage({
       });
     }
   }, [selectedRoleName]);
-  
-  const isWorkerTarget   = selectedRoleName === 'worker';
-  const isAdminTarget    = selectedRoleName === 'admin_utama' || selectedRoleName === 'admin_progres';
-  
+
+  const isWorkerTarget = selectedRoleName === 'worker';
+  const isAdminTarget = selectedRoleName === 'admin_utama' || selectedRoleName === 'admin_progres';
+
   // Only SuperAdmin can select company. For PIC, it's auto-inherited on backend, so we hide it.
   const showCompany = true; // SuperAdmin can always assign company
   const showDivision = selectedRoleName === 'worker' || selectedRoleName === 'worker_b';
-  
-  const selectedCompanyId = data.companies_id ? Number(data.companies_id) : null;
-  const companyProjects  = selectedCompanyId ? projects.filter(p => p.companies_id === selectedCompanyId) : [];
+
+  const selectedCompanyIds = allowMultiCompany
+    ? data.company_ids
+    : (data.companies_id ? [Number(data.companies_id)] : []);
+  const companyProjects = selectedCompanyIds.length > 0
+    ? projects.filter(p => selectedCompanyIds.includes(p.companies_id))
+    : [];
 
   const filtered = users.filter(u => {
     if (filterRole && u.role !== filterRole) return false;
-    if (filterCompany && u.companies_id?.toString() !== filterCompany) return false;
+    if (filterCompany) {
+      const cid = Number(filterCompany);
+      const userCids = (u.company_ids && u.company_ids.length > 0)
+        ? u.company_ids
+        : (u.companies_id ? [u.companies_id] : []);
+      if (!userCids.includes(cid)) return false;
+    }
     if (filterDivision && u.divisions_id?.toString() !== filterDivision) return false;
-    
+
     if (search) {
       const searchLower = search.toLowerCase();
 
-  return (
+      return (
         u.username.toLowerCase().includes(searchLower) ||
         u.email.toLowerCase().includes(searchLower) ||
         (u.role ?? '').toLowerCase().includes(searchLower) ||
@@ -303,7 +330,7 @@ export default function SuperAdminUserManagementPage({
     if (!editUser) {
       const cleanPrefix = newUsername.toLowerCase().trim().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
       const prevPrefix = data.username.toLowerCase().trim().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
-      
+
       if (!data.email || data.email === `${prevPrefix}${selectedDomain}` || data.email === selectedDomain || data.email === '@provis.id') {
         setData({
           ...data,
@@ -321,319 +348,457 @@ export default function SuperAdminUserManagementPage({
 
   const renderForm = () => (
     <form onSubmit={handleSubmit} className="p-6 space-y-5">
-              {/* Basic Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">Username</label>
-                  <input type="text" value={data.username} onChange={e => handleUsernameChange(e.target.value)} required className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                  {errors.username && <p className="text-red-500 text-[11px] mt-1">{errors.username}</p>}
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-[12px] font-bold text-neutral-700">Email</label>
-                    <button 
-                      type="button" 
-                      onClick={toggleCustomDomain}
-                      className="text-[11px] font-semibold text-violet-600 hover:text-violet-800 hover:underline transition-colors"
-                    >
-                      {isCustomDomain ? '← Gunakan @provis.id' : 'Ganti domain'}
-                    </button>
-                  </div>
-                  {!isCustomDomain ? (
-                    <div className="flex rounded-xl border border-neutral-200 focus-within:ring-2 focus-within:ring-violet-400 overflow-hidden bg-white">
-                      <input 
-                        type="text" 
-                        value={emailPrefix} 
-                        onChange={e => {
-                          let val = e.target.value.trim();
-                          if (val.includes('@')) {
-                            val = val.split('@')[0];
-                          }
-                          setData('email', val ? `${val}${selectedDomain}` : '');
-                        }} 
-                        required 
-                        placeholder="nama.user" 
-                        className="w-full border-none px-3 py-2 text-[13px] focus:outline-none focus:ring-0 text-neutral-800 placeholder-neutral-400 bg-transparent" 
-                      />
-                      <select 
-                        value={selectedDomain} 
-                        onChange={e => handleDomainChange(e.target.value)}
-                        className="bg-neutral-100 text-neutral-700 text-[12px] font-bold border-l border-neutral-200 px-2 py-2 cursor-pointer focus:outline-none hover:bg-neutral-200 transition-colors"
-                        title="Select email domain"
-                      >
-                        <option value="@provis.id">@provis.id (Default)</option>
-                        <option value="@gmail.com">@gmail.com</option>
-                        <option value="@yahoo.com">@yahoo.com</option>
-                        <option value="@outlook.com">@outlook.com</option>
-                        <option value="custom">Other Domain...</option>
-                      </select>
-                    </div>
-                  ) : (
-                    <input 
-                      type="email" 
-                      value={data.email} 
-                      onChange={e => setData('email', e.target.value)} 
-                      required 
-                      placeholder="name@example.com" 
-                      className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" 
-                    />
-                  )}
-                  {errors.email && <p className="text-red-500 text-[11px] mt-1">{errors.email}</p>}
-                </div>
-                <div>
-                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                    Password {editUser ? '(Leave blank if unchanged)' : ''}
-                  </label>
-                  <input 
-                    type="password" 
-                    value={data.password} 
-                    onChange={e => setData('password', e.target.value)} 
-                    required={!editUser} 
-                    placeholder={editUser ? "Leave blank if unchanged" : "Enter password"}
-                    pattern="^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$"
-                    title="Minimum 8 characters, combination of letters and numbers"
-                    className={`w-full border rounded-xl px-3 py-2 text-[13px] focus:outline-none transition-colors ${
-                      data.password.length > 0
-                        ? isPasswordValid
-                          ? 'border-emerald-400 focus:ring-2 focus:ring-emerald-400'
-                          : 'border-red-400 focus:ring-2 focus:ring-red-400'
-                        : 'border-neutral-200 focus:ring-2 focus:ring-violet-400'
-                    }`} 
-                  />
-                  {data.password.length > 0 && (
-                    <p className={`text-[11.5px] font-medium mt-1.5 flex items-center gap-1.5 transition-colors ${
-                      isPasswordValid ? 'text-emerald-600' : 'text-red-500'
-                    }`}>
-                      {isPasswordValid ? (
-                        <>
-                          <CheckCircle2 size={13} className="shrink-0" />
-                          <span>Password requirements met (min. 8 characters, letters & numbers)</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle size={13} className="shrink-0" />
-                          <span>Requirements not met: min. 8 characters, letters and numbers required</span>
-                        </>
-                      )}
-                    </p>
-                  )}
-                  {errors.password && <p className="text-red-500 text-[11px] mt-1">{errors.password}</p>}
-                </div>
-                <div>
-                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">Role</label>
-                  <select value={data.roles_id} onChange={e => setData('roles_id', e.target.value)} required className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
-                    <option value="">Select Role</option>
-                    {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                  </select>
-                </div>
-                {showCompany && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-[12px] font-bold text-neutral-700">Company</label>
-                      <a href="/admin/companies" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Companies &rarr;</a>
-                    </div>
-                    <select value={data.companies_id} onChange={e => setData('companies_id', e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
-                      <option value="">No Company (Standalone)</option>
-                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                )}
-                {showDivision && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-[12px] font-bold text-neutral-700">Division</label>
-                      <a href="/admin/divisions" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Divisions &rarr;</a>
-                    </div>
-                    <select value={data.divisions_id} onChange={e => setData('divisions_id', e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
-                      <option value="">No Division</option>
-                      {divisions.map(d => <option key={d.id} value={d.id}>{d.divisi}</option>)}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {/* Global Permission Matrix */}
-              {selectedRoleName && selectedRoleName !== 'SuperAdmin' && !isAdminTarget && (
-                <div className="border border-neutral-200 rounded-2xl overflow-hidden mt-6 bg-white/50">
-                  <div 
-                    className="px-4 py-3 flex items-center justify-between border-b border-neutral-100 bg-neutral-50 cursor-pointer hover:bg-neutral-100 transition-colors"
-                    onClick={() => setIsGlobalMatrixOpen(!isGlobalMatrixOpen)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Shield size={15} style={{ color: '#7c3aed' }} />
-                      <h3 className="font-bold text-[13px] text-neutral-800">Global Permission Matrix</h3>
-                    </div>
-                    {isGlobalMatrixOpen ? <ChevronDown size={15} className="text-neutral-400" /> : <ChevronRight size={15} className="text-neutral-400" />}
-                  </div>
-                  
-                  {isGlobalMatrixOpen && (
-                    <div className="p-4 space-y-5">
-                      {/* Scope & Advanced Project Features */}
-                      {!isWorkerTarget && (
-                        <div className="flex flex-wrap gap-6 items-start">
-                        <div>
-                          <h4 className="text-[11px] font-bold text-neutral-600 uppercase tracking-wide mb-2">Data Scope</h4>
-                          <div className="flex gap-4 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200 w-fit">
-                            {['all', 'own_company'].map(scope => (
-                              <label key={scope} className="flex items-center gap-2 text-[13px] text-neutral-700 cursor-pointer">
-                                <input type="radio" name="scope" value={scope} checked={data.permission_matrix.data_scope === scope} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: scope })} className="accent-violet-600 cursor-pointer" />
-                                {scope === 'all' ? 'All Companies' : 'Own Company Only'}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <h4 className="text-[11px] font-bold text-neutral-600 uppercase tracking-wide mb-2">Project Options</h4>
-                          <div className="flex gap-4 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200 w-fit">
-                            {['Multiple Projects', 'Private Projects'].map(feat => (
-                              <label key={feat} className="flex items-center gap-1.5 text-[12.5px] text-neutral-700 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={(data.permission_matrix.features?.projects || []).includes(feat)}
-                                  onChange={() => toggleFeature('projects', feat)}
-                                  className="accent-violet-600 rounded text-violet-600 focus:ring-violet-500"
-                                />
-                                {feat}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                        </div>
-                      )}
-
-                      {/* Unified Module Permissions */}
-                      <div>
-                        <h4 className="text-[11px] font-bold text-neutral-600 uppercase tracking-wide mb-2">Module Access & Features</h4>
-                        <div className="overflow-x-auto border border-neutral-200 rounded-lg">
-                          <table className="w-full text-left text-[12.5px]">
-                            <thead className="bg-neutral-50 border-b border-neutral-200 font-semibold text-neutral-600 text-[11px] uppercase tracking-wider">
-                              <tr>
-                                <th className="px-4 py-2.5">Module Name</th>
-                                <th className="px-4 py-2.5 text-center border-l border-neutral-100">View (Sidebar)</th>
-                                <th className="px-4 py-2.5 text-center border-l border-neutral-100 w-1/2">Advanced Permissions</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-neutral-100">
-                              {MODULE_PERMISSIONS.map(mod => {
-                                if (isWorkerTarget && mod.sidebarKey === 'User Management') return null;
-                                
-                                const isView = (data.permission_matrix.sidebar || []).includes(mod.sidebarKey);
-                                return (
-                                  <tr key={mod.sidebarKey} className="hover:bg-neutral-50/50">
-                                    <td className="px-4 py-2.5 font-medium text-neutral-800">{mod.module}</td>
-                                    <td className="px-4 py-2.5 text-center border-l border-neutral-100">
-                                      <input 
-                                        type="checkbox" 
-                                        checked={isView} 
-                                        onChange={() => handleUnifiedViewToggle(mod)} 
-                                        className="w-4 h-4 accent-violet-600 cursor-pointer rounded" 
-                                      />
-                                    </td>
-                                    <td className="px-4 py-2.5 border-l border-neutral-100">
-                                      <div className="flex flex-wrap gap-4 items-center justify-center">
-                                        {mod.features.length === 0 ? (
-                                          <span className="text-neutral-400 italic text-[11px]">- None available -</span>
-                                        ) : (
-                                          mod.features.map(feat => {
-                                            const isChecked = mod.featureGroup 
-                                              ? (data.permission_matrix.features?.[mod.featureGroup] || []).includes(feat) 
-                                              : false;
-                                            return (
-                                              <label 
-                                                key={feat} 
-                                                className={`flex items-center gap-1.5 text-[11.5px] cursor-pointer ${!isView ? 'opacity-40 pointer-events-none' : 'text-neutral-700 font-medium'}`}
-                                              >
-                                                <input 
-                                                  type="checkbox" 
-                                                  checked={isChecked} 
-                                                  onChange={() => toggleFeature(mod.featureGroup!, feat)} 
-                                                  disabled={!isView} 
-                                                  className="accent-violet-600 rounded" 
-                                                />
-                                                <span className="capitalize">{feat.replace('_', ' ')}</span>
-                                              </label>
-                                            );
-                                          })
-                                        )}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+      {/* Basic Info */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">Username</label>
+          <input type="text" value={data.username} onChange={e => handleUsernameChange(e.target.value)} required className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400" />
+          {errors.username && <p className="text-red-500 text-[11px] mt-1">{errors.username}</p>}
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-[12px] font-bold text-neutral-700">Email</label>
+            <button
+              type="button"
+              onClick={toggleCustomDomain}
+              className="text-[11px] font-semibold text-violet-600 hover:text-violet-800 hover:underline transition-colors"
+            >
+              {isCustomDomain ? '← Gunakan @provis.id' : 'Ganti domain'}
+            </button>
+          </div>
+          {!isCustomDomain ? (
+            <div className="flex rounded-xl border border-neutral-200 focus-within:ring-2 focus-within:ring-violet-400 overflow-hidden bg-white">
+              <input
+                type="text"
+                value={emailPrefix}
+                onChange={e => {
+                  let val = e.target.value.trim();
+                  if (val.includes('@')) {
+                    val = val.split('@')[0];
+                  }
+                  setData('email', val ? `${val}${selectedDomain}` : '');
+                }}
+                required
+                placeholder="nama.user"
+                className="w-full border-none px-3 py-2 text-[13px] focus:outline-none focus:ring-0 text-neutral-800 placeholder-neutral-400 bg-transparent"
+              />
+              <select
+                value={selectedDomain}
+                onChange={e => handleDomainChange(e.target.value)}
+                className="bg-neutral-100 text-neutral-700 text-[12px] font-bold border-l border-neutral-200 px-2 py-2 cursor-pointer focus:outline-none hover:bg-neutral-200 transition-colors"
+                title="Select email domain"
+              >
+                <option value="@provis.id">@provis.id (Default)</option>
+                <option value="@gmail.com">@gmail.com</option>
+                <option value="@yahoo.com">@yahoo.com</option>
+                <option value="@outlook.com">@outlook.com</option>
+                <option value="custom">Other Domain...</option>
+              </select>
+            </div>
+          ) : (
+            <input
+              type="email"
+              value={data.email}
+              onChange={e => setData('email', e.target.value)}
+              required
+              placeholder="name@example.com"
+              className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400"
+            />
+          )}
+          {errors.email && <p className="text-red-500 text-[11px] mt-1">{errors.email}</p>}
+        </div>
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+            Password {editUser ? '(Leave blank if unchanged)' : ''}
+          </label>
+          <input
+            type="password"
+            value={data.password}
+            onChange={e => setData('password', e.target.value)}
+            required={!editUser}
+            placeholder={editUser ? "Leave blank if unchanged" : "Enter password"}
+            pattern="^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$"
+            title="Minimum 8 characters, combination of letters and numbers"
+            className={`w-full border rounded-xl px-3 py-2 text-[13px] focus:outline-none transition-colors ${data.password.length > 0
+              ? isPasswordValid
+                ? 'border-emerald-400 focus:ring-2 focus:ring-emerald-400'
+                : 'border-red-400 focus:ring-2 focus:ring-red-400'
+              : 'border-neutral-200 focus:ring-2 focus:ring-violet-400'
+              }`}
+          />
+          {data.password.length > 0 && (
+            <p className={`text-[11.5px] font-medium mt-1.5 flex items-center gap-1.5 transition-colors ${isPasswordValid ? 'text-emerald-600' : 'text-red-500'
+              }`}>
+              {isPasswordValid ? (
+                <>
+                  <CheckCircle2 size={13} className="shrink-0" />
+                  <span>Password requirements met (min. 8 characters, letters & numbers)</span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle size={13} className="shrink-0" />
+                  <span>Requirements not met: min. 8 characters, letters and numbers required</span>
+                </>
               )}
-
-              {/* Project Access (for workers with company selected) */}
-              {isWorkerTarget && companyProjects.length > 0 && (
-                <div className="border border-neutral-200 rounded-2xl overflow-hidden">
-                  <div 
-                    className="px-4 py-3 flex items-center justify-between border-b border-neutral-100 bg-neutral-50 cursor-pointer hover:bg-neutral-100 transition-colors"
-                    onClick={() => setIsProjectAccessOpen(!isProjectAccessOpen)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <FolderOpen size={15} style={{ color: '#7c3aed' }} />
-                      <h3 className="font-bold text-[13px] text-neutral-800">Project Access (Initial Setup)</h3>
-                    </div>
-                    {isProjectAccessOpen ? <ChevronDown size={15} className="text-neutral-400" /> : <ChevronRight size={15} className="text-neutral-400" />}
+            </p>
+          )}
+          {errors.password && <p className="text-red-500 text-[11px] mt-1">{errors.password}</p>}
+        </div>
+        <div>
+          <label className="block text-[12px] font-bold text-neutral-700 mb-1">Role</label>
+          <select value={data.roles_id} onChange={e => setData('roles_id', e.target.value)} required className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
+            <option value="">Select Role</option>
+            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+        {showCompany && (
+          <div className="md:col-span-2 space-y-3 pt-1">
+            {/* Persetujuan Multi-Company Card */}
+            <div className={`p-4 rounded-xl border transition-all ${allowMultiCompany
+              ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400/20'
+              : 'bg-neutral-50/70 border-neutral-200 hover:border-neutral-300'
+              }`}>
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allowMultiCompany}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setAllowMultiCompany(checked);
+                    setData(prev => {
+                      let updatedCompanyIds = prev.company_ids;
+                      let primaryComp = prev.companies_id;
+                      if (!checked) {
+                        // If unchecked, restrict to at most 1 company (the first one)
+                        updatedCompanyIds = prev.company_ids.length > 0 ? [prev.company_ids[0]] : (prev.companies_id ? [Number(prev.companies_id)] : []);
+                        primaryComp = updatedCompanyIds.length > 0 ? updatedCompanyIds[0].toString() : '';
+                      } else if (updatedCompanyIds.length === 0 && primaryComp) {
+                        updatedCompanyIds = [Number(primaryComp)];
+                      }
+                      return {
+                        ...prev,
+                        multi_company_agreement: checked,
+                        company_ids: updatedCompanyIds,
+                        companies_id: primaryComp
+                      };
+                    });
+                  }}
+                  className="mt-0.5 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer shrink-0"
+                />
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12.5px] font-bold text-neutral-800">
+                      Multi-Company Aggrement
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                      Super Admin Only
+                    </span>
                   </div>
-                  
-                  {isProjectAccessOpen && (
-                    <div className="max-h-[300px] overflow-y-auto">
-                      <table className="w-full text-[12.5px]">
-                        <thead className="sticky top-0 z-10 shadow-sm">
-                          <tr className="bg-neutral-50 border-b border-neutral-100">
-                            <th className="px-4 py-2 text-left text-neutral-500 font-semibold text-[11px] uppercase">Project</th>
-                            <th className="px-4 py-2 text-center text-neutral-500 font-semibold text-[11px] uppercase">View Project</th>
-                            <th className="px-4 py-2 text-center text-neutral-500 font-semibold text-[11px] uppercase">View Progress</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-neutral-50">
-                          {companyProjects.map(proj => {
-                            const acc = data.permission_matrix.project_access?.[proj.id] ?? { view_project: false, view_progress: false };
-                            return (
-                              <tr key={proj.id} className="hover:bg-violet-50/30">
-                                <td className="px-4 py-2.5 font-medium text-neutral-800">{proj.title}</td>
-                                <td className="px-4 py-2.5 text-center">
-                                  <input type="checkbox" checked={acc.view_project} onChange={() => toggleProjectAccess(proj.id, 'view_project')} className="w-4 h-4 accent-violet-600 cursor-pointer" />
-                                </td>
-                                <td className="px-4 py-2.5 text-center">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={acc.view_progress} 
-                                    disabled={!acc.view_project}
-                                    onChange={() => toggleProjectAccess(proj.id, 'view_progress')} 
-                                    className={`w-4 h-4 ${!acc.view_project ? 'opacity-50 cursor-not-allowed' : 'accent-violet-600 cursor-pointer'}`} 
-                                  />
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+
+                  {allowMultiCompany && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-amber-800 font-semibold pt-1">
+                      <CheckCircle2 size={13} className="text-amber-600 shrink-0" />
+                      <span>You can now assign this user to more than one company</span>
                     </div>
                   )}
                 </div>
+              </label>
+              {errors.multi_company_agreement && (
+                <p className="text-red-500 text-[11px] mt-1.5 font-medium">{errors.multi_company_agreement}</p>
               )}
+            </div>
 
-              {/* Actions */}
-              <div className="flex justify-end gap-3 pt-2 border-t border-neutral-100">
-                <button type="button" onClick={() => { if (viewMode === 'create') { setViewMode('manage'); reset(); } else { setModalOpen(false); } }} className="px-4 py-2 text-[13px] font-semibold text-neutral-600 hover:bg-neutral-100 rounded-xl transition-colors">
-                  Cancel
-                </button>
-                <button type="submit" disabled={processing} className="px-5 py-2 text-[13px] font-semibold text-white rounded-xl transition-all hover:opacity-90 active:scale-95 disabled:opacity-60"
-                  style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
+            {/* Company Selection: Single or Multi */}
+            {!allowMultiCompany ? (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[12px] font-bold text-neutral-700">Company (Single)</label>
+                  <a href="/admin/companies" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Companies &rarr;</a>
+                </div>
+                <select
+                  value={data.companies_id}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setData(prev => ({
+                      ...prev,
+                      companies_id: val,
+                      company_ids: val ? [Number(val)] : []
+                    }));
+                  }}
+                  className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
                 >
-                  {processing ? 'Saving…' : 'Save Changes'}
-                </button>
+                  <option value="">No Company (Standalone)</option>
+                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  Untuk memilih lebih dari 1 company, centang persetujuan multi-company di atas.
+                </p>
               </div>
-            </form>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[12px] font-bold text-neutral-700">
+                    Pilih Perusahaan ({data.company_ids.length} dipilih)
+                  </label>
+                  <a href="/admin/companies" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Companies &rarr;</a>
+                </div>
+                <div className="border border-neutral-200 rounded-xl p-3 bg-neutral-50/50 max-h-52 overflow-y-auto space-y-2">
+                  {companies.map(c => {
+                    const isChecked = data.company_ids.includes(c.id);
+                    const isPrimary = Number(data.companies_id) === c.id;
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          let updated = [...data.company_ids];
+                          if (isChecked) {
+                            updated = updated.filter(id => id !== c.id);
+                          } else {
+                            updated.push(c.id);
+                          }
+                          const newPrimary = updated.includes(Number(data.companies_id))
+                            ? data.companies_id
+                            : (updated.length > 0 ? updated[0].toString() : '');
+                          setData(prev => ({
+                            ...prev,
+                            company_ids: updated,
+                            companies_id: newPrimary
+                          }));
+                        }}
+                        className={`flex items-center justify-between p-2.5 rounded-lg border transition-all cursor-pointer select-none ${isChecked ? 'bg-violet-50 border-violet-200 text-violet-900 shadow-2xs' : 'bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-700'
+                          }`}
+                      >
+                        <label className="flex items-center gap-2.5 cursor-pointer flex-1">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => { }} // handled by wrapper
+                            className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 accent-violet-600 cursor-pointer"
+                          />
+                          <span className="text-[13px] font-semibold">{c.name}</span>
+                        </label>
+                        {isChecked && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setData(prev => ({ ...prev, companies_id: c.id.toString() }));
+                            }}
+                            title={isPrimary ? 'Perusahaan Utama (Primary)' : 'Klik untuk jadikan Perusahaan Utama'}
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full cursor-pointer transition-transform active:scale-95 ${isPrimary ? 'bg-violet-600 text-white shadow-2xs' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+                              }`}
+                          >
+                            {isPrimary ? '★ Primary' : 'Set as Primary'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* {data.company_ids.length > 1 && (
+                          <p className="text-[11px] text-amber-700 font-medium">
+                            Perusahaan bertanda <strong>★ Primary</strong> akan digunakan sebagai company utama/default user.
+                          </p>
+                        )} */}
+                {errors.company_ids && <p className="text-red-500 text-[11px] mt-1">{errors.company_ids}</p>}
+              </div>
+            )}
+          </div>
+        )}
+        {showDivision && (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[12px] font-bold text-neutral-700">Division</label>
+              <a href="/admin/divisions" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Divisions &rarr;</a>
+            </div>
+            <select value={data.divisions_id} onChange={e => setData('divisions_id', e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
+              <option value="">No Division</option>
+              {divisions.map(d => <option key={d.id} value={d.id}>{d.divisi}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Global Permission Matrix */}
+      {selectedRoleName && selectedRoleName !== 'SuperAdmin' && !isAdminTarget && (
+        <div className="border border-neutral-200 rounded-2xl overflow-hidden mt-6 bg-white/50">
+          <div
+            className="px-4 py-3 flex items-center justify-between border-b border-neutral-100 bg-neutral-50 cursor-pointer hover:bg-neutral-100 transition-colors"
+            onClick={() => setIsGlobalMatrixOpen(!isGlobalMatrixOpen)}
+          >
+            <div className="flex items-center gap-2">
+              <Shield size={15} style={{ color: '#7c3aed' }} />
+              <h3 className="font-bold text-[13px] text-neutral-800">Global Permission Matrix</h3>
+            </div>
+            {isGlobalMatrixOpen ? <ChevronDown size={15} className="text-neutral-400" /> : <ChevronRight size={15} className="text-neutral-400" />}
+          </div>
+
+          {isGlobalMatrixOpen && (
+            <div className="p-4 space-y-5">
+              {/* Scope & Advanced Project Features */}
+              {!isWorkerTarget && (
+                <div className="flex flex-wrap gap-6 items-start">
+                  <div>
+                    <h4 className="text-[11px] font-bold text-neutral-600 uppercase tracking-wide mb-2">Data Scope</h4>
+                    <div className="flex gap-4 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200 w-fit">
+                      {['all', 'own_company'].map(scope => (
+                        <label key={scope} className="flex items-center gap-2 text-[13px] text-neutral-700 cursor-pointer">
+                          <input type="radio" name="scope" value={scope} checked={data.permission_matrix.data_scope === scope} onChange={() => setData('permission_matrix', { ...data.permission_matrix, data_scope: scope })} className="accent-violet-600 cursor-pointer" />
+                          {scope === 'all' ? 'All Companies' : 'Own Company Only'}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-[11px] font-bold text-neutral-600 uppercase tracking-wide mb-2">Project Options</h4>
+                    <div className="flex gap-4 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200 w-fit">
+                      {['Multiple Projects', 'Private Projects'].map(feat => (
+                        <label key={feat} className="flex items-center gap-1.5 text-[12.5px] text-neutral-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={(data.permission_matrix.features?.projects || []).includes(feat)}
+                            onChange={() => toggleFeature('projects', feat)}
+                            className="accent-violet-600 rounded text-violet-600 focus:ring-violet-500"
+                          />
+                          {feat}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Unified Module Permissions */}
+              <div>
+                <h4 className="text-[11px] font-bold text-neutral-600 uppercase tracking-wide mb-2">Module Access & Features</h4>
+                <div className="overflow-x-auto border border-neutral-200 rounded-lg">
+                  <table className="w-full text-left text-[12.5px]">
+                    <thead className="bg-neutral-50 border-b border-neutral-200 font-semibold text-neutral-600 text-[11px] uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-2.5">Module Name</th>
+                        <th className="px-4 py-2.5 text-center border-l border-neutral-100">View (Sidebar)</th>
+                        <th className="px-4 py-2.5 text-center border-l border-neutral-100 w-1/2">Advanced Permissions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100">
+                      {MODULE_PERMISSIONS.map(mod => {
+                        if (isWorkerTarget && mod.sidebarKey === 'User Management') return null;
+
+                        const isView = (data.permission_matrix.sidebar || []).includes(mod.sidebarKey);
+                        return (
+                          <tr key={mod.sidebarKey} className="hover:bg-neutral-50/50">
+                            <td className="px-4 py-2.5 font-medium text-neutral-800">{mod.module}</td>
+                            <td className="px-4 py-2.5 text-center border-l border-neutral-100">
+                              <input
+                                type="checkbox"
+                                checked={isView}
+                                onChange={() => handleUnifiedViewToggle(mod)}
+                                className="w-4 h-4 accent-violet-600 cursor-pointer rounded"
+                              />
+                            </td>
+                            <td className="px-4 py-2.5 border-l border-neutral-100">
+                              <div className="flex flex-wrap gap-4 items-center justify-center">
+                                {mod.features.length === 0 ? (
+                                  <span className="text-neutral-400 italic text-[11px]">- None available -</span>
+                                ) : (
+                                  mod.features.map(feat => {
+                                    const isChecked = mod.featureGroup
+                                      ? (data.permission_matrix.features?.[mod.featureGroup] || []).includes(feat)
+                                      : false;
+                                    return (
+                                      <label
+                                        key={feat}
+                                        className={`flex items-center gap-1.5 text-[11.5px] cursor-pointer ${!isView ? 'opacity-40 pointer-events-none' : 'text-neutral-700 font-medium'}`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={() => toggleFeature(mod.featureGroup!, feat)}
+                                          disabled={!isView}
+                                          className="accent-violet-600 rounded"
+                                        />
+                                        <span className="capitalize">{feat.replace('_', ' ')}</span>
+                                      </label>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Project Access (for workers with company selected) */}
+      {isWorkerTarget && companyProjects.length > 0 && (
+        <div className="border border-neutral-200 rounded-2xl overflow-hidden">
+          <div
+            className="px-4 py-3 flex items-center justify-between border-b border-neutral-100 bg-neutral-50 cursor-pointer hover:bg-neutral-100 transition-colors"
+            onClick={() => setIsProjectAccessOpen(!isProjectAccessOpen)}
+          >
+            <div className="flex items-center gap-2">
+              <FolderOpen size={15} style={{ color: '#7c3aed' }} />
+              <h3 className="font-bold text-[13px] text-neutral-800">Project Access (Initial Setup)</h3>
+            </div>
+            {isProjectAccessOpen ? <ChevronDown size={15} className="text-neutral-400" /> : <ChevronRight size={15} className="text-neutral-400" />}
+          </div>
+
+          {isProjectAccessOpen && (
+            <div className="max-h-[300px] overflow-y-auto">
+              <table className="w-full text-[12.5px]">
+                <thead className="sticky top-0 z-10 shadow-sm">
+                  <tr className="bg-neutral-50 border-b border-neutral-100">
+                    <th className="px-4 py-2.5 text-left text-neutral-500 font-semibold text-[11px] uppercase">Project</th>
+                    <th className="px-4 py-2.5 text-center text-neutral-500 font-semibold text-[11px] uppercase w-36">Project Access</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-50">
+                  {companyProjects.map(proj => {
+                    const acc = data.permission_matrix.project_access?.[proj.id] ?? { view_project: false, view_progress: false };
+                    return (
+                      <tr key={proj.id} className="hover:bg-violet-50/30">
+                        <td className="px-4 py-2.5 font-medium text-neutral-800">
+                          <div className="flex items-center gap-2">
+                            <span>{proj.title}</span>
+                            {allowMultiCompany && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
+                                {companies.find(c => c.id === proj.companies_id)?.name ?? '—'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          <input type="checkbox" checked={acc.view_project} onChange={() => toggleProjectAccess(proj.id)} className="w-4 h-4 accent-violet-600 cursor-pointer" />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex justify-end gap-3 pt-2 border-t border-neutral-100">
+        <button type="button" onClick={() => { if (viewMode === 'create') { setViewMode('manage'); reset(); } else { setModalOpen(false); } }} className="px-4 py-2 text-[13px] font-semibold text-neutral-600 hover:bg-neutral-100 rounded-xl transition-colors">
+          Cancel
+        </button>
+        <button type="submit" disabled={processing} className="px-5 py-2 text-[13px] font-semibold text-white rounded-xl transition-all hover:opacity-90 active:scale-95 disabled:opacity-60"
+          style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
+        >
+          {processing ? 'Saving…' : 'Save Changes'}
+        </button>
+      </div>
+    </form>
   );
   return (
     <SuperAdminLayout>
@@ -650,13 +815,13 @@ export default function SuperAdminUserManagementPage({
 
         {/* Custom Toggle Switch */}
         <div className="flex bg-neutral-100 p-1 rounded-lg w-fit mb-6">
-          <button 
+          <button
             className={`px-4 py-1.5 text-[13px] font-semibold rounded-md transition-all ${viewMode === 'manage' ? 'bg-white text-brand shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
             onClick={() => setViewMode('manage')}
           >
             Manage Users
           </button>
-          <button 
+          <button
             className={`px-4 py-1.5 text-[13px] font-semibold rounded-md transition-all ${viewMode === 'create' ? 'bg-white text-brand shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
             onClick={() => {
               setViewMode('create');
@@ -682,7 +847,7 @@ export default function SuperAdminUserManagementPage({
                   style={{ borderColor: 'rgba(139,92,246,0.2)' }}
                 />
               </div>
-              
+
               <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className="w-full md:w-[150px] border border-neutral-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400">
                 <option value="">All Roles</option>
                 {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
@@ -698,60 +863,74 @@ export default function SuperAdminUserManagementPage({
             </div>
 
             {/* Users Table */}
-        <div className="bg-white rounded-2xl border overflow-hidden"
-          style={{ borderColor: 'rgba(139,92,246,0.1)', boxShadow: '0 1px 8px rgba(139,92,246,0.06)' }}
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-[13px]">
-              <thead>
-                <tr style={{ background: 'rgba(139,92,246,0.03)', borderBottom: '1px solid rgba(139,92,246,0.08)' }}>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">User</th>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Role</th>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Company</th>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Division</th>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Created By</th>
-                  <th className="px-5 py-3 text-right text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-50">
-                {filtered.map(u => (
-                  <tr key={u.id} className="hover:bg-violet-50/30 transition-colors">
-                    <td className="px-5 py-3">
-                      <div className="font-semibold text-neutral-900">{u.username}</div>
-                      <div className="text-[11px] text-neutral-400">{u.email}</div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${ROLE_COLORS[u.role] ?? 'bg-neutral-100 text-neutral-600'}`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-neutral-600">{u.company ?? '—'}</td>
-                    <td className="px-5 py-3 text-neutral-600">{u.division ?? '—'}</td>
-                    <td className="px-5 py-3 text-neutral-500 text-[12px]">{u.created_by}</td>
-                    <td className="px-5 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => openEdit(u)} className="p-1.5 rounded-lg transition-colors hover:bg-violet-100 text-neutral-400 hover:text-violet-600" title="Edit">
-                          <Edit2 size={14} />
-                        </button>
-                        {u.role !== 'SuperAdmin' && (
-                          <button onClick={() => handleDelete(u.id, u.username)} className="p-1.5 rounded-lg transition-colors hover:bg-red-100 text-neutral-400 hover:text-red-500" title="Delete">
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-neutral-400">No users found.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        
-        {/* Manage Mode vs Create Mode */}
-        </>
+            <div className="bg-white rounded-2xl border overflow-hidden"
+              style={{ borderColor: 'rgba(139,92,246,0.1)', boxShadow: '0 1px 8px rgba(139,92,246,0.06)' }}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[13px]">
+                  <thead>
+                    <tr style={{ background: 'rgba(139,92,246,0.03)', borderBottom: '1px solid rgba(139,92,246,0.08)' }}>
+                      <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">User</th>
+                      <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Role</th>
+                      <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Company</th>
+                      <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Division</th>
+                      <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Created By</th>
+                      <th className="px-5 py-3 text-right text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-50">
+                    {filtered.map(u => (
+                      <tr key={u.id} className="hover:bg-violet-50/30 transition-colors">
+                        <td className="px-5 py-3">
+                          <div className="font-semibold text-neutral-900">{u.username}</div>
+                          <div className="text-[11px] text-neutral-400">{u.email}</div>
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${ROLE_COLORS[u.role] ?? 'bg-neutral-100 text-neutral-600'}`}>
+                            {u.role}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-neutral-600">
+                          {u.companies && u.companies.length > 1 ? (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-semibold text-neutral-900">{u.companies[0].name}</span>
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs"
+                                title={u.companies.map(c => c.name).join(', ')}
+                              >
+                                +{u.companies.length - 1} more
+                              </span>
+                            </div>
+                          ) : (
+                            u.company ?? '—'
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-neutral-600">{u.division ?? '—'}</td>
+                        <td className="px-5 py-3 text-neutral-500 text-[12px]">{u.created_by}</td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => openEdit(u)} className="p-1.5 rounded-lg transition-colors hover:bg-violet-100 text-neutral-400 hover:text-violet-600" title="Edit">
+                              <Edit2 size={14} />
+                            </button>
+                            {u.role !== 'SuperAdmin' && (
+                              <button onClick={() => handleDelete(u.id, u.username)} className="p-1.5 rounded-lg transition-colors hover:bg-red-100 text-neutral-400 hover:text-red-500" title="Delete">
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filtered.length === 0 && (
+                      <tr><td colSpan={6} className="px-5 py-10 text-center text-neutral-400">No users found.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Manage Mode vs Create Mode */}
+          </>
         ) : (
           <div className="bg-white rounded-2xl border p-6" style={{ borderColor: 'rgba(139,92,246,0.1)', boxShadow: '0 1px 8px rgba(139,92,246,0.06)' }}>
             <div className="mb-6 pb-4 border-b border-neutral-100">

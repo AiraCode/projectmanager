@@ -66,6 +66,8 @@ interface User {
   email: string;
   roles_id: number;
   companies_id: number | null;
+  company_ids?: number[];
+  companies?: Company[];
   divisions_id: number | null;
   role?: Role;
   company?: Company;
@@ -96,6 +98,7 @@ export default function UserManagementPage({
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isGlobalMatrixOpen, setIsGlobalMatrixOpen] = useState(false);
   const [isProjectAccessOpen, setIsProjectAccessOpen] = useState(false);
+  const [allowMultiCompany, setAllowMultiCompany] = useState(false);
   
   const [viewMode, setViewMode] = useState<'manage' | 'create'>('manage');
   const [filterRole, setFilterRole] = useState('');
@@ -118,6 +121,8 @@ export default function UserManagementPage({
     password: '',
     roles_id: '',
     companies_id: '',
+    company_ids: [] as number[],
+    multi_company_agreement: false,
     divisions_id: '',
     permission_matrix: {
       sidebar: [] as string[],
@@ -144,24 +149,36 @@ export default function UserManagementPage({
         setSelectedDomain('@provis.id');
         setIsCustomDomain(false);
       }
+
+      const initialCompanyIds: number[] = (user.company_ids && user.company_ids.length > 0)
+        ? user.company_ids
+        : (user.companies_id ? [user.companies_id] : []);
+      const isMulti = initialCompanyIds.length > 1;
+      setAllowMultiCompany(isMulti);
+
       setData({
         username: user.username,
         email: user.email,
         password: '',
         roles_id: user.roles_id?.toString() || '',
-        companies_id: user.companies_id?.toString() || '',
+        companies_id: user.companies_id?.toString() || (initialCompanyIds[0]?.toString() || ''),
+        company_ids: initialCompanyIds,
+        multi_company_agreement: isMulti,
         divisions_id: user.divisions_id?.toString() || '',
         permission_matrix: user.permission_matrix || { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
       });
     } else {
       setSelectedDomain('@provis.id');
       setIsCustomDomain(false);
+      setAllowMultiCompany(false);
       setData({
         username: '',
         email: '',
         password: '',
         roles_id: '',
         companies_id: '',
+        company_ids: [],
+        multi_company_agreement: false,
         divisions_id: '',
         permission_matrix: { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
       });
@@ -266,22 +283,16 @@ export default function UserManagementPage({
     }
   };
 
-  const handleProjectAccessToggle = (projectId: number, accessType: 'view_project' | 'view_progress') => {
+  const handleProjectAccessToggle = (projectId: number) => {
     const currentAccess = data.permission_matrix.project_access || {};
     const projectAccess = currentAccess[projectId] || { view_project: false, view_progress: false };
-    
-    const newAccess = { ...projectAccess, [accessType]: !projectAccess[accessType] };
-    
-    // If view_project is unchecked, force view_progress to be unchecked too
-    if (accessType === 'view_project' && !newAccess.view_project) {
-      newAccess.view_progress = false;
-    }
+    const nextVal = !projectAccess.view_project;
     
     setData('permission_matrix', {
       ...data.permission_matrix,
       project_access: {
         ...currentAccess,
-        [projectId]: newAccess
+        [projectId]: { view_project: nextVal, view_progress: nextVal },
       }
     });
   };
@@ -334,7 +345,13 @@ export default function UserManagementPage({
 
   const filteredUsers = users.filter(u => {
     if (filterRole && u.role?.name !== filterRole) return false;
-    if (filterCompany && u.companies_id?.toString() !== filterCompany) return false;
+    if (filterCompany) {
+      const cid = Number(filterCompany);
+      const userCids = (u.company_ids && u.company_ids.length > 0)
+        ? u.company_ids
+        : (u.companies_id ? [u.companies_id] : []);
+      if (!userCids.includes(cid)) return false;
+    }
     if (filterDivision && u.divisions_id?.toString() !== filterDivision) return false;
     return true;
   });
@@ -495,14 +512,133 @@ export default function UserManagementPage({
             {errors.roles_id && <p className="text-danger text-[11px] mt-1">{errors.roles_id}</p>}
           </div>
           {showGlobalMatrix && (
-            <div>
-              <label className="block text-[12px] font-bold text-neutral-700 mb-1">Company</label>
-              <CustomDropdown 
-                value={data.companies_id} 
-                onChange={(val: any) => setData('companies_id', val)}
-                options={[{ value: '', label: 'No Company' }, ...companies.map(c => ({ value: c.id, label: c.name }))]}
-                placeholder="Select Company"
-              />
+            <div className="space-y-3">
+              {isSuperAdmin && (
+                <div className={`p-3.5 rounded-xl border transition-all ${
+                  allowMultiCompany 
+                    ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400/20' 
+                    : 'bg-neutral-50 border-neutral-200 hover:border-neutral-300'
+                }`}>
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={allowMultiCompany}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setAllowMultiCompany(checked);
+                        setData(prev => {
+                          let updated = prev.company_ids;
+                          let primary = prev.companies_id;
+                          if (!checked) {
+                            updated = prev.company_ids.length > 0 ? [prev.company_ids[0]] : (prev.companies_id ? [Number(prev.companies_id)] : []);
+                            primary = updated.length > 0 ? updated[0].toString() : '';
+                          } else if (updated.length === 0 && primary) {
+                            updated = [Number(primary)];
+                          }
+                          return {
+                            ...prev,
+                            multi_company_agreement: checked,
+                            company_ids: updated,
+                            companies_id: primary
+                          };
+                        });
+                      }}
+                      className="mt-0.5 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer shrink-0"
+                    />
+                    <div className="space-y-1">
+                      <span className="text-[12px] font-bold text-neutral-800 block">
+                        Persetujuan Multi-Company (Lebih dari 1 Perusahaan)
+                      </span>
+                      <p className="text-[11px] text-neutral-600 leading-relaxed">
+                        Centang persetujuan ini sebelum memberikan akses ke lebih dari 1 perusahaan kepada akun ini.
+                      </p>
+                    </div>
+                  </label>
+                  {errors.multi_company_agreement && (
+                    <p className="text-danger text-[11px] mt-1">{errors.multi_company_agreement}</p>
+                  )}
+                </div>
+              )}
+
+              {!allowMultiCompany ? (
+                <div>
+                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">Company</label>
+                  <CustomDropdown 
+                    value={data.companies_id} 
+                    onChange={(val: any) => {
+                      setData(prev => ({
+                        ...prev,
+                        companies_id: val,
+                        company_ids: val ? [Number(val)] : []
+                      }));
+                    }}
+                    options={[{ value: '', label: 'No Company' }, ...companies.map(c => ({ value: c.id, label: c.name }))]}
+                    placeholder="Select Company"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[12px] font-bold text-neutral-700">
+                      Pilih Perusahaan ({data.company_ids.length} dipilih)
+                    </label>
+                  </div>
+                  <div className="border border-neutral-200 rounded-xl p-3 bg-neutral-50/50 max-h-48 overflow-y-auto space-y-2">
+                    {companies.map(c => {
+                      const isChecked = data.company_ids.includes(c.id);
+                      const isPrimary = Number(data.companies_id) === c.id;
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => {
+                            let updated = [...data.company_ids];
+                            if (isChecked) {
+                              updated = updated.filter(id => id !== c.id);
+                            } else {
+                              updated.push(c.id);
+                            }
+                            const newPrimary = updated.includes(Number(data.companies_id))
+                              ? data.companies_id
+                              : (updated.length > 0 ? updated[0].toString() : '');
+                            setData(prev => ({
+                              ...prev,
+                              company_ids: updated,
+                              companies_id: newPrimary
+                            }));
+                          }}
+                          className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                            isChecked ? 'bg-brand/10 border-brand/30 text-brand-dark font-medium' : 'bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-700'
+                          }`}
+                        >
+                          <label className="flex items-center gap-2 cursor-pointer flex-1">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {}}
+                              className="w-4 h-4 rounded text-brand focus:ring-brand accent-brand cursor-pointer"
+                            />
+                            <span className="text-[12.5px]">{c.name}</span>
+                          </label>
+                          {isChecked && (
+                            <span 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setData(prev => ({ ...prev, companies_id: c.id.toString() }));
+                              }}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full cursor-pointer ${
+                                isPrimary ? 'bg-brand text-white' : 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300'
+                              }`}
+                            >
+                              {isPrimary ? '★ Primary' : 'Set Primary'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {errors.company_ids && <p className="text-danger text-[11px] mt-1">{errors.company_ids}</p>}
+                </div>
+              )}
             </div>
           )}
           {showGlobalMatrix && showDivision && (
@@ -546,8 +682,7 @@ export default function UserManagementPage({
                     <thead className="bg-white text-neutral-500 font-semibold text-[11px] uppercase tracking-wider border-b border-neutral-200 sticky top-0 z-10 shadow-sm">
                       <tr>
                         <th className="px-4 py-2">Project Name</th>
-                        <th className="px-4 py-2 text-center">Can View Project</th>
-                        <th className="px-4 py-2 text-center">Can View Progress</th>
+                        <th className="px-4 py-2 text-center w-36">Project Access</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
@@ -557,16 +692,7 @@ export default function UserManagementPage({
                           <tr key={proj.id} className="hover:bg-neutral-50/50">
                             <td className="px-4 py-3 font-medium text-neutral-900">{proj.title}</td>
                             <td className="px-4 py-3 text-center">
-                              <input type="checkbox" checked={access.view_project} onChange={() => handleProjectAccessToggle(proj.id, 'view_project')} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <input 
-                                type="checkbox" 
-                                checked={access.view_progress} 
-                                disabled={!access.view_project}
-                                onChange={() => handleProjectAccessToggle(proj.id, 'view_progress')} 
-                                className={`rounded w-4 h-4 ${!access.view_project ? 'opacity-50 cursor-not-allowed text-neutral-400' : 'text-brand focus:ring-brand cursor-pointer'}`} 
-                              />
+                              <input type="checkbox" checked={access.view_project} onChange={() => handleProjectAccessToggle(proj.id)} className="rounded text-brand focus:ring-brand w-4 h-4 cursor-pointer" />
                             </td>
                           </tr>
                         );
@@ -807,13 +933,30 @@ export default function UserManagementPage({
                         {u.role?.name || 'N/A'}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-neutral-600">{u.company?.name || '—'}</td>
+                    <td className="px-5 py-3 text-neutral-600">
+                      {u.companies && u.companies.length > 1 ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold text-neutral-900">{u.companies[0].name}</span>
+                          <span 
+                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs"
+                            title={u.companies.map(c => c.name).join(', ')}
+                          >
+                            +{u.companies.length - 1} more
+                          </span>
+                        </div>
+                      ) : (
+                        u.company?.name || '—'
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-neutral-600">{u.division?.divisi || '—'}</td>
                     {(canEditAny || isPIC || isSuperAdmin) && (
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           {/* PIC can edit workers in their company (basic project access, or full if advanced edit is enabled) */}
-                          {(isSuperAdmin || (isPIC && u.role?.name === 'worker' && u.companies_id === currentUser.companies_id)) && (
+                          {(isSuperAdmin || (isPIC && u.role?.name === 'worker' && (
+                            u.companies_id === currentUser.companies_id ||
+                            (currentUser.company_ids && u.company_ids && currentUser.company_ids.some(cid => u.company_ids?.includes(cid)))
+                          ))) && (
                             <button type="button" onClick={() => openModal(u)} className="p-1.5 text-neutral-400 hover:text-brand hover:bg-brand-light rounded transition-colors" title={isPIC && !canEditAny ? "Edit Project Access" : "Edit User"}>
                               <Edit2 size={15} />
                             </button>

@@ -58,6 +58,51 @@ class User extends Authenticatable
         return $this->belongsTo(Company::class, 'companies_id');
     }
 
+    public function companies()
+    {
+        return $this->belongsToMany(Company::class, 'company_user', 'user_id', 'company_id')->withTimestamps();
+    }
+
+    /**
+     * Get all company IDs assigned to this user.
+     * Falls back to companies_id if pivot table is empty.
+     */
+    public function getCompanyIds(): array
+    {
+        if ($this->relationLoaded('companies')) {
+            $ids = $this->companies->pluck('id')->all();
+        } else {
+            $ids = $this->companies()->pluck('companies.id')->all();
+        }
+
+        if (empty($ids) && $this->companies_id) {
+            $ids = [(int) $this->companies_id];
+        }
+
+        return array_values(array_unique(array_filter(array_map('intval', $ids))));
+    }
+
+    /**
+     * Check if user is associated with a given company.
+     */
+    public function hasCompany(int|string|null $companyId): bool
+    {
+        if (!$companyId) return false;
+        return in_array((int) $companyId, $this->getCompanyIds(), true);
+    }
+
+    /**
+     * Synchronize user's assigned companies and keep companies_id in sync.
+     */
+    public function syncCompanies(array $companyIds): void
+    {
+        $uniqueIds = array_values(array_unique(array_filter(array_map('intval', $companyIds))));
+        $this->companies()->sync($uniqueIds);
+        $this->companies_id = $uniqueIds[0] ?? null;
+        $this->save();
+    }
+
+
     public function division()
     {
         return $this->belongsTo(Division::class, 'divisions_id');

@@ -13,6 +13,7 @@ use App\Models\ListSubWbsName;
 use App\Models\SubWbs;
 use App\Models\Wbs;
 use App\Models\ProjectActivityLog;
+use App\Models\AuditLog;
 use App\Models\BudgetEntry;
 use App\Models\WeeklyProgress;
 use App\Models\TaskDependency;
@@ -44,7 +45,8 @@ class ProjectController extends Controller
             $projectAccess = $user->permission_matrix['project_access'] ?? [];
             $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
 
-            $projectsQuery = Project::where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->with(['manager', 'company']);
+            $companyIds = $user->getCompanyIds();
+            $projectsQuery = Project::whereIn('companies_id', $companyIds)->whereIn('id', $allowedIds)->with(['manager', 'company']);
             $projects = $projectsQuery->get();
             if ($projects->count() === 0) {
                 return back()->withErrors(['message' => 'Anda belum diberikan akses ke proyek manapun. Silakan hubungi Administrator.']);
@@ -79,10 +81,11 @@ class ProjectController extends Controller
             $hasPrivate = collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('private projects') || collect($projectsFeatures)->map(fn($f) => strtolower($f))->contains('private_projects');
 
             $picProjectsQuery = Project::query();
-            if ($user->companies_id) {
-                $picProjectsQuery->where(function ($q) use ($user) {
-                    $q->where(function ($sub) use ($user) {
-                        $sub->where('companies_id', $user->companies_id)
+            $companyIds = $user->getCompanyIds();
+            if (!empty($companyIds)) {
+                $picProjectsQuery->where(function ($q) use ($user, $companyIds) {
+                    $q->where(function ($sub) use ($companyIds) {
+                        $sub->whereIn('companies_id', $companyIds)
                             ->where('is_private', false);
                     })->orWhere('project_manager', $user->id);
                 });
@@ -252,7 +255,8 @@ class ProjectController extends Controller
         if ($role === 'worker') {
             $projectAccess = $user->permission_matrix['project_access'] ?? [];
             $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
-            $availableProjects = Project::where('companies_id', $user->companies_id)
+            $companyIds = $user->getCompanyIds();
+            $availableProjects = Project::whereIn('companies_id', $companyIds)
                 ->whereIn('id', $allowedIds)
                 ->select('id', 'title')
                 ->get();
@@ -297,7 +301,8 @@ class ProjectController extends Controller
         if ($role === 'worker') {
             $projectAccess = $user->permission_matrix['project_access'] ?? [];
             $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
-            $availableProjects = Project::where('companies_id', $user->companies_id)
+            $companyIds = $user->getCompanyIds();
+            $availableProjects = Project::whereIn('companies_id', $companyIds)
                 ->whereIn('id', $allowedIds)
                 ->select('id', 'title')
                 ->get();
@@ -469,13 +474,19 @@ class ProjectController extends Controller
                 return back()->withErrors(['company_id' => 'Company must be selected or entered.']);
             }
             $user->save();
+            $user->companies()->syncWithoutDetaching([$user->companies_id]);
+        }
+
+        $chosenCompanyId = $user->companies_id;
+        if (!empty($validated['company_id']) && $user->hasCompany($validated['company_id'])) {
+            $chosenCompanyId = (int) $validated['company_id'];
         }
 
         $start = Carbon::parse($validated['start']);
         $end   = Carbon::parse($validated['end']);
 
         $project = Project::create([
-            'companies_id'    => $user->companies_id,
+            'companies_id'    => $chosenCompanyId,
             'project_manager' => $user->id,
             'title'           => $validated['title'],
             'start'           => $start,
@@ -490,6 +501,8 @@ class ProjectController extends Controller
 
         // Automatically initialize standard 17 Main Jobs WBS template for new project
         app(ProjectTemplateService::class)->applyTemplateToProject($project);
+
+        AuditLog::record('CREATE_PROJECT', "PIC {$user->username} created project '{$project->title}' (ID #{$project->id}).");
 
         // Redirect to setup wizard page so PIC can customize Main, Sub, and Sub-Sub tasks
         return redirect()->route('projects.setup', $project->id);
@@ -749,6 +762,8 @@ class ProjectController extends Controller
         $project->update([
             'setup_status' => 'active',
         ]);
+
+        AuditLog::record('COMPLETE_PROJECT_SETUP', "User {$user->username} completed initial setup for project '{$project->title}' (ID #{$project->id}). Project is now active.");
 
         return redirect()->route('projects.show', $project->id)
             ->with('success', 'Project setup complete! The project is now active.');
@@ -1477,6 +1492,8 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
+        AuditLog::record('CREATE_TASK', "User {$user->username} added task '{$taskObj->name}' in project '{$project->title}'.");
+
         return back()->with('success', 'Task added successfully.');
     }
 
@@ -1650,6 +1667,8 @@ class ProjectController extends Controller
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
+        AuditLog::record('UPDATE_TASK', "User {$user->username} updated task '{$task->name}' in project '{$project->title}'.");
+
         return back()->with('success', 'Task updated successfully.');
     }
 
@@ -1716,9 +1735,12 @@ class ProjectController extends Controller
             $q->where('projects_id', $projectId);
         })->where('id', $taskId)->firstOrFail();
 
+        $tName = $task->name;
         $task->delete();
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
+
+        AuditLog::record('DELETE_TASK', "User {$user->username} deleted task '{$tName}' from project '{$project->title}'.");
 
         return back()->with('success', 'Task deleted successfully.');
     }
@@ -1752,7 +1774,7 @@ class ProjectController extends Controller
         }
 
         if ($role === 'worker') {
-            if ($project->companies_id != $user->companies_id) {
+            if (!$user->hasCompany($project->companies_id)) {
                 return back()->with('error', 'Access Denied: Workers can only update tasks within their assigned company.');
             }
 
@@ -1904,6 +1926,13 @@ class ProjectController extends Controller
                 : "Task '{$task->name}' diupdate progressnya menjadi {$task->progress}%.",
         ]);
 
+        AuditLog::record(
+            $task->is_completed ? 'TASK_COMPLETED' : 'TASK_PROGRESS_UPDATED',
+            $task->is_completed
+                ? "User {$user->username} marked task '{$task->name}' as completed (100%) in project '{$project->title}'."
+                : "User {$user->username} updated task '{$task->name}' progress to {$task->progress}% in project '{$project->title}'."
+        );
+
         app(ProgressService::class)->recalculateProjectProgress($projectId);
 
         return back()->with('success', 'Task status updated successfully.');
@@ -1917,7 +1946,7 @@ class ProjectController extends Controller
     {
         if (!$user || !$project) return false;
         if ($project->project_manager == $user->id) return true;
-        if ($user->companies_id && $project->companies_id == $user->companies_id) return true;
+        if ($user->hasCompany($project->companies_id)) return true;
         return false;
     }
 
@@ -1974,9 +2003,10 @@ class ProjectController extends Controller
                 return $project;
             } else {
                 $queryPic = clone $query;
-                if ($user->companies_id) {
-                    $project = $queryPic->where(function ($q) use ($user) {
-                        $q->where('companies_id', $user->companies_id)
+                $companyIds = $user->getCompanyIds();
+                if (!empty($companyIds)) {
+                    $project = $queryPic->where(function ($q) use ($user, $companyIds) {
+                        $q->whereIn('companies_id', $companyIds)
                             ->orWhere('project_manager', $user->id);
                     })->first();
                 } else {
@@ -1986,10 +2016,11 @@ class ProjectController extends Controller
                 return $project;
             }
         } elseif ($role === 'worker') {
+            $companyIds = $user->getCompanyIds();
             if ($id) {
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
-                if ($project->companies_id != $user->companies_id) {
+                if (!$user->hasCompany($project->companies_id)) {
                     abort(403, 'Access Denied: Workers can only access projects belonging to their assigned company.');
                 }
 
@@ -2002,7 +2033,7 @@ class ProjectController extends Controller
             } else {
                 $projectAccess = $user->permission_matrix['project_access'] ?? [];
                 $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
-                return $query->where('companies_id', $user->companies_id)->whereIn('id', $allowedIds)->first();
+                return $query->whereIn('companies_id', $companyIds)->whereIn('id', $allowedIds)->first();
             }
         } else {
             // Admin Utama & Admin Progres can view any public project (SuperAdmin views all)
@@ -2452,6 +2483,9 @@ class ProjectController extends Controller
             'is_private' => !$project->is_private,
         ]);
 
+        $status = $project->is_private ? 'Private' : 'Public';
+        AuditLog::record('TOGGLE_PRIVATE_PROJECT', "User {$user->username} changed visibility of project '{$project->title}' to {$status}.");
+
         return redirect()->back();
     }
 
@@ -2465,7 +2499,11 @@ class ProjectController extends Controller
             abort(403);
         }
         $project = Project::findOrFail($id);
+        $projectTitle = $project->title;
         $project->delete();
+
+        AuditLog::record('DELETE_PROJECT', "SuperAdmin {$user->username} permanently deleted project '{$projectTitle}' (ID #{$id}).");
+
         return redirect('/admin/projects')->with('success', 'Project deleted successfully.');
     }
 }

@@ -21,23 +21,34 @@ class UserManagementController extends Controller
             abort(403, 'Unauthorized access.');
         }
 
-        $query = User::with(['role', 'company', 'division']);
+        $query = User::with(['role', 'company', 'companies', 'division']);
 
         // Data Scope: If not SuperAdmin (or data_scope != all), restrict to own company
         if ($user->getDataScope() !== 'all') {
-            $query->where('companies_id', $user->companies_id);
+            $userCompanyIds = $user->getCompanyIds();
+            $query->where(function($q) use ($userCompanyIds) {
+                $q->whereIn('companies_id', $userCompanyIds)
+                  ->orWhereHas('companies', function($cq) use ($userCompanyIds) {
+                      $cq->whereIn('companies.id', $userCompanyIds);
+                  });
+            });
         }
 
-        $users = $query->get();
+        $users = $query->get()->map(function($u) {
+            $u->company_ids = $u->getCompanyIds();
+            return $u;
+        });
+
         $companies = Company::all();
         $divisions = Division::all();
         $roles = Role::all();
         
         $projects = [];
         if ($user->role?->name === 'pic') {
-            $projects = \App\Models\Project::where(function($q) use ($user) {
-                if ($user->companies_id) {
-                    $q->where('companies_id', $user->companies_id);
+            $userCompanyIds = $user->getCompanyIds();
+            $projects = \App\Models\Project::where(function($q) use ($user, $userCompanyIds) {
+                if (!empty($userCompanyIds)) {
+                    $q->whereIn('companies_id', $userCompanyIds);
                 }
                 $q->orWhere('project_manager', $user->id);
             })->select('id', 'title')->get();
@@ -49,7 +60,7 @@ class UserManagementController extends Controller
             'divisions' => $divisions,
             'roles' => $roles,
             'projects' => $projects,
-            'currentUser' => $user->load(['role', 'company']),
+            'currentUser' => $user->load(['role', 'company', 'companies']),
         ]);
     }
 
@@ -74,14 +85,37 @@ class UserManagementController extends Controller
             'password' => 'required|string|min:8|regex:/[a-zA-Z]/|regex:/[0-9]/',
             'roles_id' => 'required|integer|exists:roles,id',
             'companies_id' => 'nullable|integer|exists:companies,id',
+            'company_ids' => 'nullable|array',
+            'company_ids.*' => 'integer|exists:companies,id',
+            'multi_company_agreement' => 'nullable|boolean',
             'divisions_id' => 'nullable|integer|exists:divisions,id',
             'permission_matrix' => 'nullable|array',
         ]);
 
-        $data = $request->only(['username', 'email', 'roles_id', 'companies_id', 'divisions_id', 'permission_matrix']);
+        $companyIds = [];
+        if ($request->has('company_ids')) {
+            $companyIds = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('company_ids', [])))));
+        } elseif ($request->filled('companies_id')) {
+            $companyIds = [(int) $request->input('companies_id')];
+        }
+
+        // Enforcement: Only SuperAdmin can assign multiple companies, and must tick agreement checkbox
+        if (count($companyIds) > 1) {
+            if ($user->role?->name !== 'SuperAdmin') {
+                abort(403, 'Hanya Super Admin yang diizinkan memberikan lebih dari 1 company.');
+            }
+
+            if (!$request->boolean('multi_company_agreement')) {
+                return back()->withErrors([
+                    'multi_company_agreement' => 'Persetujuan Super Admin wajib dicentang sebelum memberikan lebih dari 1 perusahaan kepada akun ini.'
+                ]);
+            }
+        }
+
+        $data = $request->only(['username', 'email', 'roles_id', 'divisions_id', 'permission_matrix']);
         $data['password'] = Hash::make($request->password);
 
-        // Security enforcement
+        // Security enforcement for PIC
         if ($user->role?->name === 'pic') {
             $usersFeatures = $user->permission_matrix['features']['users'] ?? [];
             if (!in_array('create', $usersFeatures)) {
@@ -93,17 +127,27 @@ class UserManagementController extends Controller
                 abort(403, 'Access Denied: PIC tidak diizinkan membuat user dengan role ' . ($targetRole?->name ?? 'tersebut') . '.');
             }
 
-            $data['companies_id'] = $user->companies_id; // Force PIC's company
+            $companyIds = $user->companies_id ? [(int) $user->companies_id] : [];
         }
 
+        $data['companies_id'] = !empty($companyIds) ? $companyIds[0] : null;
         $data['created_by'] = $user->id;
         $data['must_change_password'] = true;
         $newUser = User::create($data);
 
+        // Synchronize pivot table
+        $newUser->companies()->sync($companyIds);
+
+        $multiCompanyNote = '';
+        if (count($companyIds) > 1) {
+            $compNames = Company::whereIn('id', $companyIds)->pluck('name')->implode(', ');
+            $multiCompanyNote = " with multi-company access (approved: [{$compNames}])";
+        }
+
         \App\Models\AuditLog::create([
             'user_id' => $user->id,
             'action' => 'CREATE_USER',
-            'description' => "Created user {$newUser->username} ({$newUser->email})",
+            'description' => "Created user {$newUser->username} ({$newUser->email}){$multiCompanyNote}",
             'ip_address' => $request->ip(),
         ]);
 
@@ -117,7 +161,12 @@ class UserManagementController extends Controller
 
         // Scope check for PIC
         if ($user->role?->name === 'pic') {
-            if ($targetUser->companies_id !== $user->companies_id) {
+            $userCompanyIds = $user->getCompanyIds();
+            $targetCompanyIds = $targetUser->getCompanyIds();
+            $sharesCompany = !empty(array_intersect($userCompanyIds, $targetCompanyIds)) || 
+                             ($user->companies_id && $targetUser->companies_id === $user->companies_id);
+
+            if (!$sharesCompany) {
                 abort(403, 'Unauthorized to edit this user.');
             }
 
@@ -129,43 +178,43 @@ class UserManagementController extends Controller
             if (!in_array('edit', $usersFeatures)) {
                 // PIC only has restricted access (e.g., to manage project access)
                 $request->validate([
-                'permission_matrix' => 'nullable|array',
-            ]);
+                    'permission_matrix' => 'nullable|array',
+                ]);
 
-            $currentMatrix = $targetUser->permission_matrix ?? [];
-            $newMatrix = $request->permission_matrix ?? [];
-            
-            $currentMatrix['project_access'] = $newMatrix['project_access'] ?? [];
-            
-            // Handle sidebar (Module Access)
-            $oldSidebar = $currentMatrix['sidebar'] ?? [];
-            $hadUserMgmt = in_array('User Management', $oldSidebar);
-            
-            $newSidebar = $newMatrix['sidebar'] ?? [];
-            $newSidebar = array_values(array_filter($newSidebar, function($item) {
-                return $item !== 'User Management';
-            }));
-            
-            if ($hadUserMgmt) {
-                $newSidebar[] = 'User Management';
-            }
-            
-            $currentMatrix['sidebar'] = $newSidebar;
-            $currentMatrix['features'] = $newMatrix['features'] ?? [];
-            
-            $targetUser->update([
-                'permission_matrix' => $currentMatrix,
-                'last_modified_by' => $user->id
-            ]);
+                $currentMatrix = $targetUser->permission_matrix ?? [];
+                $newMatrix = $request->permission_matrix ?? [];
+                
+                $currentMatrix['project_access'] = $newMatrix['project_access'] ?? [];
+                
+                // Handle sidebar (Module Access)
+                $oldSidebar = $currentMatrix['sidebar'] ?? [];
+                $hadUserMgmt = in_array('User Management', $oldSidebar);
+                
+                $newSidebar = $newMatrix['sidebar'] ?? [];
+                $newSidebar = array_values(array_filter($newSidebar, function($item) {
+                    return $item !== 'User Management';
+                }));
+                
+                if ($hadUserMgmt) {
+                    $newSidebar[] = 'User Management';
+                }
+                
+                $currentMatrix['sidebar'] = $newSidebar;
+                $currentMatrix['features'] = $newMatrix['features'] ?? [];
+                
+                $targetUser->update([
+                    'permission_matrix' => $currentMatrix,
+                    'last_modified_by' => $user->id
+                ]);
 
-            \App\Models\AuditLog::create([
-                'user_id' => $user->id,
-                'action' => 'UPDATE_PROJECT_ACCESS',
-                'description' => "Updated project access for user {$targetUser->username}",
-                'ip_address' => $request->ip(),
-            ]);
+                \App\Models\AuditLog::create([
+                    'user_id' => $user->id,
+                    'action' => 'UPDATE_PROJECT_ACCESS',
+                    'description' => "Updated project access for user {$targetUser->username}",
+                    'ip_address' => $request->ip(),
+                ]);
 
-            return redirect()->back()->with('success', 'Project access updated successfully.');
+                return redirect()->back()->with('success', 'Project access updated successfully.');
             }
         }
 
@@ -179,15 +228,39 @@ class UserManagementController extends Controller
 
         $request->validate([
             'username' => 'sometimes|required|string|max:45',
-            'email' => 'sometimes|required|string|email|max:45|unique:users,email,' . $id,
+            'email' => ['sometimes', 'required', 'string', 'email', 'max:45', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($targetUser->id)],
             'password' => 'nullable|string|min:8|regex:/[a-zA-Z]/|regex:/[0-9]/',
             'roles_id' => 'sometimes|required|integer|exists:roles,id',
             'companies_id' => 'nullable|integer|exists:companies,id',
+            'company_ids' => 'nullable|array',
+            'company_ids.*' => 'integer|exists:companies,id',
+            'multi_company_agreement' => 'nullable|boolean',
             'divisions_id' => 'nullable|integer|exists:divisions,id',
             'permission_matrix' => 'nullable|array',
         ]);
 
-        $data = $request->only(['username', 'email', 'roles_id', 'companies_id', 'divisions_id', 'permission_matrix']);
+        $companyIds = null;
+        if ($request->has('company_ids')) {
+            $companyIds = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('company_ids', [])))));
+        } elseif ($request->has('companies_id')) {
+            $cid = $request->input('companies_id');
+            $companyIds = $cid ? [(int) $cid] : [];
+        }
+
+        // Multi-company agreement check for Super Admin
+        if ($companyIds !== null && count($companyIds) > 1) {
+            if ($user->role?->name !== 'SuperAdmin') {
+                abort(403, 'Hanya Super Admin yang diizinkan memberikan lebih dari 1 company.');
+            }
+
+            if (!$request->boolean('multi_company_agreement')) {
+                return back()->withErrors([
+                    'multi_company_agreement' => 'Persetujuan Super Admin wajib dicentang sebelum memberikan lebih dari 1 perusahaan kepada akun ini.'
+                ]);
+            }
+        }
+
+        $data = $request->only(['username', 'email', 'roles_id', 'divisions_id', 'permission_matrix']);
         
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->password);
@@ -200,16 +273,29 @@ class UserManagementController extends Controller
                     abort(403, 'Access Denied: PIC tidak diizinkan menetapkan role ' . ($targetRole?->name ?? 'tersebut') . '.');
                 }
             }
-            $data['companies_id'] = $user->companies_id; // Enforce
+            // PIC retains target user's existing companies or user's company
+        } elseif ($companyIds !== null) {
+            $data['companies_id'] = !empty($companyIds) ? $companyIds[0] : null;
         }
 
         $data['last_modified_by'] = $user->id;
         $targetUser->update($data);
 
+        // Sync pivot if modified by SuperAdmin
+        if ($user->role?->name !== 'pic' && $companyIds !== null) {
+            $targetUser->companies()->sync($companyIds);
+        }
+
+        $multiCompanyNote = '';
+        if ($companyIds !== null && count($companyIds) > 1) {
+            $compNames = Company::whereIn('id', $companyIds)->pluck('name')->implode(', ');
+            $multiCompanyNote = " with multi-company access (approved: [{$compNames}])";
+        }
+
         \App\Models\AuditLog::create([
             'user_id' => $user->id,
             'action' => 'UPDATE_USER',
-            'description' => "Updated user {$targetUser->username}",
+            'description' => "Updated user {$targetUser->username}{$multiCompanyNote}",
             'ip_address' => $request->ip(),
         ]);
 

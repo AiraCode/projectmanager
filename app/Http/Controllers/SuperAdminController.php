@@ -64,13 +64,27 @@ class SuperAdminController extends Controller
             $query->where('action', $request->action);
         }
 
-        $logs = $query->paginate(25)->through(fn($log) => [
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('description', 'like', "%{$search}%")
+                  ->orWhere('ip_address', 'like', "%{$search}%")
+                  ->orWhere('action', 'like', "%{$search}%")
+                  ->orWhereHas('user', function ($uq) use ($search) {
+                      $uq->where('username', 'like', "%{$search}%")
+                         ->orWhere('email', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        $logs = $query->paginate(25)->withQueryString()->through(fn($log) => [
             'id'          => $log->id,
             'actor'       => $log->user?->username ?? 'System',
+            'actor_email' => $log->user?->email,
             'action'      => $log->action,
             'description' => $log->description,
             'ip_address'  => $log->ip_address,
-            'created_at'  => $log->created_at?->format('d M Y, H:i'),
+            'created_at'  => $log->created_at?->format('d M Y, H:i:s'),
         ]);
 
         $actionTypes = AuditLog::select('action')->distinct()->pluck('action');
@@ -78,13 +92,13 @@ class SuperAdminController extends Controller
         return Inertia::render('SuperAdmin/AuditLogPage', [
             'logs'        => $logs,
             'actionTypes' => $actionTypes,
-            'filters'     => $request->only(['action']),
+            'filters'     => $request->only(['action', 'search']),
         ]);
     }
 
     public function userManagement(Request $request)
     {
-        $users = User::with(['role', 'company', 'division', 'creator'])
+        $users = User::with(['role', 'company', 'companies', 'division', 'creator'])
             ->latest()
             ->get()
             ->map(fn($u) => [
@@ -94,6 +108,8 @@ class SuperAdminController extends Controller
                 'role'        => $u->role?->name,
                 'company'     => $u->company?->name,
                 'companies_id'=> $u->companies_id,
+                'company_ids' => $u->getCompanyIds(),
+                'companies'   => $u->companies->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
                 'divisions_id'=> $u->divisions_id,
                 'division'    => $u->division?->divisi,
                 'created_by'  => $u->creator?->username ?? 'System',

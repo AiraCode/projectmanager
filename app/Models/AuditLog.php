@@ -20,4 +20,14 @@ class AuditLog extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public static function record(string $action, string $description, ?int $userId = null, ?string $ip = null): self
+    {
+        return self::create([
+            'user_id' => $userId ?? auth()->id(),
+            'action' => $action,
+            'description' => $description,
+            'ip_address' => $ip ?? request()?->ip(),
+        ]);
+    }
 }
