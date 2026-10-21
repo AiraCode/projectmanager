@@ -2,47 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AuditLog;
-use App\Models\Company;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\Admin\CompanyController as BaseCompanyController;
 
-class CompanyController extends Controller
+/**
+ * Backward-compatible proxy to modular Admin\CompanyController
+ */
+class CompanyController extends BaseCompanyController
 {
-    public function store(Request $request)
-    {
-        $request->validate(['name' => 'required|string|max:255|unique:companies,name']);
-        $company = Company::create(['name' => $request->name]);
-
-        AuditLog::record('CREATE_COMPANY', "Created company '{$company->name}' (ID #{$company->id}).");
-
-        return back()->with('success', 'Company created successfully.');
-    }
-
-    public function update(Request $request, $id)
-    {
-        $company = Company::findOrFail($id);
-        $oldName = $company->name;
-        $request->validate(['name' => 'required|string|max:255|unique:companies,name,' . $id]);
-        $company->update(['name' => $request->name]);
-
-        AuditLog::record('UPDATE_COMPANY', "Updated company #{$id} name from '{$oldName}' to '{$company->name}'.");
-
-        return back()->with('success', 'Company updated successfully.');
-    }
-
-    public function destroy($id)
-    {
-        $company = Company::findOrFail($id);
-        // Only delete if no users or projects are attached
-        if ($company->users()->count() > 0 || $company->projects()->count() > 0) {
-            return back()->with('error', 'Cannot delete company with existing users or projects.');
-        }
-        $compName = $company->name;
-        $company->delete();
-
-        AuditLog::record('DELETE_COMPANY', "Deleted company '{$compName}' (ID #{$id}).");
-
-        return back()->with('success', 'Company deleted successfully.');
-    }
 }

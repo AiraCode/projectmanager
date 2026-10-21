@@ -22,6 +22,7 @@ class MainWbs extends Model
         'actual_end',
         'progress',
         'status',
+        'order_index',
     ];
 
     protected $casts = [
@@ -30,6 +31,7 @@ class MainWbs extends Model
         'end' => 'datetime',
         'actual_start' => 'datetime',
         'actual_end' => 'datetime',
+        'order_index' => 'integer',
     ];
 
     public function project()
@@ -44,6 +46,6 @@ class MainWbs extends Model
 
     public function subWbs()
     {
-        return $this->hasMany(SubWbs::class, 'sub_wbs_id');
+        return $this->hasMany(SubWbs::class, 'sub_wbs_id')->orderBy('order_index')->orderBy('id');
     }
 }

@@ -14,7 +14,16 @@ class ProjectActivityLog extends Model
         'wbs_id',
         'user_id',
         'action',
+        'old_progress',
+        'new_progress',
         'description',
+        'metadata',
+    ];
+
+    protected $casts = [
+        'old_progress' => 'integer',
+        'new_progress' => 'integer',
+        'metadata' => 'array',
     ];
 
     public function project()

@@ -39,6 +39,7 @@ class Wbs extends Model
         'requires_evidence',
         'completed_by',
         'completed_at',
+        'order_index',
     ];
 
     protected $casts = [
@@ -49,7 +50,13 @@ class Wbs extends Model
         'duration_days' => 'integer',
         'constraint_date' => 'date',
         'completed_at' => 'datetime',
+        'order_index' => 'integer',
     ];
+
+    public function activityLogs()
+    {
+        return $this->hasMany(ProjectActivityLog::class, 'wbs_id')->with('user')->orderBy('created_at', 'desc');
+    }
 
     public function parentSubWbs()
     {

@@ -22,6 +22,12 @@ class CheckSidebarAccess
 
         $matrix = $user->permission_matrix ?? [];
         $projectId = $request->query('project_id') ?? $request->route('id');
+        if ($projectId && $user->role?->name === 'worker') {
+            $proj = \App\Models\Project::find($projectId);
+            if ($proj && !$user->hasCompany($proj->companies_id)) {
+                abort(403, 'Access Denied: Workers can only access projects belonging to their assigned company.');
+            }
+        }
         
         if ($projectId && isset($matrix['is_unified']) && $matrix['is_unified'] === false) {
             $perProject = $matrix['per_project'][$projectId] ?? null;
