@@ -7,7 +7,7 @@ import {
   Lock, Layers, Key
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { Modal, Button } from '@/components/ui';
+import { Modal, Button, formatDivisionName } from '@/components/ui';
 import ChangePasswordModal from './ChangePasswordModal';
 
 const NAV_ITEMS = [
@@ -472,7 +472,24 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
               </div>
               <div className="hidden sm:block text-left">
                 <div className="text-[13px] font-semibold text-neutral-800 leading-none">{user.name}</div>
-                <div className="text-[11px] text-neutral-400 mt-0.5">{user.role}</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[11px] text-neutral-400">{user.role}</span>
+                  {user.division ? (
+                    <>
+                      <span className="text-neutral-300 text-[10px]">·</span>
+                      <span className="text-[11px] font-semibold text-brand truncate max-w-[120px]" title={`Division: ${formatDivisionName(user.division)}`}>
+                        {formatDivisionName(user.division)}
+                      </span>
+                    </>
+                  ) : (isAdminUtama || isAdminProgres || isSuperAdmin) ? (
+                    <>
+                      <span className="text-neutral-300 text-[10px]">·</span>
+                      <span className="text-[11px] font-semibold text-neutral-500">
+                        All Divisions
+                      </span>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </button>
 
@@ -481,10 +498,21 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                 <div className="px-4 py-3 border-b border-neutral-100">
                   <div className="text-[13px] font-bold text-neutral-900">{user.name}</div>
                   <div className="text-[11px] text-neutral-500 mt-0.5 truncate">{user.email}</div>
-                  <div className="mt-2">
+                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-light text-brand">
                       {user.role}
                     </span>
+                    {user.division ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200" title={`Division: ${formatDivisionName(user.division)}`}>
+                        <Shield size={10} className="text-neutral-500" />
+                        {formatDivisionName(user.division)}
+                      </span>
+                    ) : (isAdminUtama || isAdminProgres || isSuperAdmin) ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                        <Shield size={10} className="text-blue-500" />
+                        All Divisions
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <button

@@ -30,6 +30,10 @@ import {
     Sliders,
     Paperclip,
     Link2,
+    Check,
+    GripVertical,
+    History,
+    Scale,
 } from "lucide-react";
 import {
     Project,
@@ -86,57 +90,74 @@ function EditableProgress({
         setVal(value.toString());
     }, [value]);
 
+    const handleCommit = () => {
+        setIsEditing(false);
+        const parsed = parseInt(val, 10);
+        if (
+            !isNaN(parsed) &&
+            parsed !== value &&
+            parsed >= 0 &&
+            parsed <= 100
+        ) {
+            onSave(parsed);
+        } else {
+            setVal(value.toString());
+        }
+    };
+
     if (isEditing && !disabled) {
         return (
-            <input
-                autoFocus
-                type="number"
-                min="0"
-                max="100"
-                value={val}
-                onChange={(e) => setVal(e.target.value)}
-                onBlur={() => {
-                    setIsEditing(false);
-                    const parsed = parseInt(val);
-                    if (
-                        !isNaN(parsed) &&
-                        parsed !== value &&
-                        parsed >= 0 &&
-                        parsed <= 100
-                    )
-                        onSave(parsed);
-                    else setVal(value.toString());
-                }}
-                onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                        setIsEditing(false);
-                        const parsed = parseInt(val);
-                        if (
-                            !isNaN(parsed) &&
-                            parsed !== value &&
-                            parsed >= 0 &&
-                            parsed <= 100
-                        )
-                            onSave(parsed);
-                        else setVal(value.toString());
-                    } else if (e.key === "Escape") {
-                        setIsEditing(false);
-                        setVal(value.toString());
-                    }
-                }}
-                className="w-12 h-6 text-right text-[12.5px] font-black border border-brand/50 rounded outline-none p-0 hide-arrows -mr-1"
-                style={{ appearance: "textfield" }}
-            />
+            <div className="inline-flex items-center gap-1 bg-white border border-brand/60 rounded px-1.5 py-0.5 shadow-2xs">
+                <input
+                    autoFocus
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={val}
+                    onChange={(e) => setVal(e.target.value)}
+                    onBlur={handleCommit}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                            handleCommit();
+                        } else if (e.key === "Escape") {
+                            setIsEditing(false);
+                            setVal(value.toString());
+                        }
+                    }}
+                    className="w-9 text-right text-[12.5px] font-black text-neutral-900 outline-none p-0 hide-arrows"
+                    style={{ appearance: "textfield" }}
+                />
+                <span className="text-[11px] font-bold text-neutral-500">%</span>
+                <button
+                    type="button"
+                    onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleCommit();
+                    }}
+                    className="p-0.5 text-emerald-700 hover:text-emerald-800 transition-colors"
+                    title="Save Progress"
+                >
+                    <Check size={12} />
+                </button>
+            </div>
         );
     }
 
     return (
         <span
-            className={`text-[12.5px] font-black w-11 text-right tabular-nums ${!disabled ? "cursor-text hover:bg-neutral-100 rounded px-1 -mx-1" : ""} ${isChecked ? "text-emerald-700" : "text-neutral-800"}`}
+            className={`inline-flex items-center justify-end text-[12.5px] font-black w-14 text-right tabular-nums transition-colors ${
+                !disabled
+                    ? "cursor-text hover:bg-neutral-100 hover:ring-1 hover:ring-neutral-300 rounded px-1.5 py-0.5 -mx-1"
+                    : "px-1"
+            } ${isChecked ? "text-emerald-700" : "text-neutral-800"}`}
             onClick={() => {
                 if (!disabled) setIsEditing(true);
             }}
-            title={!disabled ? "Click to set percentage manually" : ""}
+            title={
+                !disabled
+                    ? "Click to edit completion percentage (0–100%)"
+                    : `Progress: ${value}% (Read-only)`
+            }
         >
             {value}%
         </span>
@@ -259,6 +280,24 @@ export default function TasksPage() {
     } | null>(null);
     const [todaySectionOpen, setTodaySectionOpen] = useState(true);
     const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+    // Progress History Modal State
+    const [historyModalTask, setHistoryModalTask] = useState<{
+        task: SubSubtask;
+        parentSmj?: SubMainJob;
+    } | null>(null);
+
+    // Drag-and-Drop Organization State
+    const [draggedItem, setDraggedItem] = useState<{
+        smjId: string;
+        taskId: string;
+    } | null>(null);
+    const [dropTargetTaskId, setDropTargetTaskId] = useState<string | null>(null);
+
+    // Inline Task Name Edit State
+    const [inlineEditingTaskId, setInlineEditingTaskId] = useState<string | null>(null);
+    const [inlineEditingTaskName, setInlineEditingTaskName] = useState<string>("");
+    const [inlineSavingTaskId, setInlineSavingTaskId] = useState<string | null>(null);
 
     // Manage Dependencies State
     const [depModal, setDepModal] = useState<{
@@ -798,6 +837,84 @@ export default function TasksPage() {
                 }
             },
         });
+    };
+
+    // Client-side Task Reordering within same Sub Main Job
+    const handleReorderTasks = (
+        smjId: string,
+        sourceTaskId: string,
+        targetTaskId: string,
+    ) => {
+        if (sourceTaskId === targetTaskId) return;
+
+        let moved = false;
+        setProjectData((prev) => {
+            const next = { ...prev };
+            next.mainJobs = next.mainJobs.map((mj) => ({
+                ...mj,
+                subMainJobs: mj.subMainJobs.map((smj) => {
+                    if (smj.id !== smjId) return smj;
+                    const items = [...smj.subtasks];
+                    const sourceIdx = items.findIndex((t) => t.id === sourceTaskId);
+                    const targetIdx = items.findIndex((t) => t.id === targetTaskId);
+                    if (sourceIdx === -1 || targetIdx === -1) return smj;
+
+                    const [removed] = items.splice(sourceIdx, 1);
+                    items.splice(targetIdx, 0, removed);
+                    moved = true;
+                    return { ...smj, subtasks: items };
+                }),
+            }));
+            return next;
+        });
+
+        if (moved) {
+            setToastMsg(
+                "Task reordered in view. Note: Persistent task ordering requires backend schema (e.g. order_index) and API support.",
+            );
+        }
+    };
+
+    // Inline Task Name Editing Handlers
+    const handleStartInlineEdit = (task: SubSubtask) => {
+        if (!isPIC) return;
+        setInlineEditingTaskId(task.id);
+        setInlineEditingTaskName(task.name);
+    };
+
+    const handleCancelInlineEdit = () => {
+        setInlineEditingTaskId(null);
+        setInlineEditingTaskName("");
+    };
+
+    const handleSaveInlineEdit = (
+        smjId: string,
+        task: SubSubtask,
+        newName: string,
+    ) => {
+        const trimmed = newName.trim();
+        if (!trimmed) {
+            setToastMsg("Task name cannot be blank.");
+            return;
+        }
+        if (trimmed === task.name) {
+            setInlineEditingTaskId(null);
+            setInlineEditingTaskName("");
+            return;
+        }
+
+        setInlineSavingTaskId(task.id);
+        handleSaveSubtask(
+            smjId,
+            { ...task, name: trimmed },
+            (err) => {
+                setInlineSavingTaskId(null);
+                if (!err) {
+                    setInlineEditingTaskId(null);
+                    setInlineEditingTaskName("");
+                }
+            },
+        );
     };
 
     const handleOpenDepModal = (task: SubSubtask) => {
@@ -1562,6 +1679,77 @@ export default function TasksPage() {
                                             onOpenUploadEvidence={(task) =>
                                                 setUploadEvidenceTask({ task })
                                             }
+                                            onOpenHistory={(task) =>
+                                                setHistoryModalTask({
+                                                    task,
+                                                    parentSmj: smj,
+                                                })
+                                            }
+                                            inlineEditingTaskId={
+                                                inlineEditingTaskId
+                                            }
+                                            inlineEditingTaskName={
+                                                inlineEditingTaskName
+                                            }
+                                            setInlineEditingTaskName={
+                                                setInlineEditingTaskName
+                                            }
+                                            onStartInlineEdit={
+                                                handleStartInlineEdit
+                                            }
+                                            onCancelInlineEdit={
+                                                handleCancelInlineEdit
+                                            }
+                                            onSaveInlineEdit={(task, name) =>
+                                                handleSaveInlineEdit(
+                                                    smj.id,
+                                                    task,
+                                                    name,
+                                                )
+                                            }
+                                            inlineSavingTaskId={
+                                                inlineSavingTaskId
+                                            }
+                                            draggedItem={draggedItem}
+                                            dropTargetTaskId={dropTargetTaskId}
+                                            onDragStartTask={(taskId) =>
+                                                setDraggedItem({
+                                                    smjId: smj.id,
+                                                    taskId,
+                                                })
+                                            }
+                                            onDragOverTask={(taskId) => {
+                                                if (
+                                                    draggedItem &&
+                                                    draggedItem.smjId ===
+                                                        smj.id &&
+                                                    draggedItem.taskId !==
+                                                        taskId
+                                                ) {
+                                                    setDropTargetTaskId(taskId);
+                                                }
+                                            }}
+                                            onDragLeaveTask={() =>
+                                                setDropTargetTaskId(null)
+                                            }
+                                            onDropTask={(targetTaskId) => {
+                                                if (
+                                                    draggedItem &&
+                                                    draggedItem.smjId === smj.id
+                                                ) {
+                                                    handleReorderTasks(
+                                                        smj.id,
+                                                        draggedItem.taskId,
+                                                        targetTaskId,
+                                                    );
+                                                }
+                                                setDraggedItem(null);
+                                                setDropTargetTaskId(null);
+                                            }}
+                                            onDragEndTask={() => {
+                                                setDraggedItem(null);
+                                                setDropTargetTaskId(null);
+                                            }}
                                         />
                                     ))}
                                     {mj.subMainJobs.length === 0 && (
@@ -1584,13 +1772,13 @@ export default function TasksPage() {
                                 <tr className="text-[12px] font-bold text-neutral-600 uppercase tracking-wider">
                                     <th className="px-4 py-3">WBS Code</th>
                                     <th className="px-4 py-3">Description</th>
-                                    <th className="px-4 py-3 text-right">
-                                        Weight
+                                    <th className="px-4 py-3 text-right" title="Structural weight in WBS hierarchy (distinct from progress %)">
+                                        Weight (%)
                                     </th>
                                     <th className="px-4 py-3">Division</th>
                                     <th className="px-4 py-3">Status</th>
-                                    <th className="px-4 py-3 text-right">
-                                        Progress
+                                    <th className="px-4 py-3 text-right" title="Task completion progress percentage">
+                                        Progress (%)
                                     </th>
                                     <th className="px-4 py-3">Start Date</th>
                                     <th className="px-4 py-3">Finish Date</th>
@@ -1723,15 +1911,64 @@ export default function TasksPage() {
                                                                 {st.code}
                                                             </td>
                                                             <td className="px-4 py-2 text-neutral-800 font-medium">
-                                                                <div
-                                                                    className={
-                                                                        isDone
-                                                                            ? "text-neutral-400 font-medium"
-                                                                            : "text-neutral-900 font-medium"
-                                                                    }
-                                                                >
-                                                                    {st.name}
-                                                                </div>
+                                                                {inlineEditingTaskId === st.id ? (
+                                                                    <div className="flex items-center gap-1.5 min-w-[220px]">
+                                                                        <input
+                                                                            autoFocus
+                                                                            type="text"
+                                                                            value={inlineEditingTaskName}
+                                                                            onChange={(e) => setInlineEditingTaskName(e.target.value)}
+                                                                            onKeyDown={(e) => {
+                                                                                if (e.key === "Enter") handleSaveInlineEdit(smj.id, st, inlineEditingTaskName);
+                                                                                else if (e.key === "Escape") handleCancelInlineEdit();
+                                                                            }}
+                                                                            disabled={inlineSavingTaskId === st.id}
+                                                                            className="flex-1 px-2.5 py-1 text-[13px] font-semibold border-2 border-brand rounded outline-none bg-white shadow-xs"
+                                                                        />
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleSaveInlineEdit(smj.id, st, inlineEditingTaskName)}
+                                                                            disabled={inlineSavingTaskId === st.id || !inlineEditingTaskName.trim()}
+                                                                            className="p-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors disabled:opacity-50"
+                                                                            title="Save (Enter)"
+                                                                        >
+                                                                            <Check size={13} />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={handleCancelInlineEdit}
+                                                                            disabled={inlineSavingTaskId === st.id}
+                                                                            className="p-1 rounded bg-neutral-200 hover:bg-neutral-300 text-neutral-700 transition-colors"
+                                                                            title="Cancel (Esc)"
+                                                                        >
+                                                                            <X size={13} />
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="flex items-center gap-1.5 group/tbl">
+                                                                        <span
+                                                                            className={`break-words ${
+                                                                                isDone
+                                                                                    ? "text-neutral-400 font-medium"
+                                                                                    : "text-neutral-900 font-medium"
+                                                                            } ${isPIC ? "cursor-pointer hover:text-brand" : ""}`}
+                                                                            onDoubleClick={() => isPIC && handleStartInlineEdit(st)}
+                                                                            title={isPIC ? "Double-click to edit task name inline" : ""}
+                                                                        >
+                                                                            {st.name}
+                                                                        </span>
+                                                                        {isPIC && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleStartInlineEdit(st)}
+                                                                                className="p-0.5 text-neutral-400 hover:text-brand rounded opacity-0 group-hover/tbl:opacity-100 transition-opacity"
+                                                                                title="Edit task name inline"
+                                                                            >
+                                                                                <Edit2 size={11} />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                                 {st.completedByName && (
                                                                     <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium mt-1">
                                                                         <CheckCircle2
@@ -1751,10 +1988,11 @@ export default function TasksPage() {
                                                                     </div>
                                                                 )}
                                                             </td>
-                                                            <td className="px-4 py-2 text-right font-bold text-blue-700 text-[12px]">
-                                                                {st.weight ??
-                                                                    100}
-                                                                %
+                                                            <td className="px-4 py-2 text-right font-bold text-slate-700 text-[12px]">
+                                                                <span className="inline-flex items-center justify-end gap-1 font-mono">
+                                                                    <Scale size={11} className="text-slate-400" />
+                                                                    {st.weight ?? 100}%
+                                                                </span>
                                                             </td>
                                                             <td className="px-4 py-2 text-neutral-600 text-[11.5px]">
                                                                 {formatDivisionName(
@@ -1773,18 +2011,20 @@ export default function TasksPage() {
                                                                 />
                                                             </td>
                                                             <td className="px-4 py-2 text-right font-bold text-neutral-800 text-[13px]">
-                                                                <span
-                                                                    className={
-                                                                        isDone
-                                                                            ? "text-emerald-700 font-black"
-                                                                            : ""
+                                                                <EditableProgress
+                                                                    value={st.progress}
+                                                                    disabled={!authorized}
+                                                                    onSave={(val) =>
+                                                                        handleProgressChange(
+                                                                            st.id,
+                                                                            val,
+                                                                            authorized,
+                                                                            st.name,
+                                                                            true,
+                                                                        )
                                                                     }
-                                                                >
-                                                                    {isDone
-                                                                        ? "100"
-                                                                        : st.progress}
-                                                                    %
-                                                                </span>
+                                                                    isChecked={isDone}
+                                                                />
                                                             </td>
                                                             <td className="px-4 py-2 text-neutral-600">
                                                                 {formatDateDisplay(
@@ -1907,93 +2147,85 @@ export default function TasksPage() {
                                                                     </div>
                                                                 )}
                                                             </td>
-                                                            {/* Attachment / Evidence Column */}
+                                                            {/* Attachment / Evidence & History Column */}
                                                             <td className="px-4 py-2 text-center whitespace-nowrap">
-                                                                {st.evidences &&
-                                                                st.evidences
-                                                                    .length >
-                                                                    0 ? (
-                                                                    <div className="inline-flex items-center gap-1 justify-center flex-wrap max-w-[150px]">
-                                                                        {st.evidences.map(
-                                                                            (
-                                                                                ev,
-                                                                                idx,
-                                                                            ) => (
-                                                                                <button
-                                                                                    key={
-                                                                                        idx
-                                                                                    }
-                                                                                    type="button"
-                                                                                    onClick={() =>
-                                                                                        setEvidencePreview(
-                                                                                            ev,
-                                                                                        )
-                                                                                    }
-                                                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-bold hover:bg-emerald-200 transition-colors"
-                                                                                    title={`View evidence: ${ev.name}`}
-                                                                                >
-                                                                                    <Paperclip
-                                                                                        size={
-                                                                                            10
-                                                                                        }
-                                                                                    />
-                                                                                    Evidence{" "}
-                                                                                    {idx +
-                                                                                        1}
-                                                                                </button>
-                                                                            ),
-                                                                        )}
-                                                                        {/* Only workers of assigned division can add more evidence */}
-                                                                        {authorized && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() =>
-                                                                                    setUploadEvidenceTask(
-                                                                                        {
-                                                                                            task: st,
-                                                                                        },
-                                                                                    )
-                                                                                }
-                                                                                className="p-1 rounded text-neutral-400 hover:text-brand hover:bg-neutral-100 transition-colors"
-                                                                                title="Add evidence file"
-                                                                            >
-                                                                                <Edit2
-                                                                                    size={
-                                                                                        11
-                                                                                    }
-                                                                                />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                ) : authorized ? (
+                                                                <div className="inline-flex items-center gap-1.5 justify-center flex-wrap max-w-[200px]">
                                                                     <button
                                                                         type="button"
                                                                         onClick={() =>
-                                                                            setUploadEvidenceTask(
-                                                                                {
-                                                                                    task: st,
-                                                                                },
-                                                                            )
+                                                                            setHistoryModalTask({
+                                                                                task: st,
+                                                                                parentSmj: smj,
+                                                                            })
                                                                         }
-                                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold transition-colors shadow-2xs"
-                                                                        title="Upload completion evidence"
+                                                                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-neutral-100 hover:bg-neutral-200/80 border border-neutral-200 text-neutral-700 text-[10.5px] font-bold transition-colors"
+                                                                        title="View Task Progress & Activity History"
                                                                     >
-                                                                        <UploadCloud
-                                                                            size={
-                                                                                11
-                                                                            }
-                                                                            className="text-amber-600"
+                                                                        <History
+                                                                            size={11}
+                                                                            className="text-neutral-500"
                                                                         />
-                                                                        <span>
-                                                                            Upload
-                                                                            Evidence
-                                                                        </span>
+                                                                        History
                                                                     </button>
-                                                                ) : (
-                                                                    <span className="text-neutral-300 text-[12px]">
-                                                                        —
-                                                                    </span>
-                                                                )}
+
+                                                                    {st.evidences &&
+                                                                    st.evidences
+                                                                        .length >
+                                                                        0
+                                                                        ? st.evidences.map(
+                                                                              (
+                                                                                  ev,
+                                                                                  idx,
+                                                                              ) => (
+                                                                                  <button
+                                                                                      key={
+                                                                                          idx
+                                                                                      }
+                                                                                      type="button"
+                                                                                      onClick={() =>
+                                                                                          setEvidencePreview(
+                                                                                              ev,
+                                                                                          )
+                                                                                      }
+                                                                                      className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-bold hover:bg-emerald-200 transition-colors"
+                                                                                      title={`View evidence: ${ev.name}`}
+                                                                                  >
+                                                                                      <Paperclip
+                                                                                          size={
+                                                                                              10
+                                                                                          }
+                                                                                      />
+                                                                                      Ev{" "}
+                                                                                      {idx +
+                                                                                          1}
+                                                                                  </button>
+                                                                              ),
+                                                                          )
+                                                                        : null}
+
+                                                                    {authorized && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                setUploadEvidenceTask(
+                                                                                    {
+                                                                                        task: st,
+                                                                                    },
+                                                                                )
+                                                                            }
+                                                                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[10.5px] font-bold transition-colors shadow-2xs"
+                                                                            title="Upload completion evidence"
+                                                                        >
+                                                                            <UploadCloud
+                                                                                size={
+                                                                                    11
+                                                                                }
+                                                                                className="text-amber-600"
+                                                                            />
+                                                                            Upload
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     );
@@ -2162,6 +2394,17 @@ export default function TasksPage() {
                 />
             )}
 
+            {/* Task Progress & Activity History Modal */}
+            {historyModalTask && (
+                <TaskProgressHistoryModal
+                    task={historyModalTask.task}
+                    parentSmj={historyModalTask.parentSmj}
+                    activityLogs={projectData.activityLogs || []}
+                    onClose={() => setHistoryModalTask(null)}
+                    onOpenEvidence={(ev) => setEvidencePreview(ev)}
+                />
+            )}
+
             {/* Upload Evidence Modal */}
             {uploadEvidenceTask && (
                 <UploadEvidenceModal
@@ -2296,7 +2539,11 @@ function TodayTaskCard({
                             Starts Today
                         </span>
                     )}
-                    <span className="px-1.5 py-0.5 rounded text-[10.5px] font-semibold text-blue-700 bg-blue-50 border border-blue-200">
+                    <span
+                        className="px-1.5 py-0.5 rounded text-[10.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 inline-flex items-center gap-1"
+                        title="Structural weight in WBS hierarchy"
+                    >
+                        <Scale size={10} className="text-slate-500" />
                         Weight {st.weight ?? 100}%
                     </span>
                 </div>
@@ -2424,6 +2671,21 @@ function SubMainJobSection({
     onProgressChange,
     onOpenEvidence,
     onOpenUploadEvidence,
+    onOpenHistory,
+    inlineEditingTaskId,
+    inlineEditingTaskName,
+    setInlineEditingTaskName,
+    onStartInlineEdit,
+    onCancelInlineEdit,
+    onSaveInlineEdit,
+    inlineSavingTaskId,
+    draggedItem,
+    dropTargetTaskId,
+    onDragStartTask,
+    onDragOverTask,
+    onDragLeaveTask,
+    onDropTask,
+    onDragEndTask,
 }: {
     mainJobs: MainJob[];
     smj: SubMainJob;
@@ -2447,6 +2709,21 @@ function SubMainJobSection({
     ) => void;
     onOpenEvidence: (evidence: any) => void;
     onOpenUploadEvidence: (task: SubSubtask) => void;
+    onOpenHistory: (task: SubSubtask) => void;
+    inlineEditingTaskId: string | null;
+    inlineEditingTaskName: string;
+    setInlineEditingTaskName: (name: string) => void;
+    onStartInlineEdit: (task: SubSubtask) => void;
+    onCancelInlineEdit: () => void;
+    onSaveInlineEdit: (task: SubSubtask, newName: string) => void;
+    inlineSavingTaskId: string | null;
+    draggedItem: { smjId: string; taskId: string } | null;
+    dropTargetTaskId: string | null;
+    onDragStartTask: (taskId: string) => void;
+    onDragOverTask: (taskId: string) => void;
+    onDragLeaveTask: () => void;
+    onDropTask: (targetTaskId: string) => void;
+    onDragEndTask: () => void;
 }) {
     return (
         <div className="transition-colors">
@@ -2474,7 +2751,8 @@ function SubMainJobSection({
                             </span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 text-[12px] text-neutral-600 font-semibold flex-wrap">
-                            <span>
+                            <span className="inline-flex items-center gap-1">
+                                <Scale size={11} className="text-slate-400" />
                                 Sub Task (Sub Main Job) · Weight: {smj.weight}%
                             </span>
                         </div>
@@ -2530,6 +2808,12 @@ function SubMainJobSection({
                             const effectivelyAuthorized =
                                 authorized && predCompleted;
 
+                            const isDragging =
+                                draggedItem?.smjId === smj.id &&
+                                draggedItem?.taskId === st.id;
+                            const isDropTarget = dropTargetTaskId === st.id;
+                            const isInlineEditing = inlineEditingTaskId === st.id;
+
                             return (
                                 <SubtaskRow
                                     key={st.id}
@@ -2559,6 +2843,38 @@ function SubMainJobSection({
                                     onOpenUploadEvidence={() =>
                                         onOpenUploadEvidence(st)
                                     }
+                                    onOpenHistory={() => onOpenHistory(st)}
+                                    isInlineEditing={isInlineEditing}
+                                    inlineTaskName={inlineEditingTaskName}
+                                    setInlineTaskName={setInlineEditingTaskName}
+                                    onStartInlineEdit={() => onStartInlineEdit(st)}
+                                    onCancelInlineEdit={onCancelInlineEdit}
+                                    onSaveInline={(name) => onSaveInlineEdit(st, name)}
+                                    isSavingInline={inlineSavingTaskId === st.id}
+                                    isDragging={isDragging}
+                                    isDropTarget={isDropTarget}
+                                    onDragStart={(e) => {
+                                        e.dataTransfer.effectAllowed = "move";
+                                        e.dataTransfer.setData("text/plain", st.id);
+                                        onDragStartTask(st.id);
+                                    }}
+                                    onDragOver={(e) => {
+                                        if (
+                                            draggedItem &&
+                                            draggedItem.smjId === smj.id &&
+                                            draggedItem.taskId !== st.id
+                                        ) {
+                                            e.preventDefault();
+                                            e.dataTransfer.dropEffect = "move";
+                                            onDragOverTask(st.id);
+                                        }
+                                    }}
+                                    onDragLeave={onDragLeaveTask}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        onDropTask(st.id);
+                                    }}
+                                    onDragEnd={onDragEndTask}
                                 />
                             );
                         })
@@ -2582,6 +2898,21 @@ function SubtaskRow({
     onDelete,
     onOpenEvidence,
     onOpenUploadEvidence,
+    onOpenHistory,
+    isInlineEditing,
+    inlineTaskName,
+    setInlineTaskName,
+    onStartInlineEdit,
+    onCancelInlineEdit,
+    onSaveInline,
+    isSavingInline,
+    isDragging,
+    isDropTarget,
+    onDragStart,
+    onDragOver,
+    onDragLeave,
+    onDrop,
+    onDragEnd,
 }: {
     st: SubSubtask;
     divisi: string;
@@ -2595,29 +2926,123 @@ function SubtaskRow({
     onDelete: () => void;
     onOpenEvidence: (evidence: any) => void;
     onOpenUploadEvidence: () => void;
+    onOpenHistory: () => void;
+    isInlineEditing: boolean;
+    inlineTaskName: string;
+    setInlineTaskName: (name: string) => void;
+    onStartInlineEdit: () => void;
+    onCancelInlineEdit: () => void;
+    onSaveInline: (name: string) => void;
+    isSavingInline: boolean;
+    isDragging?: boolean;
+    isDropTarget?: boolean;
+    onDragStart: (e: React.DragEvent) => void;
+    onDragOver: (e: React.DragEvent) => void;
+    onDragLeave: (e: React.DragEvent) => void;
+    onDrop: (e: React.DragEvent) => void;
+    onDragEnd: (e: React.DragEvent) => void;
 }) {
     return (
         <div
             className={`group flex flex-col sm:flex-row sm:items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all ${
-                isChecked
+                isDragging
+                    ? "opacity-40 border-dashed border-brand bg-brand/5 scale-[0.99]"
+                    : isDropTarget
+                    ? "border-t-2 border-t-brand ring-2 ring-brand/30 bg-blue-50/40"
+                    : isChecked
                     ? "bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/20 shadow-xs"
                     : "bg-white border-neutral-200/80 hover:border-neutral-300 shadow-xs"
             }`}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            onDragEnd={onDragEnd}
         >
-            <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+            <div className="flex items-start sm:items-center gap-2.5 flex-1 min-w-0">
+                {/* Drag Handle (PIC only) */}
+                {canEdit && (
+                    <div
+                        draggable
+                        onDragStart={onDragStart}
+                        className="cursor-grab active:cursor-grabbing text-neutral-300 hover:text-neutral-600 p-1 -ml-1 rounded transition-colors flex-shrink-0"
+                        title="Drag to reorder task within this Sub Task"
+                    >
+                        <GripVertical size={14} />
+                    </div>
+                )}
+
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[12px] font-bold text-neutral-500 font-mono">
                             {st.code}
                         </span>
+
+                        {/* Inline Task Name Editing or Display */}
+                        {isInlineEditing ? (
+                            <div className="flex items-center gap-1.5 flex-1 min-w-[200px] my-0.5">
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    value={inlineTaskName}
+                                    onChange={(e) => setInlineTaskName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") onSaveInline(inlineTaskName);
+                                        else if (e.key === "Escape") onCancelInlineEdit();
+                                    }}
+                                    disabled={isSavingInline}
+                                    placeholder="Task name cannot be blank..."
+                                    className="flex-1 px-2.5 py-1 text-[13.5px] font-semibold border-2 border-brand rounded-lg outline-none bg-white shadow-xs focus:ring-1 focus:ring-brand"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => onSaveInline(inlineTaskName)}
+                                    disabled={isSavingInline || !inlineTaskName.trim()}
+                                    className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors disabled:opacity-50 flex-shrink-0"
+                                    title="Save Task Name (Enter)"
+                                >
+                                    <Check size={14} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={onCancelInlineEdit}
+                                    disabled={isSavingInline}
+                                    className="p-1.5 rounded-lg bg-neutral-200 hover:bg-neutral-300 text-neutral-700 transition-colors flex-shrink-0"
+                                    title="Cancel (Esc)"
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <span
+                                    className={`text-[13.5px] sm:text-[14.5px] font-semibold break-words ${isChecked ? "text-emerald-950 font-bold" : "text-neutral-900"} ${canEdit ? "cursor-pointer hover:text-brand" : ""}`}
+                                    onDoubleClick={() => canEdit && onStartInlineEdit()}
+                                    title={canEdit ? "Double-click to edit task name inline" : ""}
+                                >
+                                    {st.name}
+                                </span>
+                                {canEdit && (
+                                    <button
+                                        type="button"
+                                        onClick={onStartInlineEdit}
+                                        className="p-1 text-neutral-400 hover:text-brand rounded transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                        title="Edit task name inline"
+                                    >
+                                        <Edit2 size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Distinct Structural Weight Badge */}
                         <span
-                            className={`text-[13.5px] sm:text-[14.5px] font-semibold break-words ${isChecked ? "text-emerald-950 font-bold" : "text-neutral-900"}`}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold flex-shrink-0"
+                            title="Task structural weight in WBS hierarchy (distinct from completion progress)"
                         >
-                            {st.name}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold">
+                            <Scale size={11} className="text-slate-500" />
                             Weight {st.weight ?? 100}%
                         </span>
+
                         {!canCheck && !lockedByPred && (
                             <span className="relative group cursor-help">
                                 <Lock size={12} className="text-neutral-300" />
@@ -2772,7 +3197,7 @@ function SubtaskRow({
                                 ? "opacity-40 cursor-not-allowed"
                                 : "hover:accent-blue-700"
                         }`}
-                        title={`Adjust task progress (Current: ${st.progress}%)`}
+                        title={`Adjust task completion progress (Current: ${st.progress}%)`}
                     />
                     <EditableProgress
                         value={st.progress}
@@ -2787,32 +3212,42 @@ function SubtaskRow({
                     size="sm"
                 />
 
-                {/* Edit / Delete: PIC only */}
-                {canEdit && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
-                        <button
-                            onClick={onManageDependencies}
-                            className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs"
-                            title="Manage Dependencies (Predecessor)"
-                        >
-                            <Link2 size={14} />
-                        </button>
-                        <button
-                            onClick={onEdit}
-                            className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs"
-                            title="Edit Task (Name & Weight)"
-                        >
-                            <Edit2 size={14} />
-                        </button>
-                        <button
-                            onClick={onDelete}
-                            className="p-1.5 text-neutral-500 hover:text-danger bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs"
-                            title="Delete Task"
-                        >
-                            <Trash2 size={14} />
-                        </button>
-                    </div>
-                )}
+                {/* Actions: History (all) + Edit/Delete (PIC) */}
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                    <button
+                        type="button"
+                        onClick={onOpenHistory}
+                        className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors"
+                        title="View Task Progress & Activity History"
+                    >
+                        <History size={14} />
+                    </button>
+                    {canEdit && (
+                        <>
+                            <button
+                                onClick={onManageDependencies}
+                                className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs"
+                                title="Manage Dependencies (Predecessor)"
+                            >
+                                <Link2 size={14} />
+                            </button>
+                            <button
+                                onClick={onEdit}
+                                className="p-1.5 text-neutral-500 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs"
+                                title="Edit Task (Modal)"
+                            >
+                                <Sliders size={14} />
+                            </button>
+                            <button
+                                onClick={onDelete}
+                                className="p-1.5 text-neutral-500 hover:text-danger bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs"
+                                title="Delete Task"
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -2871,6 +3306,261 @@ function UncheckConfirmModal({
                         className="bg-amber-600 hover:bg-amber-700 border-amber-600 text-white"
                     >
                         Uncheck
+                    </Button>
+                </div>
+            </div>
+        </Modal>
+    );
+}
+
+function TaskProgressHistoryModal({
+    task,
+    parentSmj,
+    activityLogs = [],
+    onClose,
+    onOpenEvidence,
+}: {
+    task: SubSubtask;
+    parentSmj?: SubMainJob;
+    activityLogs: any[];
+    onClose: () => void;
+    onOpenEvidence: (evidence: any) => void;
+}) {
+    // Filter actual logs for this specific task
+    const taskLogs = useMemo(() => {
+        return activityLogs.filter(
+            (log: any) =>
+                (log.wbs_name &&
+                    log.wbs_name.trim().toLowerCase() ===
+                        task.name.trim().toLowerCase()) ||
+                (log.wbs_id && String(log.wbs_id) === String(task.id)),
+        );
+    }, [activityLogs, task.name, task.id]);
+
+    const isComplete = task.progress === 100;
+
+    return (
+        <Modal
+            title="Task Progress & Activity History"
+            subtitle={`${task.code} — ${task.name}`}
+            onClose={onClose}
+            size="md"
+        >
+            <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+                {/* Task Metrics & Status Overview */}
+                <div className="p-3.5 rounded-xl bg-neutral-50/80 border border-neutral-200/80 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[12px] font-bold text-neutral-500 font-mono">
+                                {task.code}
+                            </span>
+                            <span className="text-[13.5px] font-bold text-neutral-900">
+                                {task.name}
+                            </span>
+                        </div>
+                        <StatusBadge
+                            status={isComplete ? "Completed" : task.status}
+                            size="sm"
+                        />
+                    </div>
+
+                    {/* Progress Bar & Indicators */}
+                    <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11.5px]">
+                            <span className="font-semibold text-neutral-600">
+                                Completion Progress
+                            </span>
+                            <span className="font-bold text-brand font-mono">
+                                {task.progress}%
+                            </span>
+                        </div>
+                        <ProgressBar
+                            value={task.progress}
+                            color={isComplete ? "emerald" : "brand"}
+                            size="sm"
+                        />
+                    </div>
+
+                    {/* Key Attributes Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-neutral-200/70 text-[11px]">
+                        <div className="p-2 rounded-lg bg-white border border-neutral-200 shadow-2xs">
+                            <div className="text-neutral-500 font-medium flex items-center gap-1 mb-0.5">
+                                <Scale size={11} className="text-slate-500" />
+                                <span>Task Weight</span>
+                            </div>
+                            <div className="font-bold text-slate-800 text-[12px]">
+                                {task.weight ?? 100}%
+                            </div>
+                        </div>
+
+                        <div className="p-2 rounded-lg bg-white border border-neutral-200 shadow-2xs">
+                            <div className="text-neutral-500 font-medium flex items-center gap-1 mb-0.5">
+                                <Shield size={11} className="text-neutral-500" />
+                                <span>Division</span>
+                            </div>
+                            <div className="font-bold text-neutral-800 text-[12px] truncate">
+                                {formatDivisionName(task.division || parentSmj?.pic || "—")}
+                            </div>
+                        </div>
+
+                        <div className="p-2 rounded-lg bg-white border border-neutral-200 shadow-2xs">
+                            <div className="text-neutral-500 font-medium flex items-center gap-1 mb-0.5">
+                                <Calendar size={11} className="text-brand" />
+                                <span>Duration</span>
+                            </div>
+                            <div className="font-bold text-neutral-800 text-[12px]">
+                                {task.duration} days
+                            </div>
+                        </div>
+
+                        <div className="p-2 rounded-lg bg-white border border-neutral-200 shadow-2xs">
+                            <div className="text-neutral-500 font-medium flex items-center gap-1 mb-0.5">
+                                <Clock size={11} className="text-neutral-500" />
+                                <span>Target End</span>
+                            </div>
+                            <div className="font-bold text-neutral-800 text-[12px] truncate">
+                                {formatDateDisplay(task.finishDate)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Completion Notice Banner */}
+                {task.completedByName && (
+                    <div className="p-3 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 text-[12px] flex items-start gap-2.5">
+                        <CheckCircle2
+                            size={16}
+                            className="text-emerald-600 flex-shrink-0 mt-0.5"
+                        />
+                        <div>
+                            <span className="font-bold">
+                                Marked as Completed:
+                            </span>{" "}
+                            Verified by{" "}
+                            <span className="font-semibold text-emerald-950">
+                                {task.completedByName}
+                            </span>
+                            {task.completedAt && (
+                                <>
+                                    {" "}
+                                    on{" "}
+                                    <span className="font-semibold text-emerald-950 font-mono">
+                                        {task.completedAt}
+                                    </span>
+                                </>
+                            )}
+                            .
+                        </div>
+                    </div>
+                )}
+
+                {/* Attached Evidences List */}
+                {task.evidences && task.evidences.length > 0 && (
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-[12px] font-bold text-neutral-700">
+                            <Paperclip size={13} className="text-neutral-500" />
+                            <span>Attached Verification Evidences ({task.evidences.length})</span>
+                        </div>
+                        <div className="space-y-1.5">
+                            {task.evidences.map((ev, idx) => (
+                                <div
+                                    key={idx}
+                                    className="flex items-center justify-between p-2.5 rounded-lg bg-neutral-50 border border-neutral-200 text-[12px] hover:bg-neutral-100/70 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <FileText
+                                            size={16}
+                                            className="text-brand flex-shrink-0"
+                                        />
+                                        <div className="min-w-0">
+                                            <p className="font-semibold text-neutral-800 truncate">
+                                                {ev.name}
+                                            </p>
+                                            <p className="text-[10.5px] text-neutral-400">
+                                                {ev.size || "Document"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenEvidence(ev)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white hover:bg-neutral-50 border border-neutral-200 text-[11px] font-bold text-brand shadow-2xs transition-colors"
+                                    >
+                                        <Eye size={12} />
+                                        <span>View</span>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Activity & Progress Log History */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-[12px] font-bold text-neutral-700">
+                            <History size={13} className="text-brand" />
+                            <span>Recorded Progress & Activity Logs</span>
+                        </div>
+                        <span className="text-[11px] font-mono text-neutral-400 font-semibold">
+                            {taskLogs.length} record{taskLogs.length !== 1 ? "s" : ""}
+                        </span>
+                    </div>
+
+                    {taskLogs.length > 0 ? (
+                        <div className="space-y-2 border-l-2 border-neutral-200 ml-2.5 pl-3 py-1">
+                            {taskLogs.map((log: any) => (
+                                <div
+                                    key={log.id}
+                                    className="relative p-2.5 rounded-lg bg-neutral-50/80 border border-neutral-200/80 text-[12px] space-y-1"
+                                >
+                                    {/* Timeline Dot */}
+                                    <div className="absolute -left-[19px] top-3.5 w-2.5 h-2.5 rounded-full bg-brand ring-4 ring-white" />
+
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-5 h-5 rounded-full bg-brand/10 text-brand font-bold text-[9.5px] flex items-center justify-center uppercase">
+                                                {(log.user || "U").slice(0, 2)}
+                                            </div>
+                                            <span className="font-bold text-neutral-800">
+                                                {log.user}
+                                            </span>
+                                        </div>
+                                        <span className="text-[10px] text-neutral-400 font-mono">
+                                            {log.created_at}
+                                        </span>
+                                    </div>
+
+                                    <p className="text-neutral-700 text-[11.5px] leading-relaxed pl-6.5">
+                                        {log.description}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="p-4 rounded-xl border border-dashed border-neutral-200 text-center space-y-1 bg-neutral-50/50">
+                            <Clock
+                                size={22}
+                                className="mx-auto text-neutral-300 mb-1"
+                            />
+                            <p className="text-[12px] font-semibold text-neutral-700">
+                                No activity logs recorded yet
+                            </p>
+                            <p className="text-[11px] text-neutral-400 max-w-sm mx-auto leading-relaxed">
+                                Progress updates and completions made to this task will automatically be logged here.
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-neutral-100">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={onClose}
+                    >
+                        Close
                     </Button>
                 </div>
             </div>
@@ -3741,6 +4431,11 @@ function AddSubtaskModal({
         return divisions[0]?.id || 1;
     });
 
+    const [weight, setWeight] = useState<number>(() => {
+        if (initialData?.weight !== undefined) return Number(initialData.weight);
+        return 100;
+    });
+
     const initialDep = initialData?.dependencies?.[0];
     const [predecessorId, setPredecessorId] = useState<string>(() => {
         if (initialDep?.predecessor_wbs_id) {
@@ -3888,6 +4583,11 @@ function AddSubtaskModal({
             return;
         }
 
+        if (weight < 0 || weight > 100) {
+            setActionError("Task weight must be between 0% and 100%.");
+            return;
+        }
+
         setSubmitting(true);
         setActionError(null);
 
@@ -3899,6 +4599,7 @@ function AddSubtaskModal({
                 startDate: currentStart,
                 finishDate: previewEnd,
                 divisionId,
+                weight: Number(weight) || 0,
                 requires_evidence: requiresEvidence,
                 predecessor: predecessorId || undefined,
                 depType,
@@ -3961,22 +4662,54 @@ function AddSubtaskModal({
                     />
                 </div>
 
-                {/* Division */}
-                <div>
-                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                        Responsible Division <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                        value={divisionId}
-                        onChange={(e) => setDivisionId(parseInt(e.target.value))}
-                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
-                    >
-                        {divisions.map((d) => (
-                            <option key={d.id} value={d.id}>
-                                {d.divisi}
-                            </option>
-                        ))}
-                    </select>
+                {/* Division & Structural Task Weight */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                            Responsible Division <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                            value={divisionId}
+                            onChange={(e) => setDivisionId(parseInt(e.target.value))}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
+                        >
+                            {divisions.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                    {d.divisi}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[12px] font-bold text-neutral-700">
+                                Task Weight (%)
+                            </label>
+                            <span className="text-[10px] text-slate-500 font-semibold inline-flex items-center gap-0.5">
+                                <Scale size={10} className="text-slate-500" />
+                                WBS Weight
+                            </span>
+                        </div>
+                        <div className="relative">
+                            <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="any"
+                                value={weight}
+                                onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
+                                placeholder="100"
+                                className="w-full pl-3 pr-8 py-2 rounded-lg border border-neutral-200 bg-white text-[13px] outline-none focus:border-brand font-semibold"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 font-bold text-[12px] pointer-events-none">
+                                %
+                            </span>
+                        </div>
+                        <span className="text-[10px] text-neutral-500 mt-1 block">
+                            Structural weight in parent task (distinct from progress %).
+                        </span>
+                    </div>
                 </div>
 
                 {/* Duration and Start Date */}

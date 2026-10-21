@@ -1,10 +1,14 @@
-import { useState, useEffect, useMemo } from 'react';
-import { usePage } from '@inertiajs/react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { usePage, Link } from '@inertiajs/react';
 import { Project, PROJECT, scaleProjectTemplateDates } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { exportToCSV } from '@/utils/exportEngine';
 import { PageHeader, Card, Button, formatDateDisplay } from '@/components/ui';
-import { TrendingUp, BarChart2, Calendar, Eye, EyeOff, Download, AlertTriangle, RotateCcw, Filter, Camera, FileText, X } from 'lucide-react';
+import {
+  TrendingUp, BarChart2, Calendar, Eye, EyeOff, Download,
+  AlertTriangle, RotateCcw, Filter, Camera, FileText, X,
+  FolderOpen, Info, CheckCircle2
+} from 'lucide-react';
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, Area, ReferenceLine
@@ -44,13 +48,15 @@ export default function SCurvePage() {
   const { project, userRole } = usePage().props as any;
   const [viewMode, setViewMode] = useState<ViewMode>('cumulative');
   const [showTable, setShowTable] = useState(true);
-  
-  // Use engine to calculate exact cumulative values
+
+  // Preserve existing calculation and data flow
   const [projectData, setProjectData] = useState<Project>(() => {
-    const raw = project && project.mainJobs?.length
-      ? project
-      : scaleProjectTemplateDates(project || PROJECT, project?.startDate, project?.endDate);
-    return recalculateWeeklyData(raw);
+    if (project && project.mainJobs?.length) {
+      return recalculateWeeklyData(project);
+    }
+    // If no project mainJobs, don't invent tasks
+    const raw = project || PROJECT;
+    return recalculateWeeklyData(scaleProjectTemplateDates(raw, raw?.startDate, raw?.endDate));
   });
 
   useEffect(() => {
@@ -173,7 +179,7 @@ export default function SCurvePage() {
     items: ExtractedEvidence[];
   } | null>(null);
 
-  // Dynamic Evidence Aggregation from active project task tree (100% dynamic, zero hardcoding)
+  // Dynamic Evidence Aggregation from active project task tree
   const allEvidences: ExtractedEvidence[] = useMemo(() => {
     const list: ExtractedEvidence[] = [];
     if (!projectData?.mainJobs) return list;
@@ -232,13 +238,11 @@ export default function SCurvePage() {
     ? Number((realisasiValue - (currentWeek.plannedCumulative || 0)).toFixed(1))
     : 0;
 
-  // Build filtered chart points based on active granularity & period
+  // ─── Build Chart Points based on Granularity & Range ────────────────
+  // Note: Prediction data is prepared to receive values strictly from real data sources (e.g. backend/model).
+  // No artificial forecasting formulas are used. If data is not provided, Prediction remains null.
   const chartData: ChartPoint[] = useMemo(() => {
     if (weeks.length === 0) return [];
-
-    const performanceRatio = (currentWeek && currentWeek.plannedCumulative > 0)
-      ? (realisasiValue / currentWeek.plannedCumulative)
-      : 1;
 
     if (granularity === 'week') {
       const fW = !isInvalidRange ? (Number(fromWeek) || 1) : 1;
@@ -249,25 +253,10 @@ export default function SCurvePage() {
         const globalIdx = weeks.findIndex(item => item.week === w.week);
         const hasActual = globalIdx <= currentWeekIdx && w.actualCumulative > 0;
 
-        // Visual Prediction projection: respects existing data if present, otherwise smoothly forecasts to 100%
-        let predVal: number | null = (w as any).predictionCumulative ?? (w as any).prediction ?? null;
-        if (predVal === null) {
-          if (globalIdx < currentWeekIdx) {
-            predVal = null; // No prediction in past periods to prevent overlapping actual line
-          } else if (globalIdx === currentWeekIdx) {
-            predVal = realisasiValue;
-          } else {
-            const planCurrent = currentWeek?.plannedCumulative ?? 0;
-            const planRemaining = Math.max(0.01, 100 - planCurrent);
-            const planGain = Math.max(0, w.plannedCumulative - planCurrent);
-            const ratio = Math.min(1, Math.max(0, planGain / planRemaining));
-            const workRemaining = Math.max(0, 100 - realisasiValue);
-            predVal = Number((realisasiValue + (ratio * workRemaining)).toFixed(2));
-            if (globalIdx === weeks.length - 1) predVal = 100;
-          }
-        }
+        // Presentation Layer Ready: Only read real prediction if supplied by backend contract
+        const rawPred = (w as any).predictionCumulative ?? (w as any).prediction ?? (w as any).predictedCumulative ?? null;
+        const predVal: number | null = rawPred != null && !isNaN(Number(rawPred)) ? Number(Number(rawPred).toFixed(2)) : null;
 
-        // Dynamic evidence associated with this specific week
         const weekEvidences = allEvidences.filter(ev => {
           if (!ev.date) return false;
           return ev.date >= w.startDate && ev.date <= w.endDate;
@@ -289,18 +278,17 @@ export default function SCurvePage() {
     }
 
     if (granularity === 'day') {
-      // Free calendar day-by-day range
       const fD = (!isInvalidRange && fromDay) ? fromDay : (projectData.startDate || weeks[0]?.startDate || '');
       const tD = (!isInvalidRange && toDay) ? toDay : (projectData.endDate || weeks[weeks.length - 1]?.endDate || '');
       if (!fD || !tD) return [];
 
-      const parseDate = (str: string) => {
+      const parseDateStr = (str: string) => {
         const parts = str.split('-').map(Number);
         return new Date(parts[0], parts[1] - 1, parts[2]);
       };
 
-      const startDateObj = parseDate(fD);
-      const endDateObj = parseDate(tD);
+      const startDateObj = parseDateStr(fD);
+      const endDateObj = parseDateStr(tD);
 
       const points: ChartPoint[] = [];
       const curr = new Date(startDateObj);
@@ -320,7 +308,7 @@ export default function SCurvePage() {
 
         if (wIdx !== -1) {
           const w = weeks[wIdx];
-          const wStart = parseDate(w.startDate);
+          const wStart = parseDateStr(w.startDate);
           const dayDiff = Math.max(0, Math.min(6, Math.round((curr.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24))));
           const prevWeekPlan = wIdx > 0 ? weeks[wIdx - 1].plannedCumulative : 0;
 
@@ -334,7 +322,7 @@ export default function SCurvePage() {
               dailyAct = Number((w.actual / 7).toFixed(2));
             } else if (wIdx === currentWeekIdx) {
               const prevWeekAct = wIdx > 0 ? weeks[wIdx - 1].actualCumulative : 0;
-              const todayObj = parseDate(todayStr);
+              const todayObj = parseDateStr(todayStr);
               const daysElapsedInCurrWeek = Math.max(1, Math.min(7, Math.round((todayObj.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24)) + 1));
               const actualGainedThisWeek = Math.max(0, realisasiValue - prevWeekAct);
               actCum = Number((prevWeekAct + (actualGainedThisWeek * (dayDiff + 1) / daysElapsedInCurrWeek)).toFixed(2));
@@ -349,7 +337,6 @@ export default function SCurvePage() {
             dailyAct = 0;
           }
         } else {
-          // After final project week
           planCum = 100;
           dailyPlan = 0;
           if (dStr <= todayStr) {
@@ -360,20 +347,9 @@ export default function SCurvePage() {
 
         const dev = actCum !== null ? Number((actCum - planCum).toFixed(2)) : null;
 
-        // Day Prediction (starts from today / H+1)
-        let predCum: number | null = null;
-        if (dStr < todayStr) {
-          predCum = null; // No prediction before today
-        } else if (dStr === todayStr) {
-          predCum = realisasiValue;
-        } else {
-          const todayDateObj = parseDate(todayStr);
-          const totalDaysRemaining = Math.max(1, Math.round((endDateObj.getTime() - todayDateObj.getTime()) / (1000 * 60 * 60 * 24)));
-          const daysSinceToday = Math.max(0, Math.round((curr.getTime() - todayDateObj.getTime()) / (1000 * 60 * 60 * 24)));
-          const dayRatio = Math.min(1, Math.max(0, daysSinceToday / totalDaysRemaining));
-          predCum = Number((realisasiValue + dayRatio * (100 - realisasiValue)).toFixed(2));
-          if (curr.getTime() >= endDateObj.getTime()) predCum = 100;
-        }
+        // Prediction: only populated if backend supplies it on the week or day
+        const rawDayPred = wIdx !== -1 ? ((weeks[wIdx] as any).predictionCumulative ?? (weeks[wIdx] as any).prediction ?? null) : null;
+        const predCum: number | null = rawDayPred != null && !isNaN(Number(rawDayPred)) ? Number(Number(rawDayPred).toFixed(2)) : null;
 
         const dayEvidences = allEvidences.filter(ev => ev.date === dStr);
 
@@ -400,7 +376,6 @@ export default function SCurvePage() {
       const fY = !isInvalidRange ? (Number(fromYear) || 2000) : 2000;
       const tY = !isInvalidRange ? (Number(toYear) || 2099) : 2099;
 
-      // Group weeks by Year
       const yearMap = new Map<number, typeof weeks>();
       weeks.forEach(w => {
         const yr = new Date(w.startDate).getFullYear();
@@ -412,7 +387,6 @@ export default function SCurvePage() {
 
       const points: ChartPoint[] = [];
       const sortedYears = Array.from(yearMap.keys()).sort();
-      const currentYr = new Date(todayStr).getFullYear();
 
       sortedYears.forEach(yr => {
         const yrWeeks = yearMap.get(yr)!;
@@ -426,17 +400,9 @@ export default function SCurvePage() {
           return idx <= currentWeekIdx && w.actual > 0;
         }).reduce((acc, w) => acc + w.actual, 0);
 
-        let predCum: number | null = null;
-        if (yr < currentYr) {
-          predCum = null; // No prediction for past years
-        } else if (yr === currentYr) {
-          predCum = realisasiValue;
-        } else {
-          const maxYr = sortedYears[sortedYears.length - 1];
-          const yrRatio = Math.min(1, Math.max(0, (yr - currentYr) / Math.max(1, maxYr - currentYr)));
-          predCum = Number((realisasiValue + yrRatio * (100 - realisasiValue)).toFixed(2));
-          if (yr === maxYr) predCum = 100;
-        }
+        // Real prediction from backend if provided
+        const rawYrPred = (lastWeekInYr as any).predictionCumulative ?? (lastWeekInYr as any).prediction ?? null;
+        const predCum: number | null = rawYrPred != null && !isNaN(Number(rawYrPred)) ? Number(Number(rawYrPred).toFixed(2)) : null;
 
         const yrEvidences = allEvidences.filter(ev => ev.date.startsWith(String(yr)));
 
@@ -458,7 +424,22 @@ export default function SCurvePage() {
     }
 
     return [];
-  }, [weeks, granularity, fromWeek, toWeek, fromDay, toDay, fromYear, toYear, isInvalidRange, currentWeekIdx, currentWeek, realisasiValue, projectData.startDate, projectData.endDate, todayStr, allEvidences]);
+  }, [weeks, granularity, fromWeek, toWeek, fromDay, toDay, fromYear, toYear, isInvalidRange, currentWeekIdx, realisasiValue, projectData.startDate, projectData.endDate, todayStr, allEvidences]);
+
+  // Check if real prediction data exists in visible dataset
+  const hasPredictionData = useMemo(() => {
+    return chartData.some(d => d.Prediction != null);
+  }, [chartData]);
+
+  // Dynamic X-Axis Interval: Prevents overlapping labels when dataset is large,
+  // and allows natural expansion when dataset is small.
+  const xAxisInterval = useMemo(() => {
+    const count = chartData.length;
+    if (count <= 14) return 0;
+    if (count <= 28) return 1;
+    if (count <= 56) return 3;
+    return Math.ceil(count / 14);
+  }, [chartData.length]);
 
   const currentTimelineX = useMemo(() => {
     if (granularity === 'week') {
@@ -475,33 +456,70 @@ export default function SCurvePage() {
     return undefined;
   }, [granularity, currentLabel, todayStr, chartData]);
 
-  // Custom Chart Tooltip
+  // Compact, thematic Custom Tooltip
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     const isCurrentDate = label === currentLabel || (granularity === 'day' && label === formatDateDisplay(todayStr));
+    const activePoint = chartData.find(d => d.name === label);
+
     return (
-      <div className="bg-white border border-neutral-200 rounded-xl p-3.5 shadow-xl text-[12px] space-y-1.5">
-        <div className="font-bold text-neutral-800 border-b border-neutral-100 pb-1 flex items-center justify-between gap-4">
-          <span>{label}</span>
+      <div className="bg-white/95 backdrop-blur-xs border border-neutral-200 rounded-xl p-3.5 shadow-xl text-[12px] space-y-2 min-w-[210px]">
+        <div className="border-b border-neutral-100 pb-1.5 flex items-center justify-between gap-3">
+          <span className="font-bold text-neutral-800">{label}</span>
+          {activePoint?.subLabel && (
+            <span className="text-[10.5px] font-mono text-neutral-400">{activePoint.subLabel}</span>
+          )}
           {isCurrentDate && (
-            <span className="text-[10px] font-bold bg-danger text-white px-1.5 py-0.2 rounded">Current</span>
+            <span className="text-[9.5px] font-bold bg-danger text-white px-1.5 py-0.2 rounded shadow-2xs">Current</span>
           )}
         </div>
-        {payload.map((p: any) => p.value != null && (
-          <div key={p.name} className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
-              <span className="text-neutral-600 font-medium">{p.name}:</span>
+
+        <div className="space-y-1">
+          {payload.map((p: any) => {
+            if (p.value == null) return null;
+            return (
+              <div key={p.name} className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
+                  <span className="text-neutral-600 font-medium">{p.name}:</span>
+                </div>
+                <span className="font-bold text-neutral-900">{Number(p.value).toFixed(2)}%</span>
+              </div>
+            );
+          })}
+
+          {activePoint?.deviation != null && (
+            <div className="flex items-center justify-between gap-4 pt-1 border-t border-neutral-100/80 text-[11px]">
+              <span className="text-neutral-500 font-medium">Deviation:</span>
+              <span className={`font-bold ${activePoint.deviation >= 0 ? 'text-success' : 'text-danger'}`}>
+                {activePoint.deviation >= 0 ? '+' : ''}{activePoint.deviation}%
+              </span>
             </div>
-            <span className="font-bold text-neutral-900">{Number(p.value).toFixed(2)}%</span>
+          )}
+        </div>
+
+        {activePoint?.evidenceItems && activePoint.evidenceItems.length > 0 && (
+          <div className="pt-1.5 border-t border-neutral-100 text-[10.5px] text-brand font-medium flex items-center gap-1">
+            <Camera size={11} />
+            <span>{activePoint.evidenceItems.length} supporting evidence file(s)</span>
           </div>
-        ))}
+        )}
       </div>
     );
   };
 
   const handleExportCSV = () => {
-    const headers = ['Period', 'Description / Range', 'Planned (%)', 'Actual (%)', 'Plan. Cumulative (%)', 'Act. Cumulative (%)', 'Prediction (%)', 'Deviation (%)', 'Evidence Files'];
+    const headers = [
+      'Period',
+      'Description / Range',
+      'Planned (%)',
+      'Actual (%)',
+      'Plan. Cumulative (%)',
+      'Act. Cumulative (%)',
+      'Prediction (%)',
+      'Deviation (%)',
+      'Evidence Files'
+    ];
     const rows = chartData.map(d => [
       d.name,
       d.subLabel ?? '-',
@@ -513,20 +531,26 @@ export default function SCurvePage() {
       d.deviation !== null && d.deviation !== undefined ? `${d.deviation}%` : '-',
       d.evidenceItems && d.evidenceItems.length > 0 ? d.evidenceItems.map(e => `${e.division}: ${e.name}`).join('; ') : '-'
     ]);
-    exportToCSV(`SCurve_${granularity}_${new Date().toISOString().slice(0,10)}`, headers, rows);
+    exportToCSV(`SCurve_${granularity}_${new Date().toISOString().slice(0, 10)}`, headers, rows);
   };
 
   return (
-    <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5 overflow-x-hidden">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-screen-2xl space-y-4 sm:space-y-5 overflow-x-hidden">
+      {/* ─── 1. Page Header ─────────────────────────────────────────────── */}
       <PageHeader
         title={`S-Curve Analysis ${project?.name || projectData?.name ? `· ${project?.name || projectData?.name}` : ''}`}
-        subtitle={userRole === 'admin_progres' ? 'Progress Admin View — Cumulative S-Curve progress monitoring' : 'Planned vs. Actual cumulative progress tracking over project lifecycle'}
+        subtitle={
+          userRole === 'admin_progres'
+            ? 'Progress Admin View — Cumulative S-Curve progress monitoring & schedule tracking'
+            : 'Planned vs. Actual cumulative progress tracking over project lifecycle'
+        }
         actions={
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200 shadow-2xs">
               <button
+                type="button"
                 onClick={() => setViewMode('cumulative')}
-                className={`px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-md text-[12px] font-bold transition-all cursor-pointer ${
                   viewMode === 'cumulative'
                     ? 'bg-brand text-white shadow-xs'
                     : 'text-neutral-600 hover:text-neutral-900'
@@ -535,24 +559,31 @@ export default function SCurvePage() {
                 Cumulative S-Curve
               </button>
               <button
+                type="button"
                 onClick={() => setViewMode('weekly')}
-                className={`px-3 py-1.5 rounded-md text-[12px] font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-md text-[12px] font-bold transition-all cursor-pointer ${
                   viewMode === 'weekly'
                     ? 'bg-brand text-white shadow-xs'
                     : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
-                Weekly Progress
+                Periodic Progress
               </button>
             </div>
-            <Button variant="outline" size="sm" onClick={handleExportCSV} icon={Download} className="text-[12px] h-[34px]">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCSV}
+              icon={Download}
+              className="text-[12px] h-[34px] bg-white hover:bg-neutral-50"
+            >
               <span className="hidden sm:inline">Export Data</span>
             </Button>
           </div>
         }
       />
 
-      {/* KPI Cards */}
+      {/* ─── 2. KPI Summary Cards ───────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
           {
@@ -577,11 +608,13 @@ export default function SCurvePage() {
             sub: `of ${weeks.length} project weeks`,
           },
         ].map(({ label, value, sub, accent }) => (
-          <Card key={label} className="p-4">
+          <Card key={label} className="p-4 border border-neutral-200/90 shadow-2xs bg-white">
             <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide mb-1">{label}</div>
-            <div className={`text-[20px] sm:text-[22px] font-bold ${
-              accent === 'danger' ? 'text-danger' : accent === 'success' ? 'text-success' : 'text-neutral-900'
-            }`}>
+            <div
+              className={`text-[20px] sm:text-[22px] font-bold ${
+                accent === 'danger' ? 'text-danger' : accent === 'success' ? 'text-success' : 'text-neutral-900'
+              }`}
+            >
               {value}
             </div>
             <div className="text-[11px] text-neutral-500 mt-0.5">{sub}</div>
@@ -589,21 +622,22 @@ export default function SCurvePage() {
         ))}
       </div>
 
-      {/* S-Curve Range & Granularity Filter Bar (100% Data-Driven) */}
-      <Card className="p-4 bg-white border border-neutral-200/90 shadow-2xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          {/* Left: Granularity Selector */}
+      {/* ─── 3. Granularity & Period Filter Bar ─────────────────────────── */}
+      <Card className="p-3.5 sm:p-4 bg-white border border-neutral-200/90 shadow-2xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Granularity Selector */}
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-bold text-neutral-600 uppercase tracking-wider flex items-center gap-1.5">
               <Calendar size={14} className="text-brand" />
               Granularity:
             </span>
-            <div className="flex items-center bg-neutral-100 p-0.5 rounded-lg border border-neutral-200">
+            <div className="flex items-center bg-neutral-100 p-0.5 rounded-lg border border-neutral-200 shadow-2xs">
               {(['day', 'week', 'year'] as const).map((g) => (
                 <button
                   key={g}
+                  type="button"
                   onClick={() => setGranularity(g)}
-                  className={`px-3 py-1 rounded-md text-[12px] font-bold capitalize transition-all ${
+                  className={`px-3 py-1 rounded-md text-[12px] font-bold capitalize transition-all cursor-pointer ${
                     granularity === g
                       ? 'bg-brand text-white shadow-xs'
                       : 'text-neutral-600 hover:text-neutral-900'
@@ -615,18 +649,20 @@ export default function SCurvePage() {
             </div>
           </div>
 
-          {/* Right: Dynamic From / To Range Filters */}
+          {/* Dynamic From / To Range Filters */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-[12px] font-semibold text-neutral-600">From:</span>
               {granularity === 'week' && (
                 <select
                   value={fromWeek}
-                  onChange={e => setFromWeek(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs"
+                  onChange={(e) => setFromWeek(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs cursor-pointer"
                 >
-                  {weekOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  {weekOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
               )}
@@ -636,18 +672,20 @@ export default function SCurvePage() {
                   value={fromDay}
                   min={projectData.startDate || (weeks.length > 0 ? weeks[0].startDate : undefined)}
                   max={toDay || projectData.endDate || (weeks.length > 0 ? weeks[weeks.length - 1].endDate : undefined)}
-                  onChange={e => setFromDay(e.target.value)}
+                  onChange={(e) => setFromDay(e.target.value)}
                   className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs text-neutral-700 cursor-pointer"
                 />
               )}
               {granularity === 'year' && (
                 <select
                   value={fromYear}
-                  onChange={e => setFromYear(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs"
+                  onChange={(e) => setFromYear(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs cursor-pointer"
                 >
-                  {yearOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  {yearOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
               )}
@@ -658,11 +696,13 @@ export default function SCurvePage() {
               {granularity === 'week' && (
                 <select
                   value={toWeek}
-                  onChange={e => setToWeek(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs"
+                  onChange={(e) => setToWeek(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs cursor-pointer"
                 >
-                  {weekOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  {weekOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
               )}
@@ -672,18 +712,20 @@ export default function SCurvePage() {
                   value={toDay}
                   min={fromDay || projectData.startDate || (weeks.length > 0 ? weeks[0].startDate : undefined)}
                   max={projectData.endDate || (weeks.length > 0 ? weeks[weeks.length - 1].endDate : undefined)}
-                  onChange={e => setToDay(e.target.value)}
+                  onChange={(e) => setToDay(e.target.value)}
                   className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs text-neutral-700 cursor-pointer"
                 />
               )}
               {granularity === 'year' && (
                 <select
                   value={toYear}
-                  onChange={e => setToYear(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs"
+                  onChange={(e) => setToYear(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs cursor-pointer"
                 >
-                  {yearOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  {yearOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
               )}
@@ -712,32 +754,51 @@ export default function SCurvePage() {
         )}
       </Card>
 
-      {/* Main Chart Card: Takes 100% Width & Height */}
-      <Card className="p-5 !border-0 !shadow-none">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3">
+      {/* ─── 4. Main Chart Card ─────────────────────────────────────────── */}
+      <Card className="p-4 sm:p-5 border border-neutral-200/90 shadow-2xs bg-white">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-neutral-100">
           <div className="flex items-center gap-2">
-            <TrendingUp size={16} className="text-brand" />
+            <TrendingUp size={16} className="text-brand flex-shrink-0" />
             <span className="text-[14px] font-bold text-neutral-800 tracking-tight">
-              {viewMode === 'cumulative' ? 'Cumulative Progress S-Curve (Planning vs. Actual)' : 'Periodic Progress Distribution (Planning vs. Actual)'}
-              {isFiltered && <span className="ml-2 text-[12px] font-normal text-brand bg-brand/10 px-2 py-0.5 rounded-full">Filtered View</span>}
+              {viewMode === 'cumulative'
+                ? 'Cumulative Progress S-Curve (Planning vs. Actual)'
+                : 'Periodic Progress Distribution (Planning vs. Actual)'}
+              {isFiltered && (
+                <span className="ml-2 text-[11.5px] font-normal text-brand bg-brand/10 px-2 py-0.5 rounded-full">
+                  Filtered View
+                </span>
+              )}
             </span>
           </div>
 
-          {/* Visual distinction for Planned, Actual, and Prediction */}
-          <div className="flex flex-wrap items-center gap-4 text-[12px] text-neutral-500 font-medium">
-            <div className="flex items-center gap-1.5">
+          {/* Series Visual Legend Bar */}
+          <div className="flex flex-wrap items-center gap-3.5 text-[12px] font-medium">
+            <div className="flex items-center gap-1.5 text-neutral-700">
               <span className="w-2.5 h-2.5 rounded-full bg-brand" />
               <span>Planned Progress</span>
             </div>
-            <div className="flex items-center gap-1.5">
+
+            <div className="flex items-center gap-1.5 text-neutral-700">
               <span className="w-2.5 h-2.5 rounded-full bg-success" />
               <span>Actual Progress</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-0.5 border-t-2 border-dashed border-[#8B5CF6]" />
-              <span className="w-2 h-2 rounded-full bg-[#8B5CF6] -ml-3" />
-              <span className="text-[#8B5CF6] font-semibold">Prediction</span>
-            </div>
+
+            {/* Prediction Indicator: Prepared for real data */}
+            {hasPredictionData ? (
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-0.5 border-t-2 border-dashed border-[#8B5CF6]" />
+                <span className="w-2 h-2 rounded-full bg-[#8B5CF6] -ml-3" />
+                <span className="text-[#8B5CF6] font-semibold">Prediction</span>
+              </div>
+            ) : (
+              <div
+                className="flex items-center gap-1.5 text-neutral-400 bg-neutral-100/70 px-2 py-0.5 rounded-md border border-neutral-200/60"
+                title="Prediction visualization series is prepared and awaiting backend prediction model data"
+              >
+                <span className="w-3.5 h-0.5 border-t-2 border-dashed border-[#8B5CF6]/60" />
+                <span className="text-[11px] text-neutral-500">Prediction (Awaiting Integration)</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -745,15 +806,22 @@ export default function SCurvePage() {
           <div className="w-full h-72 flex flex-col items-center justify-center text-center p-6 bg-neutral-50/50 rounded-xl border border-dashed border-neutral-200">
             <TrendingUp size={36} className="text-neutral-300 mb-2" />
             <div className="text-[14px] font-bold text-neutral-700">No S-Curve Data Available</div>
-            <div className="text-[12px] text-neutral-500 max-w-sm mt-1">
+            <div className="text-[12px] text-neutral-500 max-w-sm mt-1 mb-4">
               This project does not have a scheduled timeline yet. Create or update the task schedule to generate the S-Curve.
             </div>
+            <Link
+              href={projectData?.id ? `/projectdetailpage?project_id=${projectData.id}` : '/projectlistpage'}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold bg-brand text-white rounded-lg hover:bg-brand-dark transition-colors shadow-xs"
+            >
+              <FolderOpen size={14} />
+              <span>Open Project Detail</span>
+            </Link>
           </div>
         ) : (
           <div className="w-full h-80 sm:h-96 lg:h-[420px]">
             <ResponsiveContainer width="100%" height="100%">
               {viewMode === 'cumulative' ? (
-                <ComposedChart data={chartData} margin={{ top: 32, right: 24, bottom: 10, left: -10 }}>
+                <ComposedChart data={chartData} margin={{ top: 28, right: 20, bottom: 12, left: 4 }}>
                   <defs>
                     <linearGradient id="planGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#1E46D9" stopOpacity={0.12} />
@@ -768,12 +836,19 @@ export default function SCurvePage() {
                   <XAxis
                     dataKey="name"
                     tick={{ fontSize: 10, fill: '#94A3B8' }}
-                    interval={granularity === 'day' && chartData.length > 20 ? Math.ceil(chartData.length / 10) : 0}
+                    interval={xAxisInterval}
                     padding={{ left: 16, right: 16 }}
                   />
-                  <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickFormatter={v => `${v}%`} />
+                  <YAxis
+                    domain={[0, (dataMax: number) => Math.max(100, Math.ceil(dataMax / 10) * 10)]}
+                    tick={{ fontSize: 10, fill: '#94A3B8' }}
+                    tickFormatter={(v) => `${v}%`}
+                    width={44}
+                  />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+
+                  {/* Current Timeline Marker */}
                   {currentTimelineX && (
                     <ReferenceLine
                       x={currentTimelineX}
@@ -783,42 +858,72 @@ export default function SCurvePage() {
                       label={{
                         value: 'Current Timeline',
                         position: 'top',
-                        dy: -6,
+                        dy: -8,
                         fontSize: 11,
                         fill: '#DC2626',
-                        fontWeight: 700
+                        fontWeight: 700,
                       }}
                     />
                   )}
+
                   {/* Planned Cumulative Area */}
-                  <Area type="monotone" name="Planned Progress" dataKey="Plan. Cumulative" stroke="#1E46D9" strokeWidth={2.5} fill="url(#planGrad)" dot={false} activeDot={{ r: 4 }} />
-                  {/* Actual Cumulative Area */}
-                  <Area type="monotone" name="Actual Progress" dataKey="Act. Cumulative" stroke="#16A34A" strokeWidth={2.5} fill="url(#actGrad)" dot={false} connectNulls={false} activeDot={{ r: 4 }} />
-                  {/* Distinct Prediction Line */}
-                  <Line
+                  <Area
                     type="monotone"
-                    name="Prediction"
-                    dataKey="Prediction"
-                    stroke="#8B5CF6"
+                    name="Planned Progress"
+                    dataKey="Plan. Cumulative"
+                    stroke="#1E46D9"
                     strokeWidth={2.5}
-                    strokeDasharray="6 4"
-                    dot={{ r: 3, fill: '#8B5CF6', stroke: '#FFFFFF', strokeWidth: 1.5 }}
-                    activeDot={{ r: 6, fill: '#8B5CF6' }}
-                    connectNulls={false}
+                    fill="url(#planGrad)"
+                    dot={false}
+                    activeDot={{ r: 4 }}
                   />
+
+                  {/* Actual Cumulative Area */}
+                  <Area
+                    type="monotone"
+                    name="Actual Progress"
+                    dataKey="Act. Cumulative"
+                    stroke="#16A34A"
+                    strokeWidth={2.5}
+                    fill="url(#actGrad)"
+                    dot={false}
+                    connectNulls={false}
+                    activeDot={{ r: 4 }}
+                  />
+
+                  {/* Distinct Prediction Line (Renders only when real data is available) */}
+                  {hasPredictionData && (
+                    <Line
+                      type="monotone"
+                      name="Prediction"
+                      dataKey="Prediction"
+                      stroke="#8B5CF6"
+                      strokeWidth={2.5}
+                      strokeDasharray="6 4"
+                      dot={{ r: 3, fill: '#8B5CF6', stroke: '#FFFFFF', strokeWidth: 1.5 }}
+                      activeDot={{ r: 6, fill: '#8B5CF6' }}
+                      connectNulls={false}
+                    />
+                  )}
                 </ComposedChart>
               ) : (
-                <ComposedChart data={chartData} margin={{ top: 32, right: 24, bottom: 10, left: -10 }}>
+                <ComposedChart data={chartData} margin={{ top: 28, right: 20, bottom: 12, left: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F1F3F6" />
                   <XAxis
                     dataKey="name"
                     tick={{ fontSize: 10, fill: '#94A3B8' }}
-                    interval={granularity === 'day' && chartData.length > 20 ? Math.ceil(chartData.length / 10) : 0}
+                    interval={xAxisInterval}
                     padding={{ left: 16, right: 16 }}
                   />
-                  <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickFormatter={v => `${v}%`} />
+                  <YAxis
+                    domain={[0, 'auto']}
+                    tick={{ fontSize: 10, fill: '#94A3B8' }}
+                    tickFormatter={(v) => `${v}%`}
+                    width={44}
+                  />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+
                   {currentTimelineX && (
                     <ReferenceLine
                       x={currentTimelineX}
@@ -828,15 +933,15 @@ export default function SCurvePage() {
                       label={{
                         value: 'Current Timeline',
                         position: 'top',
-                        dy: -6,
+                        dy: -8,
                         fontSize: 11,
                         fill: '#DC2626',
-                        fontWeight: 700
+                        fontWeight: 700,
                       }}
                     />
                   )}
-                  <Bar dataKey="Planned (Weekly)" fill="#1E46D9" opacity={0.75} radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="Actual (Weekly)" fill="#16A34A" opacity={0.85} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="Planned (Weekly)" name="Planned Progress" fill="#1E46D9" opacity={0.75} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="Actual (Weekly)" name="Actual Progress" fill="#16A34A" opacity={0.85} radius={[2, 2, 0, 0]} />
                 </ComposedChart>
               )}
             </ResponsiveContainer>
@@ -844,13 +949,13 @@ export default function SCurvePage() {
         )}
       </Card>
 
-      {/* Supporting Data Table Section with Evidence Matrix */}
+      {/* ─── 5. Supporting Data Matrix & Evidence Section ──────────────── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setShowTable(v => !v)}
+            onClick={() => setShowTable((v) => !v)}
             className="text-[12px] font-semibold text-neutral-600 hover:text-brand"
             icon={showTable ? EyeOff : Eye}
           >
@@ -860,7 +965,7 @@ export default function SCurvePage() {
         </div>
 
         {showTable && (
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden border border-neutral-200/90 shadow-2xs bg-white">
             <div className="w-full overflow-x-auto scrollbar-thin max-h-96">
               <table className="w-full min-w-[960px]">
                 <thead className="sticky top-0 bg-neutral-50 z-10">
@@ -871,7 +976,16 @@ export default function SCurvePage() {
                     <th className="px-4 py-3 text-right">Actual (%)</th>
                     <th className="px-4 py-3 text-right">Plan. Cumulative</th>
                     <th className="px-4 py-3 text-right">Act. Cumulative</th>
-                    <th className="px-4 py-3 text-right">Prediction</th>
+                    <th className="px-4 py-3 text-right">
+                      <span className="flex items-center justify-end gap-1">
+                        <span>Prediction</span>
+                        {!hasPredictionData && (
+                          <span className="text-[9px] font-normal lowercase text-neutral-400" title="Pending backend prediction integration">
+                            (pending)
+                          </span>
+                        )}
+                      </span>
+                    </th>
                     <th className="px-4 py-3 text-right">Deviation</th>
                     <th className="px-4 py-3 text-left">Evidence</th>
                   </tr>
@@ -886,17 +1000,15 @@ export default function SCurvePage() {
                   ) : (
                     chartData.map((d, i) => {
                       const isCurrent = d.name === currentLabel || (granularity === 'day' && d.name === formatDateDisplay(todayStr));
-                      const photos = (d.evidenceItems || []).filter(x => x.isPhoto);
-                      const docs = (d.evidenceItems || []).filter(x => !x.isPhoto);
+                      const photos = (d.evidenceItems || []).filter((x) => x.isPhoto);
+                      const docs = (d.evidenceItems || []).filter((x) => !x.isPhoto);
                       const totalEv = (d.evidenceItems || []).length;
 
                       return (
                         <tr
                           key={d.name + i}
                           className={`transition-colors ${
-                            isCurrent
-                              ? 'bg-brand-light/60 font-semibold'
-                              : 'hover:bg-neutral-50/70'
+                            isCurrent ? 'bg-brand-light/60 font-semibold' : 'hover:bg-neutral-50/70'
                           }`}
                         >
                           <td className="px-4 py-2.5">
@@ -945,13 +1057,19 @@ export default function SCurvePage() {
                                 return (
                                   <button
                                     type="button"
-                                    onClick={() => setEvidenceModalData({ period: d.name, subLabel: d.subLabel, items: d.evidenceItems! })}
+                                    onClick={() =>
+                                      setEvidenceModalData({ period: d.name, subLabel: d.subLabel, items: d.evidenceItems! })
+                                    }
                                     className="group inline-flex items-center gap-2 p-1.5 pr-2.5 rounded-lg border border-neutral-200/90 bg-white hover:border-brand/40 hover:bg-brand-light/30 transition-all text-left max-w-[260px] shadow-2xs cursor-pointer"
                                     title={`Click to preview: ${ev.name} (${ev.division})`}
                                   >
                                     {ev.isPhoto ? (
                                       ev.previewUrl ? (
-                                        <img src={ev.previewUrl} alt={ev.name} className="w-7 h-7 rounded-md object-cover border border-neutral-200 flex-shrink-0" />
+                                        <img
+                                          src={ev.previewUrl}
+                                          alt={ev.name}
+                                          className="w-7 h-7 rounded-md object-cover border border-neutral-200 flex-shrink-0"
+                                        />
                                       ) : (
                                         <div className="w-7 h-7 rounded-md bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center flex-shrink-0">
                                           <Camera size={13} />
@@ -976,20 +1094,26 @@ export default function SCurvePage() {
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => setEvidenceModalData({ period: d.name, subLabel: d.subLabel, items: d.evidenceItems! })}
+                                onClick={() =>
+                                  setEvidenceModalData({ period: d.name, subLabel: d.subLabel, items: d.evidenceItems! })
+                                }
                                 className="inline-flex flex-wrap items-center gap-1.5 p-1 rounded-lg hover:bg-neutral-100 transition-all text-left cursor-pointer"
                                 title="Click to view all period evidences"
                               >
                                 {photos.length > 0 && (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200 shadow-2xs">
                                     <Camera size={12} className="text-sky-600" />
-                                    <span>{photos.length} {photos.length === 1 ? 'photo' : 'photos'}</span>
+                                    <span>
+                                      {photos.length} {photos.length === 1 ? 'photo' : 'photos'}
+                                    </span>
                                   </span>
                                 )}
                                 {docs.length > 0 && (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
                                     <FileText size={12} className="text-amber-700" />
-                                    <span>{docs.length} {docs.length === 1 ? 'document' : 'documents'}</span>
+                                    <span>
+                                      {docs.length} {docs.length === 1 ? 'document' : 'documents'}
+                                    </span>
                                   </span>
                                 )}
                               </button>
@@ -1006,7 +1130,7 @@ export default function SCurvePage() {
         )}
       </div>
 
-      {/* Evidence Preview Modal */}
+      {/* ─── 6. Evidence Preview Modal ─────────────────────────────────── */}
       {evidenceModalData && (
         <SCurveEvidenceModal
           data={evidenceModalData}
@@ -1046,8 +1170,9 @@ function SCurveEvidenceModal({
             )}
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -1106,8 +1231,9 @@ function SCurveEvidenceModal({
                 {data.items.map((it) => (
                   <button
                     key={it.id}
+                    type="button"
                     onClick={() => setSelectedItem(it)}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-all ${
+                    className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
                       selectedItem?.id === it.id
                         ? 'border-brand bg-brand-light/30 ring-1 ring-brand'
                         : 'border-neutral-200 bg-white hover:bg-neutral-50'
@@ -1115,7 +1241,11 @@ function SCurveEvidenceModal({
                   >
                     {it.isPhoto ? (
                       it.previewUrl ? (
-                        <img src={it.previewUrl} alt={it.name} className="w-9 h-9 rounded-md object-cover border border-neutral-200 flex-shrink-0" />
+                        <img
+                          src={it.previewUrl}
+                          alt={it.name}
+                          className="w-9 h-9 rounded-md object-cover border border-neutral-200 flex-shrink-0"
+                        />
                       ) : (
                         <div className="w-9 h-9 rounded-md bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center flex-shrink-0">
                           <Camera size={16} />
@@ -1143,7 +1273,7 @@ function SCurveEvidenceModal({
 
         {/* Footer */}
         <div className="p-4 border-t border-neutral-100 flex items-center justify-end bg-neutral-50/50">
-          <Button variant="outline" size="sm" onClick={onClose}>
+          <Button variant="outline" size="sm" onClick={onClose} className="bg-white">
             Close
           </Button>
         </div>

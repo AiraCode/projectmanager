@@ -27,6 +27,7 @@ import {
     Info,
     Network,
     Trash,
+    Filter,
 } from "lucide-react";
 import mermaid from "mermaid";
 import {
@@ -35,7 +36,9 @@ import {
     Button,
     Modal,
     formatDateDisplay,
+    formatDivisionName,
 } from "@/components/ui";
+import { useAuth } from "@/context/AuthContext";
 
 interface DependencyItem {
     id: number;
@@ -104,6 +107,11 @@ interface DivisionOption {
     divisi: string;
 }
 
+function normalizeDiv(val?: string | null): string {
+    if (!val) return "";
+    return val.toLowerCase().replace(/[\s_-]+/g, "");
+}
+
 export default function ProjectSetupPage() {
     const {
         project,
@@ -113,6 +121,20 @@ export default function ProjectSetupPage() {
         flash = {},
     } = usePage().props as any;
     const proj: ProjectData = project;
+
+    const { user: authUser } = useAuth();
+    const userDivision = authUser?.division;
+    const [filterDivisionId, setFilterDivisionId] = useState<string>("all");
+
+    const myDivisionOption = useMemo(() => {
+        if (!userDivision || !divisions || divisions.length === 0) return null;
+        const targetNorm = normalizeDiv(userDivision);
+        return (
+            divisions.find(
+                (d: DivisionOption) => normalizeDiv(d.divisi) === targetNorm,
+            ) || null
+        );
+    }, [userDivision, divisions]);
 
     // Search & Expand State
     const [searchTerm, setSearchTerm] = useState("");
@@ -748,10 +770,15 @@ export default function ProjectSetupPage() {
                 : 5;
         const initialDur = Math.min(5, maxInitDur);
 
+        const defaultDivId =
+            filterDivisionId !== "all"
+                ? Number(filterDivisionId)
+                : myDivisionOption?.id || divisions[0]?.id || 1;
+
         setSearchDep("");
         setTaskForm({
             name: "",
-            divisions_id: divisions[0]?.id || 1,
+            divisions_id: defaultDivId,
             start: defaultStart,
             duration: initialDur,
             vendor: "INTERNAL",
@@ -1083,30 +1110,55 @@ export default function ProjectSetupPage() {
         );
     };
 
-    // Filtered Main Tasks for Search
+    // Filtered Main Tasks for Search and Division Filter
     const filteredMainWbs = useMemo(() => {
-        if (!searchTerm.trim()) return proj.mainWbs || [];
+        const hasSearch = !!searchTerm.trim();
+        const hasDivFilter = filterDivisionId !== "all";
+
+        if (!hasSearch && !hasDivFilter) return proj.mainWbs || [];
         const term = searchTerm.toLowerCase();
 
         return (proj.mainWbs || [])
             .map((m) => {
-                const matchMain =
-                    m.name.toLowerCase().includes(term) ||
-                    m.code.includes(term);
+                const matchMain = hasSearch
+                    ? m.name.toLowerCase().includes(term) || m.code.includes(term)
+                    : false;
+
                 const filteredSubs = (m.subWbs || [])
                     .map((s) => {
-                        const matchSub =
-                            s.name.toLowerCase().includes(term) ||
-                            s.code.includes(term);
-                        const filteredTasks = (s.wbsTasks || []).filter(
-                            (t) =>
-                                t.name.toLowerCase().includes(term) ||
-                                t.code.includes(term) ||
-                                (t.division_name &&
-                                    t.division_name
-                                        .toLowerCase()
-                                        .includes(term)),
-                        );
+                        const matchSub = hasSearch
+                            ? s.name.toLowerCase().includes(term) || s.code.includes(term)
+                            : false;
+
+                        const filteredTasks = (s.wbsTasks || []).filter((t) => {
+                            const matchTaskText = hasSearch
+                                ? t.name.toLowerCase().includes(term) ||
+                                  t.code.includes(term) ||
+                                  (t.division_name &&
+                                      t.division_name.toLowerCase().includes(term))
+                                : true;
+
+                            const matchTaskDiv = hasDivFilter
+                                ? String(t.division_id) === filterDivisionId ||
+                                  (t.division_name &&
+                                      divisions.some(
+                                          (d: DivisionOption) =>
+                                              String(d.id) === filterDivisionId &&
+                                              normalizeDiv(d.divisi) ===
+                                                  normalizeDiv(t.division_name),
+                                      ))
+                                : true;
+
+                            return matchTaskText && matchTaskDiv;
+                        });
+
+                        if (hasDivFilter) {
+                            if (filteredTasks.length > 0) {
+                                return { ...s, wbsTasks: filteredTasks };
+                            }
+                            return null;
+                        }
+
                         if (matchSub || filteredTasks.length > 0) {
                             return { ...s, wbsTasks: filteredTasks };
                         }
@@ -1114,13 +1166,46 @@ export default function ProjectSetupPage() {
                     })
                     .filter(Boolean) as SubWbs[];
 
+                if (hasDivFilter) {
+                    if (filteredSubs.length > 0) {
+                        return { ...m, subWbs: filteredSubs };
+                    }
+                    return null;
+                }
+
                 if (matchMain || filteredSubs.length > 0) {
                     return { ...m, subWbs: filteredSubs };
                 }
                 return null;
             })
             .filter(Boolean) as MainWbs[];
-    }, [proj.mainWbs, searchTerm]);
+    }, [proj.mainWbs, searchTerm, filterDivisionId, divisions]);
+
+    // Auto-expand matching branches when filtering is active
+    useEffect(() => {
+        if (searchTerm.trim() || filterDivisionId !== "all") {
+            const mSet = new Set<number>();
+            const sSet = new Set<number>();
+            filteredMainWbs.forEach((m) => {
+                mSet.add(m.id);
+                (m.subWbs || []).forEach((s) => sSet.add(s.id));
+            });
+            setExpandedMainIds(mSet);
+            setExpandedSubIds(sSet);
+        }
+    }, [searchTerm, filterDivisionId, filteredMainWbs]);
+
+    const filteredLeafCount = useMemo(() => {
+        return filteredMainWbs.reduce((acc, m) => {
+            return (
+                acc +
+                (m.subWbs || []).reduce(
+                    (subAcc, s) => subAcc + (s.wbsTasks?.length || 0),
+                    0,
+                )
+            );
+        }, 0);
+    }, [filteredMainWbs]);
 
     return (
         <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl mx-auto space-y-6">
@@ -1248,31 +1333,71 @@ export default function ProjectSetupPage() {
                 </div>
             </Card>
 
-            {/* Control Bar (Search & Bulk Expand) */}
-            <Card className="p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="relative flex-1 max-w-md">
-                    <Search
-                        size={16}
-                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
-                    />
-                    <input
-                        type="text"
-                        placeholder="Search Main Task, Sub Task, or task name..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 text-[12.5px] rounded-lg border border-neutral-200 outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white"
-                    />
-                    {searchTerm && (
-                        <button
-                            onClick={() => setSearchTerm("")}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+            {/* Control Bar (Search, Division Filter & Bulk Expand) */}
+            <Card className="p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
+                    <div className="relative flex-1 max-w-md">
+                        <Search
+                            size={16}
+                            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
+                        />
+                        <input
+                            type="text"
+                            placeholder="Search Main Task, Sub Task, or task name..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-8 py-2 text-[12.5px] rounded-lg border border-neutral-200 outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white shadow-2xs"
+                        />
+                        {searchTerm && (
+                            <button
+                                onClick={() => setSearchTerm("")}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Division Filter */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <Filter size={13} className="text-neutral-400" />
+                        <select
+                            value={filterDivisionId}
+                            onChange={(e) => setFilterDivisionId(e.target.value)}
+                            className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12px] font-semibold bg-white outline-none focus:border-brand shadow-2xs text-neutral-700"
+                            title="Filter by Division"
                         >
-                            <X size={14} />
-                        </button>
-                    )}
+                            <option value="all">All Divisions ({divisions.length})</option>
+                            {divisions.map((d: DivisionOption) => (
+                                <option key={d.id} value={String(d.id)}>
+                                    {formatDivisionName(d.divisi)}
+                                </option>
+                            ))}
+                        </select>
+
+                        {myDivisionOption && (
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setFilterDivisionId((prev) =>
+                                        prev === String(myDivisionOption.id) ? "all" : String(myDivisionOption.id)
+                                    )
+                                }
+                                className={`px-2.5 py-1.5 rounded-lg text-[12px] font-bold border transition-colors cursor-pointer flex items-center gap-1 ${
+                                    filterDivisionId === String(myDivisionOption.id)
+                                        ? "bg-brand text-white border-brand shadow-xs"
+                                        : "bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100"
+                                }`}
+                                title={`Filter to my department (${formatDivisionName(myDivisionOption.divisi)})`}
+                            >
+                                <Shield size={12} />
+                                <span>My Dept</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 self-end sm:self-auto">
                     <Button variant="outline" size="sm" onClick={expandAll}>
                         Expand All
                     </Button>
@@ -1281,6 +1406,38 @@ export default function ProjectSetupPage() {
                     </Button>
                 </div>
             </Card>
+
+            {/* Filter Result Feedback Banner */}
+            {(searchTerm || filterDivisionId !== "all") && (
+                <div className="flex items-center justify-between px-3.5 py-2 bg-neutral-50 rounded-xl border border-neutral-200/90 text-[12px] text-neutral-600">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-neutral-800">
+                            Filtered View:
+                        </span>
+                        <span>
+                            Showing {filteredMainWbs.length} Main Tasks, {filteredLeafCount} Tasks
+                        </span>
+                        {filterDivisionId !== "all" && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand-light text-brand border border-brand-border">
+                                <Shield size={10} />
+                                {formatDivisionName(
+                                    divisions.find((d: DivisionOption) => String(d.id) === filterDivisionId)?.divisi || "Division"
+                                )}
+                            </span>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSearchTerm("");
+                            setFilterDivisionId("all");
+                        }}
+                        className="text-neutral-500 hover:text-brand font-semibold underline text-[11.5px] cursor-pointer"
+                    >
+                        Reset Filters
+                    </button>
+                </div>
+            )}
 
             {/* 3-Tier WBS Hierarchy List */}
             <div className="space-y-4">
@@ -1294,8 +1451,24 @@ export default function ProjectSetupPage() {
                             No tasks found
                         </h3>
                         <p className="text-[13px] text-neutral-500 mt-1">
-                            Try adjusting your search keywords.
+                            {searchTerm || filterDivisionId !== "all"
+                                ? "No tasks match your current filter criteria."
+                                : "No Main Tasks have been created for this project yet."}
                         </p>
+                        {(searchTerm || filterDivisionId !== "all") && (
+                            <div className="mt-4">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        setSearchTerm("");
+                                        setFilterDivisionId("all");
+                                    }}
+                                >
+                                    Reset Filters
+                                </Button>
+                            </div>
+                        )}
                     </Card>
                 ) : (
                     filteredMainWbs.map((main) => {
@@ -1600,10 +1773,9 @@ export default function ProjectSetupPage() {
                                                                                             }
                                                                                         </td>
                                                                                         <td className="py-2.5 px-3">
-                                                                                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
-                                                                                                {
-                                                                                                    task.division_name
-                                                                                                }
+                                                                                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
+                                                                                                <Shield size={11} className="text-neutral-400" />
+                                                                                                {formatDivisionName(task.division_name)}
                                                                                             </span>
                                                                                         </td>
                                                                                         <td className="py-2.5 px-3 text-neutral-600 font-medium">
@@ -2402,7 +2574,7 @@ export default function ProjectSetupPage() {
                                     >
                                         {divisions.map((d: DivisionOption) => (
                                             <option key={d.id} value={d.id}>
-                                                {d.divisi}
+                                                {formatDivisionName(d.divisi)}
                                             </option>
                                         ))}
                                     </select>

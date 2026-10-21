@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { usePage } from '@inertiajs/react';
-import { PROJECT } from '@/data/mockData';
-import { PageHeader, Card, Button, formatDateDisplay, formatDivisionName } from '@/components/ui';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { usePage, Link } from '@inertiajs/react';
+import { PageHeader, Card, Button, formatDateDisplay, formatDivisionName, StatusBadge } from '@/components/ui';
 import {
-  Calendar, ChevronDown, ChevronRight, Sparkles, Flag,
-  LayoutGrid, ListTree, CheckCircle2, Clock, ArrowRight,
-  Maximize2, Minimize2
+  Calendar, ChevronDown, ChevronRight, ChevronLeft, Flag,
+  Sparkles, LayoutGrid, ListTree, CheckCircle2, Clock,
+  Maximize2, Minimize2, Search, X, Filter, RotateCcw, Info,
+  FolderOpen, Layers
 } from 'lucide-react';
 
 // Curated phase colors matching professional enterprise schedule diagrams
@@ -29,7 +29,7 @@ const PHASE_COLORS = [
   { bg: '#4338CA', text: '#FFFFFF', light: '#EEF2FF', border: '#A5B4FC', name: 'DarkIndigo' },  // 17. Certifications
 ];
 
-const STATUS_COLORS: Record<string, string> = {
+const STATUS_COLOR_BARS: Record<string, string> = {
   'Open': '#16A34A',
   'On Track': '#1E46D9',
   'At Risk': '#D97706',
@@ -43,18 +43,45 @@ interface Milestone {
   name: string;
   dateStr: string;
   description: string;
+  progress?: number;
+}
+
+type PeriodScale = 'all' | 'quarter' | 'month';
+
+/**
+ * Robust date parser that prevents UTC-to-local timezone drift.
+ */
+function parseDate(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
+  const clean = String(dateStr).trim().slice(0, 10);
+  const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [, y, m, d] = match;
+    const date = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    return isNaN(date.getTime()) ? null : date;
+  }
+  const fallback = new Date(dateStr);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
+/**
+ * Calculates exact calendar day difference without daylight saving or hour drift.
+ */
+function daysBetween(start: Date, end: Date): number {
+  const msPerDay = 86400000;
+  const utc1 = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const utc2 = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  return Math.floor((utc2 - utc1) / msPerDay);
 }
 
 export default function TimelinePage() {
   const pageProps = usePage().props as any;
   const project = pageProps?.project;
 
-  const [projectData, setProjectData] = useState(() => {
-    return project && project.mainJobs ? project : PROJECT;
-  });
+  const [projectData, setProjectData] = useState<any>(() => project || null);
 
   useEffect(() => {
-    if (project && project.mainJobs) {
+    if (project) {
       setProjectData(project);
     }
   }, [project]);
@@ -63,110 +90,20 @@ export default function TimelinePage() {
   const [viewMode, setViewMode] = useState<'phase-view' | 'wbs-tree'>('phase-view');
   const [showAllPhases, setShowAllPhases] = useState(false);
 
-  const pStart = useMemo(() => {
-    const raw = projectData?.startDate && !isNaN(new Date(projectData.startDate).getTime())
-      ? new Date(projectData.startDate)
-      : new Date('2026-09-01');
-    // Align pStart to the 1st of that month so the first month is cleanly labeled and start tasks have breathing room
-    return new Date(raw.getFullYear(), raw.getMonth(), 1);
-  }, [projectData?.startDate]);
+  // Period / Date Range State (100% Data-Driven)
+  const [periodScale, setPeriodScale] = useState<PeriodScale>('all');
+  const [periodAnchor, setPeriodAnchor] = useState<Date>(() => new Date());
 
-  const pEnd = useMemo(() => {
-    let raw = projectData?.endDate && !isNaN(new Date(projectData.endDate).getTime())
-      ? new Date(projectData.endDate)
-      : new Date('2027-10-31');
+  // Search & Filter
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDivision, setSelectedDivision] = useState('All');
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
 
-    // Ensure pEnd spans at least past the latest task/milestone date
-    const tasksEndDates = (projectData?.mainJobs || []).flatMap((mj: any) => [
-      mj.finishDate,
-      ...(mj.subMainJobs || []).map((smj: any) => smj.finishDate),
-      ...(mj.subMainJobs || []).flatMap((smj: any) => (smj.subtasks || []).map((st: any) => st.finishDate))
-    ]).filter(Boolean).map((d: string) => new Date(d).getTime());
-
-    if (tasksEndDates.length > 0) {
-      const maxTaskTime = Math.max(...tasksEndDates);
-      if (maxTaskTime > raw.getTime()) {
-        raw = new Date(maxTaskTime);
-      }
-    }
-    // End on the last day of the finish month
-    return new Date(raw.getFullYear(), raw.getMonth() + 1, 0);
-  }, [projectData]);
-
-  const TOTAL_DAYS = useMemo(() => {
-    return Math.max(1, Math.ceil((pEnd.getTime() - pStart.getTime()) / 86400000));
-  }, [pStart, pEnd]);
-
-  const TODAY = new Date();
-
-  function dayOffset(dateStr: string): number {
-    if (!dateStr) return 0;
-    const t = new Date(dateStr).getTime();
-    if (isNaN(t)) return 0;
-    return Math.ceil((t - pStart.getTime()) / 86400000);
-  }
-
-  function pct(dateStr: string): number {
-    if (!dateStr) return 0;
-    return Math.max(0, Math.min(100, (dayOffset(dateStr) / TOTAL_DAYS) * 100));
-  }
-
-  function barWidth(start: string, end: string): number {
-    if (!start || !end) return 1.5;
-    const s = dayOffset(start);
-    const e = dayOffset(end);
-    const diff = e - s + 1;
-    if (isNaN(diff) || diff <= 0) return 1.5;
-    return Math.max(1.2, Math.min(100, (diff / TOTAL_DAYS) * 100));
-  }
-
-  // Prevent marker badges (Today, Milestones) from clipping against sticky columns or canvas edges
-  const getMarkerTransform = (percent: number) => {
-    if (percent <= 4) return 'translateX(4px)';
-    if (percent >= 96) return 'translateX(calc(-100% - 4px))';
-    return 'translateX(-50%)';
-  };
-
-  // Month markers for the top timeline axis
-  const months = useMemo(() => {
-    const markers: { label: string; pct: number }[] = [];
-    const d = new Date(pStart);
-    d.setDate(1);
-    const step = TOTAL_DAYS > 500 ? 2 : 1;
-    let count = 0;
-    while (d <= pEnd && count < 100) {
-      count++;
-      const p = ((d.getTime() - pStart.getTime()) / 86400000 / TOTAL_DAYS) * 100;
-      if (p >= 0 && p <= 100) {
-        markers.push({
-          label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-          pct: p,
-        });
-      }
-      d.setMonth(d.getMonth() + step);
-    }
-    return markers;
-  }, [pStart, pEnd, TOTAL_DAYS]);
-
-  // Key Project Milestones (using existing logic & dates)
-  const milestones: Milestone[] = useMemo(() => {
-    const startMs = pStart.getTime();
-    const endMs = pEnd.getTime();
-    const span = endMs - startMs;
-
-    const m1Date = new Date(startMs + span * 0.25).toISOString().slice(0, 10);
-    const m2Date = new Date(startMs + span * 0.55).toISOString().slice(0, 10);
-    const m3Date = new Date(startMs + span * 0.85).toISOString().slice(0, 10);
-
-    return [
-      { id: 'm-1', name: 'Milestone 1', dateStr: m1Date, description: 'Engineering & Design Freeze' },
-      { id: 'm-2', name: 'Milestone 2', dateStr: m2Date, description: 'Procurement & Machine Installation' },
-      { id: 'm-3', name: 'Milestone 3', dateStr: m3Date, description: 'Cold/Hot Trial & Pre-Commissioning' },
-    ];
-  }, [pStart, pEnd]);
-
+  // Expand / collapse for WBS Tree mode
   const [expandedMJ, setExpandedMJ] = useState<Record<string, boolean>>({ 'mj-1': true, 'mj-2': true, 'mj-3': true });
   const [expandedSMJ, setExpandedSMJ] = useState<Record<string, boolean>>({});
+
+  // Tooltip
   const [tooltip, setTooltip] = useState<{
     x: number;
     y: number;
@@ -176,7 +113,351 @@ export default function TimelinePage() {
   } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const todayPct = Math.max(0, Math.min(100, ((TODAY.getTime() - pStart.getTime()) / 86400000 / TOTAL_DAYS) * 100));
+
+  // ─── Extract Real Schedule Bounds from Project and Task Data ──────────
+  const { pStart, pEnd, totalProjectDays } = useMemo(() => {
+    if (!projectData) {
+      const now = new Date();
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return { pStart: s, pEnd: e, totalProjectDays: 30 };
+    }
+
+    const allDates: number[] = [];
+
+    const dStart = parseDate(projectData.startDate);
+    if (dStart) allDates.push(dStart.getTime());
+
+    const dEnd = parseDate(projectData.endDate);
+    if (dEnd) allDates.push(dEnd.getTime());
+
+    (projectData.mainJobs || []).forEach((mj: any) => {
+      const ms = parseDate(mj.startDate);
+      const mf = parseDate(mj.finishDate);
+      if (ms) allDates.push(ms.getTime());
+      if (mf) allDates.push(mf.getTime());
+
+      (mj.subMainJobs || []).forEach((smj: any) => {
+        const sms = parseDate(smj.startDate);
+        const smf = parseDate(smj.finishDate);
+        if (sms) allDates.push(sms.getTime());
+        if (smf) allDates.push(smf.getTime());
+
+        (smj.subtasks || []).forEach((st: any) => {
+          const sts = parseDate(st.startDate);
+          const stf = parseDate(st.finishDate);
+          if (sts) allDates.push(sts.getTime());
+          if (stf) allDates.push(stf.getTime());
+        });
+      });
+    });
+
+    if (allDates.length === 0) {
+      const now = new Date();
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return { pStart: s, pEnd: e, totalProjectDays: Math.max(1, daysBetween(s, e) + 1) };
+    }
+
+    const minTime = Math.min(...allDates);
+    const maxTime = Math.max(...allDates);
+
+    const minD = new Date(minTime);
+    const maxD = new Date(maxTime);
+
+    // Align start to 1st of that month and end to last day of finish month
+    const start = new Date(minD.getFullYear(), minD.getMonth(), 1);
+    const end = new Date(maxD.getFullYear(), maxD.getMonth() + 1, 0);
+
+    const span = Math.max(1, daysBetween(start, end) + 1);
+    return { pStart: start, pEnd: end, totalProjectDays: span };
+  }, [projectData]);
+
+  // Keep periodAnchor initialized to project start or today
+  useEffect(() => {
+    if (pStart) {
+      setPeriodAnchor(pStart);
+    }
+  }, [pStart]);
+
+  // ─── Active Period Window Bounds ─────────────────────────────────────
+  const { windowStart, windowEnd, totalWindowDays, periodLabel, isPrevDisabled, isNextDisabled } = useMemo(() => {
+    let wStart: Date;
+    let wEnd: Date;
+
+    if (periodScale === 'all') {
+      wStart = new Date(pStart);
+      wEnd = new Date(pEnd);
+    } else if (periodScale === 'quarter') {
+      // 3-month window starting from periodAnchor's quarter
+      const qStartMonth = Math.floor(periodAnchor.getMonth() / 3) * 3;
+      wStart = new Date(periodAnchor.getFullYear(), qStartMonth, 1);
+      wEnd = new Date(periodAnchor.getFullYear(), qStartMonth + 3, 0);
+    } else {
+      // 1-month window
+      wStart = new Date(periodAnchor.getFullYear(), periodAnchor.getMonth(), 1);
+      wEnd = new Date(periodAnchor.getFullYear(), periodAnchor.getMonth() + 1, 0);
+    }
+
+    const span = Math.max(1, daysBetween(wStart, wEnd) + 1);
+
+    // Compute descriptive period label
+    let label = '';
+    if (periodScale === 'all') {
+      const sStr = wStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      const eStr = wEnd.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      const monthsCount = Math.max(1, Math.round(span / 30));
+      label = `Full Schedule · ${sStr} – ${eStr} (${monthsCount} mos / ${span} days)`;
+    } else if (periodScale === 'quarter') {
+      const qNum = Math.floor(wStart.getMonth() / 3) + 1;
+      const sMonth = wStart.toLocaleDateString('en-US', { month: 'short' });
+      const eMonth = wEnd.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      label = `Q${qNum} ${wStart.getFullYear()} · ${sMonth} – ${eMonth} (${span} days)`;
+    } else {
+      label = `${wStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} (${span} days)`;
+    }
+
+    const canPrev = periodScale !== 'all' && wStart.getTime() > pStart.getTime();
+    const canNext = periodScale !== 'all' && wEnd.getTime() < pEnd.getTime();
+
+    return {
+      windowStart: wStart,
+      windowEnd: wEnd,
+      totalWindowDays: span,
+      periodLabel: label,
+      isPrevDisabled: !canPrev,
+      isNextDisabled: !canNext,
+    };
+  }, [periodScale, periodAnchor, pStart, pEnd]);
+
+  // ─── Period Navigation Handlers ──────────────────────────────────────
+  const handlePrevPeriod = () => {
+    if (periodScale === 'month') {
+      setPeriodAnchor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    } else if (periodScale === 'quarter') {
+      setPeriodAnchor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 3, 1));
+    }
+  };
+
+  const handleNextPeriod = () => {
+    if (periodScale === 'month') {
+      setPeriodAnchor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    } else if (periodScale === 'quarter') {
+      setPeriodAnchor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 3, 1));
+    }
+  };
+
+  const handleJumpToToday = () => {
+    const now = new Date();
+    if (periodScale === 'all') {
+      // In full schedule, scroll smoothly to today's line
+      if (containerRef.current) {
+        const todayOffset = daysBetween(windowStart, now);
+        const todayPctVal = Math.max(0, Math.min(100, (todayOffset / totalWindowDays) * 100));
+        const scrollTarget = (containerRef.current.scrollWidth - containerRef.current.clientWidth) * (todayPctVal / 100);
+        containerRef.current.scrollTo({ left: Math.max(0, scrollTarget - 200), behavior: 'smooth' });
+      }
+    } else {
+      setPeriodAnchor(new Date(now.getFullYear(), now.getMonth(), 1));
+    }
+  };
+
+  // ─── Today Indicator ─────────────────────────────────────────────────
+  const TODAY = useMemo(() => new Date(), []);
+  const todayParsed = useMemo(() => new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()), [TODAY]);
+  const isTodayInWindow = todayParsed >= windowStart && todayParsed <= windowEnd;
+  const todayPct = useMemo(() => {
+    if (!isTodayInWindow) return null;
+    const offset = daysBetween(windowStart, todayParsed);
+    return Math.max(0, Math.min(100, (offset / totalWindowDays) * 100));
+  }, [isTodayInWindow, windowStart, todayParsed, totalWindowDays]);
+
+  // ─── Dynamic Milestones from Real Project Finish Dates ────────────────
+  const milestones: Milestone[] = useMemo(() => {
+    if (!projectData) return [];
+    if (Array.isArray(projectData.milestones) && projectData.milestones.length > 0) {
+      return projectData.milestones;
+    }
+
+    const list: Milestone[] = [];
+    (projectData.mainJobs || []).forEach((mj: any) => {
+      if (mj.finishDate && parseDate(mj.finishDate)) {
+        list.push({
+          id: `ms-${mj.id}`,
+          name: `${mj.name} Target`,
+          dateStr: mj.finishDate,
+          description: `Phase ${mj.code} completion target`,
+          progress: mj.progress,
+        });
+      }
+    });
+
+    if (projectData.endDate && parseDate(projectData.endDate)) {
+      list.push({
+        id: 'ms-project-completion',
+        name: 'Project Finish',
+        dateStr: projectData.endDate,
+        description: 'Overall project target completion date',
+        progress: projectData.overallProgress || 0,
+      });
+    }
+
+    return list;
+  }, [projectData]);
+
+  // ─── Compute Bar Layout Relative to Active Window ────────────────────
+  const getBarPosition = (startDateStr?: string | null, finishDateStr?: string | null) => {
+    const sDate = parseDate(startDateStr);
+    const fDate = parseDate(finishDateStr);
+
+    if (!sDate || !fDate) return null;
+
+    const isBefore = fDate < windowStart;
+    const isAfter = sDate > windowEnd;
+    const isVisible = !isBefore && !isAfter;
+
+    if (!isVisible) {
+      return { isVisible: false, isBefore, isAfter, leftPct: 0, widthPct: 0, continuesLeft: false, continuesRight: false };
+    }
+
+    const clippedStart = sDate < windowStart ? windowStart : sDate;
+    const clippedFinish = fDate > windowEnd ? windowEnd : fDate;
+
+    const offsetDays = daysBetween(windowStart, clippedStart);
+    const durationDays = daysBetween(clippedStart, clippedFinish) + 1;
+
+    const left = (offsetDays / totalWindowDays) * 100;
+    const width = Math.max(0.6, (durationDays / totalWindowDays) * 100);
+
+    return {
+      isVisible: true,
+      isBefore: false,
+      isAfter: false,
+      leftPct: Math.max(0, Math.min(100, left)),
+      widthPct: Math.min(100 - Math.max(0, left), width),
+      continuesLeft: sDate < windowStart,
+      continuesRight: fDate > windowEnd,
+      sDate,
+      fDate,
+    };
+  };
+
+  // ─── Month Segments & Subdivisions for Clean Dual-Tier Header ────────
+  const monthSegments = useMemo(() => {
+    const segments: {
+      label: string;
+      yearStr: string;
+      leftPct: number;
+      widthPct: number;
+      isEven: boolean;
+      daysCount: number;
+    }[] = [];
+
+    let cur = new Date(windowStart.getFullYear(), windowStart.getMonth(), 1);
+    let idx = 0;
+
+    while (cur <= windowEnd) {
+      const segStart = cur < windowStart ? windowStart : cur;
+      const nextMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      const lastDay = new Date(nextMonth.getTime() - 86400000);
+      const segEnd = lastDay > windowEnd ? windowEnd : lastDay;
+
+      const offset = daysBetween(windowStart, segStart);
+      const segDays = daysBetween(segStart, segEnd) + 1;
+
+      const left = (offset / totalWindowDays) * 100;
+      const width = (segDays / totalWindowDays) * 100;
+
+      segments.push({
+        label: cur.toLocaleDateString('en-US', { month: 'short' }),
+        yearStr: cur.toLocaleDateString('en-US', { year: '2-digit' }),
+        leftPct: Math.max(0, left),
+        widthPct: width,
+        isEven: idx % 2 === 0,
+        daysCount: segDays,
+      });
+
+      cur = nextMonth;
+      idx++;
+    }
+
+    return segments;
+  }, [windowStart, windowEnd, totalWindowDays]);
+
+  // ─── Canvas Minimum Width to Guarantee High Readability ──────────────
+  const canvasMinWidth = useMemo(() => {
+    if (periodScale === 'month') return 760;
+    if (periodScale === 'quarter') return 900;
+    const monthsCount = Math.max(1, Math.ceil(totalProjectDays / 30));
+    return Math.max(850, monthsCount * 96);
+  }, [periodScale, totalProjectDays]);
+
+  // ─── Extract All Unique Divisions for Filtering ──────────────────────
+  const availableDivisions = useMemo(() => {
+    const divs = new Set<string>();
+    (projectData?.mainJobs || []).forEach((mj: any) => {
+      (mj.subMainJobs || []).forEach((smj: any) => {
+        if (smj.pic) divs.add(smj.pic);
+        (smj.subtasks || []).forEach((st: any) => {
+          if (st.division) divs.add(st.division);
+        });
+      });
+    });
+    return Array.from(divs).sort();
+  }, [projectData]);
+
+  // ─── Filtered Tasks & Main Jobs ──────────────────────────────────────
+  const mainJobsList = useMemo(() => {
+    const raw = projectData?.mainJobs || [];
+    if (!searchQuery.trim() && selectedDivision === 'All') return raw;
+
+    const q = searchQuery.toLowerCase().trim();
+
+    return raw
+      .map((mj: any) => {
+        const mjMatches = !q || mj.name.toLowerCase().includes(q) || mj.code.toLowerCase().includes(q);
+
+        const filteredSubMain = (mj.subMainJobs || [])
+          .map((smj: any) => {
+            const smjMatches = !q || smj.name.toLowerCase().includes(q) || smj.code.toLowerCase().includes(q);
+            const divMatches = selectedDivision === 'All' || smj.pic === selectedDivision;
+
+            const filteredTasks = (smj.subtasks || []).filter((st: any) => {
+              const taskMatches = !q || st.name.toLowerCase().includes(q) || st.code.toLowerCase().includes(q);
+              const taskDiv = selectedDivision === 'All' || st.division === selectedDivision;
+              return taskMatches && taskDiv;
+            });
+
+            if ((smjMatches && divMatches) || filteredTasks.length > 0) {
+              return { ...smj, subtasks: filteredTasks.length > 0 ? filteredTasks : smj.subtasks };
+            }
+            return null;
+          })
+          .filter(Boolean);
+
+        if (mjMatches || filteredSubMain.length > 0) {
+          return { ...mj, subMainJobs: filteredSubMain };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [projectData, searchQuery, selectedDivision]);
+
+  // Auto-expand parents when searching
+  useEffect(() => {
+    if (searchQuery.trim().length > 0) {
+      const newMJ: Record<string, boolean> = {};
+      const newSMJ: Record<string, boolean> = {};
+      mainJobsList.forEach((mj: any) => {
+        newMJ[mj.id] = true;
+        (mj.subMainJobs || []).forEach((smj: any) => {
+          newSMJ[smj.id] = true;
+        });
+      });
+      setExpandedMJ(newMJ);
+      setExpandedSMJ(newSMJ);
+    }
+  }, [searchQuery, mainJobsList]);
 
   const toggleAll = (expand: boolean) => {
     const newMJ: Record<string, boolean> = {};
@@ -193,23 +474,53 @@ export default function TimelinePage() {
     setExpandedSMJ(newSMJ);
   };
 
-  const mainJobsList = projectData?.mainJobs || [];
-  const visiblePhases = showAllPhases ? mainJobsList : mainJobsList.slice(0, 6);
-  const remainingPhaseCount = Math.max(0, mainJobsList.length - 6);
+  const visiblePhases = showAllPhases ? mainJobsList : mainJobsList.slice(0, 7);
+  const remainingPhaseCount = Math.max(0, mainJobsList.length - 7);
+
+  // ─── Empty State if No Project Data Available ────────────────────────
+  if (!projectData || !projectData.mainJobs || projectData.mainJobs.length === 0) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-full space-y-4">
+        <PageHeader
+          title="Timeline / Gantt Schedule"
+          subtitle="Project schedule visualization based on phases and WBS structure."
+        />
+        <Card className="p-12 text-center border-dashed border-2 border-neutral-300">
+          <div className="w-14 h-14 mx-auto rounded-full bg-neutral-100 flex items-center justify-center text-neutral-400 mb-3 shadow-inner">
+            <Calendar size={28} />
+          </div>
+          <h3 className="text-base font-bold text-neutral-800">No WBS Schedule Data Available</h3>
+          <p className="text-sm text-neutral-500 max-w-md mx-auto mt-1 mb-5">
+            This project does not have any WBS schedule activities configured yet. Add tasks with start and finish dates to visualize the timeline schedule.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <Link
+              href={projectData?.id ? `/projectdetailpage?project_id=${projectData.id}` : '/projectlistpage'}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-brand-dark transition-colors"
+            >
+              <FolderOpen size={16} />
+              <span>Go to Project Detail</span>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-full space-y-4">
-      {/* 1. Page Header with dynamic project title */}
+    <div className="p-4 sm:p-6 lg:p-8 max-w-full space-y-4 overflow-hidden">
+      {/* ─── 1. Page Header with dynamic project title ──────────────────── */}
       <PageHeader
         title="Timeline / Gantt Schedule"
         subtitle={`Project schedule visualization (${projectData.name || 'Project'}) based on phases and WBS structure.`}
         actions={
-          <div className="flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {/* View Mode Switcher */}
             <div className="flex items-center bg-neutral-100 p-1 rounded-lg border border-neutral-200 shadow-2xs">
               <button
+                type="button"
                 onClick={() => setViewMode('phase-view')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${
                   viewMode === 'phase-view'
                     ? 'bg-brand text-white shadow-xs font-bold'
                     : 'text-neutral-600 hover:text-neutral-900'
@@ -219,8 +530,9 @@ export default function TimelinePage() {
                 <span>Phase View</span>
               </button>
               <button
+                type="button"
                 onClick={() => setViewMode('wbs-tree')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${
                   viewMode === 'wbs-tree'
                     ? 'bg-brand text-white shadow-xs font-bold'
                     : 'text-neutral-600 hover:text-neutral-900'
@@ -231,14 +543,14 @@ export default function TimelinePage() {
               </button>
             </div>
 
-            {/* Expand / Collapse Controls (WBS Tree Mode) directly underneath */}
+            {/* Expand / Collapse Controls (WBS Tree Mode) */}
             {viewMode === 'wbs-tree' && (
-              <div className="flex items-center justify-end gap-1.5">
+              <div className="flex items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => toggleAll(true)}
-                  className="text-[11px] h-7 px-2 bg-white hover:bg-neutral-50"
+                  className="text-[11px] h-8 px-2.5 bg-white hover:bg-neutral-50"
                   title="Expand all levels"
                 >
                   <Maximize2 size={12} className="mr-1 text-neutral-500" />
@@ -248,7 +560,7 @@ export default function TimelinePage() {
                   variant="outline"
                   size="sm"
                   onClick={() => toggleAll(false)}
-                  className="text-[11px] h-7 px-2 bg-white hover:bg-neutral-50"
+                  className="text-[11px] h-8 px-2.5 bg-white hover:bg-neutral-50"
                   title="Collapse all levels"
                 >
                   <Minimize2 size={12} className="mr-1 text-neutral-500" />
@@ -260,81 +572,237 @@ export default function TimelinePage() {
         }
       />
 
-      {/* 2. Timeline Information / Legend Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 rounded-xl bg-white border border-neutral-200/90 shadow-2xs">
-        {/* Dynamic Project Phases */}
-        <div className="flex items-center gap-3 flex-wrap text-[12px]">
-          <span className="font-semibold text-neutral-500 uppercase tracking-wider text-[11px] flex items-center gap-1.5 flex-shrink-0">
-            <Sparkles size={13} className="text-brand" />
-            Project Phases
-          </span>
-          <div className="flex items-center gap-2 flex-wrap">
-            {visiblePhases.map((mj: any, idx: number) => {
-              const color = PHASE_COLORS[idx % PHASE_COLORS.length];
-              return (
-                <div
-                  key={mj.id || idx}
-                  className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-neutral-50 border border-neutral-200/70 text-[11px] font-medium text-neutral-700 shadow-2xs transition-colors hover:bg-neutral-100"
-                  title={mj.name}
-                >
-                  <span className="w-2 h-2 rounded-xs flex-shrink-0" style={{ backgroundColor: color.bg }} />
-                  <span className="truncate max-w-[130px]">{mj.name}</span>
-                </div>
-              );
-            })}
-            {remainingPhaseCount > 0 && (
+      {/* ─── 2. Date Navigation & Filter Toolbar ─────────────────────────── */}
+      <Card className="p-3 sm:p-4 border border-neutral-200/90 shadow-2xs bg-white space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Period Scale Presets & Navigator Controls */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {/* Scale Pill Toggle */}
+            <div className="flex items-center bg-neutral-100 p-0.5 rounded-lg border border-neutral-200 shadow-2xs">
               <button
-                onClick={() => setShowAllPhases((v) => !v)}
-                className="text-[11px] text-brand font-semibold px-2 py-0.5 rounded-md bg-brand-light hover:bg-brand/15 border border-brand/25 transition-colors"
+                type="button"
+                onClick={() => setPeriodScale('all')}
+                className={`px-2.5 py-1 text-[11.5px] font-semibold rounded-md transition-all cursor-pointer ${
+                  periodScale === 'all'
+                    ? 'bg-white text-neutral-900 shadow-2xs font-bold'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
               >
-                {showAllPhases ? 'Show less' : `+${remainingPhaseCount} more`}
+                Full Schedule
               </button>
+              <button
+                type="button"
+                onClick={() => setPeriodScale('quarter')}
+                className={`px-2.5 py-1 text-[11.5px] font-semibold rounded-md transition-all cursor-pointer ${
+                  periodScale === 'quarter'
+                    ? 'bg-white text-neutral-900 shadow-2xs font-bold'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                Quarterly
+              </button>
+              <button
+                type="button"
+                onClick={() => setPeriodScale('month')}
+                className={`px-2.5 py-1 text-[11.5px] font-semibold rounded-md transition-all cursor-pointer ${
+                  periodScale === 'month'
+                    ? 'bg-white text-neutral-900 shadow-2xs font-bold'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                Monthly
+              </button>
+            </div>
+
+            {/* Previous / Next Period Navigation */}
+            <div className="flex items-center gap-1 bg-neutral-50 px-2 py-1 rounded-lg border border-neutral-200/90">
+              <button
+                type="button"
+                onClick={handlePrevPeriod}
+                disabled={isPrevDisabled}
+                className="p-1 rounded text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/70 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+                title={periodScale === 'all' ? 'Select Quarterly or Monthly to step through periods' : 'Previous period'}
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {/* Current Active Period Badge */}
+              <div className="px-2.5 py-0.5 text-center min-w-[150px] sm:min-w-[220px]">
+                <div className="text-[12px] font-bold text-neutral-800 tracking-tight leading-snug">
+                  {periodLabel}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleNextPeriod}
+                disabled={isNextDisabled}
+                className="p-1 rounded text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/70 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+                title={periodScale === 'all' ? 'Select Quarterly or Monthly to step through periods' : 'Next period'}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+
+            {/* Jump to Today Button */}
+            <button
+              type="button"
+              onClick={handleJumpToToday}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-semibold border transition-all cursor-pointer ${
+                isTodayInWindow
+                  ? 'bg-danger/10 text-danger border-danger/30 hover:bg-danger/15'
+                  : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50'
+              }`}
+              title="Jump viewport to today"
+            >
+              <span className={`w-2 h-2 rounded-full ${isTodayInWindow ? 'bg-danger animate-pulse' : 'bg-neutral-400'}`} />
+              <span>Today</span>
+            </button>
+          </div>
+
+          {/* Search & Division Filter */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Search Input */}
+            <div className="relative flex-1 sm:w-56">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search tasks..."
+                className="w-full pl-8 pr-7 py-1 text-[12px] rounded-lg border border-neutral-200 bg-neutral-50/60 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 p-0.5"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            {/* Division Filter */}
+            {availableDivisions.length > 1 && (
+              <select
+                value={selectedDivision}
+                onChange={(e) => setSelectedDivision(e.target.value)}
+                className="py-1 px-2.5 text-[12px] font-medium rounded-lg border border-neutral-200 bg-white text-neutral-700 focus:outline-none focus:ring-1 focus:ring-brand cursor-pointer"
+              >
+                <option value="All">All Divisions</option>
+                {availableDivisions.map((div) => (
+                  <option key={div} value={div}>
+                    {formatDivisionName(div)}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
         </div>
 
-        {/* Milestone & Today Indicators */}
-        <div className="flex items-center gap-2.5 flex-wrap flex-shrink-0">
-          <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-neutral-700 bg-neutral-50 px-2.5 py-1 rounded-lg border border-neutral-200/80 shadow-2xs">
-            <span className="w-2 h-2 rotate-45 bg-amber-500 rounded-[1px]" />
-            <span>Target Milestones</span>
+        {/* Dynamic Project Phases Legend & Milestones Info */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-neutral-100 text-[11.5px]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-neutral-400 uppercase tracking-wider text-[10.5px] flex items-center gap-1 flex-shrink-0">
+              <Sparkles size={12} className="text-brand" />
+              Phases
+            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {visiblePhases.map((mj: any, idx: number) => {
+                const color = PHASE_COLORS[idx % PHASE_COLORS.length];
+                return (
+                  <div
+                    key={mj.id || idx}
+                    className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-neutral-50 border border-neutral-200/70 text-[11px] font-medium text-neutral-700 shadow-2xs hover:bg-neutral-100 transition-colors"
+                    title={mj.name}
+                  >
+                    <span className="w-2 h-2 rounded-xs flex-shrink-0" style={{ backgroundColor: color.bg }} />
+                    <span className="truncate max-w-[120px]">{mj.name}</span>
+                  </div>
+                );
+              })}
+              {remainingPhaseCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllPhases((v) => !v)}
+                  className="text-[11px] text-brand font-semibold px-2 py-0.5 rounded-md bg-brand-light hover:bg-brand/15 border border-brand/25 transition-colors cursor-pointer"
+                >
+                  {showAllPhases ? 'Show less' : `+${remainingPhaseCount} more`}
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-danger bg-danger-light px-2.5 py-1 rounded-lg border border-danger/20 shadow-2xs">
-            <span className="w-2 h-2 rounded-full bg-danger animate-pulse" />
-            <span>Today · {TODAY.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-neutral-700 bg-neutral-50 px-2 py-0.5 rounded-md border border-neutral-200/80">
+              <span className="w-2 h-2 rotate-45 bg-amber-500 rounded-[1px]" />
+              <span>Milestones ({milestones.length})</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-danger bg-danger-light px-2 py-0.5 rounded-md border border-danger/20">
+              <span className="w-2 h-2 rounded-full bg-danger animate-pulse" />
+              <span>Today · {TODAY.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}</span>
+            </div>
           </div>
         </div>
-      </div>
+      </Card>
 
-      {/* 3. Gantt Schedule Canvas */}
-      {viewMode === 'phase-view' ? (
-        /* ─── PHASE VIEW (CLEAN ENTERPRISE GROUPED GANTT) ─── */
-        <Card className="overflow-hidden border border-neutral-200/90 shadow-sm rounded-xl">
-          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-230px)] scrollbar-thin" ref={containerRef}>
-            <div className="min-w-[1100px]">
-              {/* Top Axis Header */}
-              <div className="flex border-b border-neutral-200 bg-neutral-50 sticky top-0 z-30 shadow-2xs">
-                {/* Column 1: Phase Group (Sticky Left) */}
-                <div className="w-44 sm:w-48 flex-shrink-0 px-3.5 py-2.5 font-bold text-[11px] text-neutral-600 uppercase tracking-wider border-r border-neutral-200 flex items-center justify-center text-center sticky left-0 z-40 bg-neutral-50 shadow-[1px_0_4px_rgba(0,0,0,0.03)]">
-                  Phase / Group
-                </div>
-                {/* Column 2: Task Activity (Sticky Left offset) */}
-                <div className="w-64 sm:w-72 flex-shrink-0 px-4 py-2.5 font-bold text-[11px] text-neutral-600 uppercase tracking-wider border-r border-neutral-200 flex items-center sticky left-44 sm:left-48 z-40 bg-neutral-50 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
-                  Task / Activity
-                </div>
-                {/* Column 3: Timeline Axis & Milestones */}
-                <div className="flex-1 relative h-11 bg-neutral-50/70">
-                  {/* Month Markers */}
-                  {months.map(({ label, pct: p }) => (
-                    <div key={label} className="absolute top-0 bottom-0 flex flex-col justify-end pb-1.5" style={{ left: `${p}%` }}>
-                      <div className="h-3 border-l border-neutral-300" />
-                      <span className="text-[10px] font-semibold text-neutral-500 whitespace-nowrap pl-1">{label}</span>
+      {/* ─── 3. Gantt Schedule Canvas Card ──────────────────────────────── */}
+      <Card className="overflow-hidden border border-neutral-200/90 shadow-sm rounded-xl bg-white">
+        <div
+          className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)] scrollbar-thin select-none"
+          ref={containerRef}
+        >
+          <div style={{ minWidth: canvasMinWidth }} className="w-full">
+            {/* Top Dual-Tier Axis Header (Sticky Top) */}
+            <div className="flex border-b border-neutral-200 bg-neutral-50 sticky top-0 z-30 shadow-2xs">
+              {/* Sticky Task Label Column */}
+              <div className="w-72 sm:w-80 lg:w-[380px] flex-shrink-0 px-4 py-2.5 border-r border-neutral-200 flex items-center justify-between sticky left-0 z-40 bg-neutral-50 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
+                <span className="text-[11px] font-bold text-neutral-600 uppercase tracking-wider">
+                  {viewMode === 'phase-view' ? 'Phase & Task Activity' : 'WBS Element / Task'}
+                </span>
+                <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+                  Schedule / PIC
+                </span>
+              </div>
+
+              {/* Dynamic Timeline Axis Header */}
+              <div className="flex-1 relative flex flex-col justify-between h-12 bg-neutral-50/80">
+                {/* Tier 1: Months / Periods */}
+                <div className="relative h-6 border-b border-neutral-200/80 overflow-hidden">
+                  {monthSegments.map((seg, i) => (
+                    <div
+                      key={`m-top-${i}`}
+                      className={`absolute top-0 bottom-0 flex items-center justify-center border-r border-neutral-200/70 px-1 text-[11px] font-bold ${
+                        seg.isEven ? 'bg-neutral-100/40 text-neutral-800' : 'bg-transparent text-neutral-700'
+                      }`}
+                      style={{ left: `${seg.leftPct}%`, width: `${seg.widthPct}%` }}
+                    >
+                      <span className="truncate">
+                        {seg.label} {seg.yearStr ? `'${seg.yearStr}` : ''}
+                      </span>
                     </div>
                   ))}
+                </div>
 
-                  {/* Milestones in Axis Header */}
+                {/* Tier 2: Subdivisions & Markers */}
+                <div className="relative h-6 flex items-center">
+                  {/* Subtle month separator lines */}
+                  {monthSegments.map((seg, i) => (
+                    <div
+                      key={`m-div-${i}`}
+                      className="absolute inset-y-0 border-r border-neutral-200/90 pointer-events-none"
+                      style={{ left: `${seg.leftPct + seg.widthPct}%` }}
+                    />
+                  ))}
+
+                  {/* Milestones in Header */}
                   {milestones.map((m) => {
-                    const mPct = pct(m.dateStr);
+                    const mDate = parseDate(m.dateStr);
+                    if (!mDate || mDate < windowStart || mDate > windowEnd) return null;
+                    const offset = daysBetween(windowStart, mDate);
+                    const mPct = Math.max(0, Math.min(100, (offset / totalWindowDays) * 100));
+
                     return (
                       <div
                         key={m.id}
@@ -346,171 +814,268 @@ export default function TimelinePage() {
                             y: e.clientY,
                             title: m.name,
                             subtitle: m.description,
-                            details: [`Target: ${formatDateDisplay(m.dateStr)}`],
+                            details: [`Target Date: ${formatDateDisplay(m.dateStr)}`],
                           })
                         }
                         onMouseLeave={() => setTooltip(null)}
                       >
-                        <div
-                          className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[9.5px] font-bold px-2 py-0.5 rounded-full shadow-xs mt-1 border border-amber-400/80 transition-transform group-hover/m:scale-105"
-                          style={{ transform: getMarkerTransform(mPct) }}
-                        >
+                        <div className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs mt-0.5 -translate-x-1/2 border border-amber-400/90 transition-transform group-hover/m:scale-105">
                           <span className="w-1.5 h-1.5 rotate-45 bg-white rounded-[0.5px]" />
-                          <span>{m.name}</span>
+                          <span className="truncate max-w-[80px]">{m.name}</span>
                         </div>
                       </div>
                     );
                   })}
 
-                  {/* Today Marker in Axis Header */}
-                  <div
-                    className="absolute top-0 bottom-0 flex flex-col items-center z-30 pointer-events-none"
-                    style={{ left: `${todayPct}%` }}
-                  >
+                  {/* Today Marker in Header */}
+                  {todayPct !== null && (
                     <div
-                      className="bg-danger text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-xs mt-1 flex items-center gap-1 border border-red-400"
-                      style={{ transform: getMarkerTransform(todayPct) }}
+                      className="absolute top-0 bottom-0 flex flex-col items-center z-30 pointer-events-none"
+                      style={{ left: `${todayPct}%` }}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                      <span>Today</span>
+                      <div className="bg-danger text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs mt-0.5 -translate-x-1/2 flex items-center gap-1 border border-red-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                        <span>Today</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
+            </div>
 
-              {/* Rows Grouped by Phase */}
-              <div>
+            {/* ─── Gantt Rows: Phase View Mode ──────────────────────────── */}
+            {viewMode === 'phase-view' ? (
+              <div className="divide-y divide-neutral-200/90">
                 {mainJobsList.map((mj: any, mjIdx: number) => {
-                  const color = PHASE_COLORS[mjIdx % PHASE_COLORS.length];
-                  const items = mj.subMainJobs && mj.subMainJobs.length > 0
-                    ? mj.subMainJobs
-                    : [{
-                        id: `mj-standalone-${mj.id}`,
-                        code: mj.code,
-                        name: mj.name,
-                        startDate: mj.startDate,
-                        finishDate: mj.finishDate,
-                        progress: mj.progress,
-                        status: mj.status,
-                        pic: 'Team',
-                      }];
+                  const phaseColor = PHASE_COLORS[mjIdx % PHASE_COLORS.length];
+                  const items =
+                    mj.subMainJobs && mj.subMainJobs.length > 0
+                      ? mj.subMainJobs
+                      : [
+                          {
+                            id: `mj-standalone-${mj.id}`,
+                            code: mj.code,
+                            name: mj.name,
+                            startDate: mj.startDate,
+                            finishDate: mj.finishDate,
+                            progress: mj.progress,
+                            status: mj.status,
+                            pic: 'Team',
+                          },
+                        ];
 
                   return (
-                    <div key={mj.id} className="flex border-b border-neutral-200 group/phase items-stretch">
-                      {/* Left Column: Phase Group Card (Sticky Left) */}
-                      <div
-                        className="w-44 sm:w-48 flex-shrink-0 flex flex-col items-center justify-center p-2.5 border-r border-neutral-200 text-center relative select-none sticky left-0 z-20 shadow-[1px_0_4px_rgba(0,0,0,0.03)]"
-                        style={{ backgroundColor: color.light }}
-                      >
-                        <div
-                          className="w-full text-center px-2.5 py-2 rounded-lg border shadow-2xs bg-white transition-all group-hover/phase:shadow-sm"
-                          style={{ borderColor: color.border }}
-                        >
-                          <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: color.bg }}>
-                            Fase {mj.code}
+                    <div key={mj.id} className="bg-white">
+                      {/* Phase Summary Group Header */}
+                      <div className="flex border-b border-neutral-100 bg-neutral-50/60 items-center">
+                        <div className="w-72 sm:w-80 lg:w-[380px] flex-shrink-0 px-3.5 py-1.5 flex items-center gap-2 border-r border-neutral-200 sticky left-0 z-20 bg-neutral-100/90 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
+                          <div
+                            className="w-4 h-4 rounded text-white flex items-center justify-center flex-shrink-0 text-[9.5px] font-extrabold shadow-2xs"
+                            style={{ backgroundColor: phaseColor.bg }}
+                          >
+                            {mj.code}
                           </div>
-                          <div className="text-[12px] font-bold text-neutral-800 leading-snug mt-0.5 line-clamp-2" title={mj.name}>
-                            {mj.name}
-                          </div>
-                          <div className="mt-1.5 flex items-center justify-center gap-1.5">
-                            <span className="text-[10.5px] font-semibold text-neutral-500">Progres:</span>
-                            <span className="text-[11px] font-bold text-neutral-800">{mj.progress}%</span>
-                          </div>
+                          <span className="text-[12px] font-bold text-neutral-800 truncate flex-1" title={mj.name}>
+                            Phase {mj.code} · {mj.name}
+                          </span>
+                          <span className="text-[10px] font-bold text-neutral-600 bg-white px-1.5 py-0.2 rounded border border-neutral-200">
+                            {mj.progress}%
+                          </span>
+                        </div>
+
+                        {/* Summary Phase Track in Canvas */}
+                        <div className="flex-1 relative h-7 bg-neutral-50/30">
+                          {monthSegments.map((seg, i) => (
+                            <div
+                              key={`bg-ph-${i}`}
+                              className="absolute inset-y-0 border-r border-neutral-100 pointer-events-none"
+                              style={{ left: `${seg.leftPct + seg.widthPct}%` }}
+                            />
+                          ))}
+                          {todayPct !== null && (
+                            <div
+                              className="absolute inset-y-0 border-l-2 border-danger/40 border-dashed pointer-events-none z-10"
+                              style={{ left: `${todayPct}%` }}
+                            />
+                          )}
+
+                          {(() => {
+                            const pos = getBarPosition(mj.startDate, mj.finishDate);
+                            if (!pos || !pos.isVisible) return null;
+                            return (
+                              <div
+                                className="absolute top-1/2 -translate-y-1/2 h-3.5 rounded opacity-75 shadow-2xs transition-all hover:opacity-100 cursor-pointer"
+                                style={{
+                                  left: `${pos.leftPct}%`,
+                                  width: `${pos.widthPct}%`,
+                                  backgroundColor: phaseColor.bg,
+                                }}
+                                onMouseMove={(e) =>
+                                  setTooltip({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    title: `Phase ${mj.code}: ${mj.name}`,
+                                    subtitle: 'Project Phase Summary',
+                                    details: [
+                                      `Schedule: ${formatDateDisplay(mj.startDate)} to ${formatDateDisplay(mj.finishDate)}`,
+                                      `Phase Progress: ${mj.progress}%`,
+                                    ],
+                                  })
+                                }
+                                onMouseLeave={() => setTooltip(null)}
+                              >
+                                <div
+                                  className="h-full bg-white/30 rounded"
+                                  style={{ width: `${Math.min(100, mj.progress)}%` }}
+                                />
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
 
-                      {/* Right Columns: Tasks List + Gantt Chart Area */}
-                      <div className="flex-1 divide-y divide-neutral-100 flex flex-col justify-stretch">
+                      {/* Phase Tasks Rows */}
+                      <div className="divide-y divide-neutral-100">
                         {items.map((item: any) => {
-                          const itemStart = item.startDate || mj.startDate || '2026-09-01';
-                          const itemEnd = item.finishDate || mj.finishDate || '2027-09-30';
-                          const startPos = pct(itemStart);
-                          const widthPos = barWidth(itemStart, itemEnd);
+                          const itemStart = item.startDate || mj.startDate;
+                          const itemEnd = item.finishDate || mj.finishDate;
+                          const pos = getBarPosition(itemStart, itemEnd);
+                          const isHovered = hoveredItemId === item.id;
 
                           return (
                             <div
                               key={item.id}
-                              className="flex flex-1 min-h-[48px] items-stretch hover:bg-neutral-50/90 transition-colors group/row"
+                              className={`flex min-h-[44px] items-stretch transition-colors ${
+                                isHovered ? 'bg-brand-50/40' : 'hover:bg-neutral-50/90'
+                              }`}
+                              onMouseEnter={() => setHoveredItemId(item.id)}
+                              onMouseLeave={() => setHoveredItemId(null)}
                             >
-                              {/* Task / Activity Column (Sticky offset) */}
-                              <div className="w-64 sm:w-72 flex-shrink-0 px-3.5 py-1.5 flex items-center justify-between border-r border-neutral-200 bg-white group-hover/row:bg-neutral-50/90 transition-colors sticky left-44 sm:left-48 z-20 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
-                                <div className="truncate text-[12px] font-semibold text-neutral-800 flex items-center gap-1.5 pr-2" title={item.name}>
-                                  <span className="text-[10px] font-mono text-neutral-400 font-bold bg-neutral-100 px-1 py-0.2 rounded border border-neutral-200/60 flex-shrink-0">
-                                    {item.code}
-                                  </span>
-                                  <span className="truncate">{item.name}</span>
+                              {/* Sticky Task Activity Column */}
+                              <div
+                                className={`w-72 sm:w-80 lg:w-[380px] flex-shrink-0 px-3.5 py-1.5 flex items-center justify-between gap-2 border-r border-neutral-200 sticky left-0 z-20 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)] transition-colors ${
+                                  isHovered ? 'bg-brand-50/60' : 'bg-white'
+                                }`}
+                              >
+                                <div className="truncate flex-1 min-w-0 pr-1">
+                                  <div className="flex items-center gap-1.5 text-[12px] font-semibold text-neutral-800">
+                                    <span className="text-[10px] font-mono font-bold text-neutral-500 bg-neutral-100 px-1 py-0.2 rounded border border-neutral-200/70 flex-shrink-0">
+                                      {item.code}
+                                    </span>
+                                    <span className="truncate" title={item.name}>
+                                      {item.name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5 text-[10px] text-neutral-500">
+                                    <span className="font-mono">
+                                      {formatDateDisplay(itemStart)} – {formatDateDisplay(itemEnd)}
+                                    </span>
+                                    {item.duration && <span>· {item.duration}d</span>}
+                                  </div>
                                 </div>
-                                <span className="text-[10px] font-medium text-neutral-600 bg-neutral-100/80 px-1.5 py-0.5 rounded border border-neutral-200/80 flex-shrink-0">
-                                  {item.pic || 'Internal'}
-                                </span>
+
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <span className="text-[9.5px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200/80 truncate max-w-[90px]">
+                                    {formatDivisionName(item.pic) || 'Internal'}
+                                  </span>
+                                  <span className="text-[10.5px] font-bold text-neutral-700 min-w-[28px] text-right">
+                                    {item.progress || 0}%
+                                  </span>
+                                </div>
                               </div>
 
-                              {/* Gantt Canvas Area */}
-                              <div className="flex-1 relative bg-white group-hover/row:bg-neutral-50/90 transition-colors min-h-[48px] flex items-center">
-                                {/* Subtle month grid lines */}
-                                {months.map(({ pct: p }) => (
+                              {/* Gantt Canvas Cell */}
+                              <div className="flex-1 relative min-h-[44px] flex items-center overflow-hidden">
+                                {/* Month boundary grid lines */}
+                                {monthSegments.map((seg, i) => (
                                   <div
-                                    key={p}
-                                    className="absolute inset-y-0 border-l border-neutral-100/90 pointer-events-none"
-                                    style={{ left: `${p}%` }}
+                                    key={`grid-line-${i}`}
+                                    className="absolute inset-y-0 border-r border-neutral-100/90 pointer-events-none"
+                                    style={{ left: `${seg.leftPct + seg.widthPct}%` }}
                                   />
                                 ))}
 
-                                {/* Milestone vertical guidelines */}
+                                {/* Milestone vertical lines */}
                                 {milestones.map((m) => {
-                                  const mPct = pct(m.dateStr);
+                                  const mDate = parseDate(m.dateStr);
+                                  if (!mDate || mDate < windowStart || mDate > windowEnd) return null;
+                                  const offset = daysBetween(windowStart, mDate);
+                                  const mPct = (offset / totalWindowDays) * 100;
                                   return (
                                     <div
-                                      key={`vline-${m.id}`}
-                                      className="absolute inset-y-0 border-l border-amber-400/50 pointer-events-none z-10"
+                                      key={`m-line-${m.id}`}
+                                      className="absolute inset-y-0 border-l border-amber-400/40 pointer-events-none z-10"
                                       style={{ left: `${mPct}%` }}
                                     />
                                   );
                                 })}
 
                                 {/* Today line */}
-                                <div
-                                  className="absolute inset-y-0 border-l-2 border-danger/60 border-dashed pointer-events-none z-10"
-                                  style={{ left: `${todayPct}%` }}
-                                />
+                                {todayPct !== null && (
+                                  <div
+                                    className="absolute inset-y-0 border-l-2 border-danger/55 border-dashed pointer-events-none z-10"
+                                    style={{ left: `${todayPct}%` }}
+                                  />
+                                )}
 
                                 {/* Gantt Bar */}
-                                <div
-                                  className="absolute top-1/2 -translate-y-1/2 h-7 rounded-lg flex items-center px-2.5 cursor-pointer shadow-xs transition-all hover:brightness-105 active:scale-98 z-10 border border-white/20 overflow-hidden"
-                                  style={{
-                                    left: `${startPos}%`,
-                                    width: `${widthPos}%`,
-                                    minWidth: 16,
-                                    backgroundColor: color.bg,
-                                  }}
-                                  onMouseMove={(e) =>
-                                    setTooltip({
-                                      x: e.clientX,
-                                      y: e.clientY,
-                                      title: `${item.code} ${item.name}`,
-                                      subtitle: `Phase: ${mj.name}`,
-                                      details: [
-                                        `Schedule: ${formatDateDisplay(itemStart)} to ${formatDateDisplay(itemEnd)}`,
-                                        `Duration: ${item.duration || Math.max(1, dayOffset(itemEnd) - dayOffset(itemStart) + 1)} days`,
-                                        `PIC / Division: ${item.pic || 'Internal'}`,
-                                        `Progress: ${item.progress || 0}% (${item.status || 'Open'})`,
-                                      ],
-                                    })
-                                  }
-                                  onMouseLeave={() => setTooltip(null)}
-                                >
-                                  {/* Progress fill inside the bar */}
-                                  {item.progress > 0 && (
-                                    <div
-                                      className="absolute inset-0 bg-white/25"
-                                      style={{ width: `${Math.min(100, item.progress)}%` }}
-                                    />
-                                  )}
-                                  <span className="relative text-[10.5px] text-white font-bold truncate leading-none drop-shadow-2xs flex items-center gap-1.5">
-                                    {widthPos > 12 && <span className="truncate">{item.name}</span>}
-                                    <span className="opacity-95 text-[10px] whitespace-nowrap">{item.progress || 0}%</span>
-                                  </span>
-                                </div>
+                                {pos && pos.isVisible ? (
+                                  <div
+                                    className={`absolute top-1/2 -translate-y-1/2 h-6.5 flex items-center px-2 cursor-pointer shadow-xs transition-all hover:brightness-105 active:scale-98 z-10 border border-white/25 ${
+                                      pos.continuesLeft ? 'rounded-r-md' : pos.continuesRight ? 'rounded-l-md' : 'rounded-md'
+                                    }`}
+                                    style={{
+                                      left: `${pos.leftPct}%`,
+                                      width: `${pos.widthPct}%`,
+                                      minWidth: 14,
+                                      backgroundColor: phaseColor.bg,
+                                    }}
+                                    onMouseMove={(e) =>
+                                      setTooltip({
+                                        x: e.clientX,
+                                        y: e.clientY,
+                                        title: `${item.code} ${item.name}`,
+                                        subtitle: `Phase: ${mj.name}`,
+                                        details: [
+                                          `Schedule: ${formatDateDisplay(itemStart)} to ${formatDateDisplay(itemEnd)}`,
+                                          `Duration: ${item.duration || Math.max(1, daysBetween(pos.sDate!, pos.fDate!) + 1)} days`,
+                                          `PIC / Division: ${formatDivisionName(item.pic) || 'Internal'}`,
+                                          `Progress: ${item.progress || 0}% (${item.status || 'Open'})`,
+                                        ],
+                                      })
+                                    }
+                                    onMouseLeave={() => setTooltip(null)}
+                                  >
+                                    {/* Progress fill */}
+                                    {item.progress > 0 && (
+                                      <div
+                                        className="absolute inset-0 bg-white/25 rounded"
+                                        style={{ width: `${Math.min(100, item.progress)}%` }}
+                                      />
+                                    )}
+
+                                    {/* Continuation arrow left */}
+                                    {pos.continuesLeft && (
+                                      <span className="relative text-[9px] text-white/80 font-bold mr-0.5">◄</span>
+                                    )}
+
+                                    {/* Content inside bar if space permits */}
+                                    <span className="relative text-[10px] text-white font-bold truncate leading-none flex items-center gap-1 drop-shadow-2xs">
+                                      {pos.widthPct > 12 && <span className="truncate">{item.name}</span>}
+                                      {pos.widthPct > 6 && <span>{item.progress || 0}%</span>}
+                                    </span>
+
+                                    {/* Continuation arrow right */}
+                                    {pos.continuesRight && (
+                                      <span className="relative text-[9px] text-white/80 font-bold ml-auto pl-0.5">►</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  /* Indicator when bar is outside current period view */
+                                  <div className="px-3 text-[10px] text-neutral-400 italic">
+                                    {pos?.isBefore ? '◄ Scheduled in prior period' : pos?.isAfter ? 'Scheduled in later period ►' : '—'}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
@@ -519,90 +1084,11 @@ export default function TimelinePage() {
                     </div>
                   );
                 })}
-
-                {mainJobsList.length === 0 && (
-                  <div className="p-12 text-center text-neutral-500 text-sm">
-                    No WBS data available for this project timeline.
-                  </div>
-                )}
               </div>
-            </div>
-          </div>
-        </Card>
-      ) : (
-        /* ─── WBS TREE VIEW (3-TIER ENTERPRISE HIERARCHY) ─── */
-        <Card className="overflow-hidden border border-neutral-200/90 shadow-sm rounded-xl">
-          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-230px)] scrollbar-thin" ref={containerRef}>
-            <div className="min-w-[1100px]">
-              {/* Header: Sticky Task column + timeline axis */}
-              <div className="flex border-b border-neutral-200 bg-neutral-50 sticky top-0 z-30 shadow-2xs">
-                <div className="w-80 sm:w-96 lg:w-[420px] flex-shrink-0 px-4 py-2.5 flex items-center justify-between border-r border-neutral-200 sticky left-0 z-40 bg-neutral-50 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
-                  <span className="text-[11px] font-bold text-neutral-600 uppercase tracking-wider">
-                    WBS Element / Task
-                  </span>
-                  <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-                    PIC / Info
-                  </span>
-                </div>
-
-                <div className="flex-1 relative h-11 bg-neutral-50/70">
-                  {/* Month Markers */}
-                  {months.map(({ label, pct: p }) => (
-                    <div key={label} className="absolute top-0 bottom-0 flex flex-col justify-end pb-1.5" style={{ left: `${p}%` }}>
-                      <div className="h-3 border-l border-neutral-300" />
-                      <span className="text-[10px] font-semibold text-neutral-500 whitespace-nowrap pl-1">{label}</span>
-                    </div>
-                  ))}
-
-                  {/* Milestones in Axis Header */}
-                  {milestones.map((m) => {
-                    const mPct = pct(m.dateStr);
-                    return (
-                      <div
-                        key={m.id}
-                        className="absolute top-0 bottom-0 flex flex-col items-center z-30 cursor-pointer group/m"
-                        style={{ left: `${mPct}%` }}
-                        onMouseMove={(e) =>
-                          setTooltip({
-                            x: e.clientX,
-                            y: e.clientY,
-                            title: m.name,
-                            subtitle: m.description,
-                            details: [`Target: ${formatDateDisplay(m.dateStr)}`],
-                          })
-                        }
-                        onMouseLeave={() => setTooltip(null)}
-                      >
-                        <div
-                          className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[9.5px] font-bold px-2 py-0.5 rounded-full shadow-xs mt-1 border border-amber-400/80 transition-transform group-hover/m:scale-105"
-                          style={{ transform: getMarkerTransform(mPct) }}
-                        >
-                          <span className="w-1.5 h-1.5 rotate-45 bg-white rounded-[0.5px]" />
-                          <span>{m.name}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Today Marker in Axis Header */}
-                  <div
-                    className="absolute top-0 bottom-0 flex flex-col items-center z-30 pointer-events-none"
-                    style={{ left: `${todayPct}%` }}
-                  >
-                    <div
-                      className="bg-danger text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-xs mt-1 flex items-center gap-1 border border-red-400"
-                      style={{ transform: getMarkerTransform(todayPct) }}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                      <span>Today</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rows */}
-              {mainJobsList.length > 0 ? (
-                mainJobsList.map((mj: any, mjIdx: number) => (
+            ) : (
+              /* ─── Gantt Rows: WBS Tree View Mode (3-Tier Hierarchy) ────────── */
+              <div className="divide-y divide-neutral-200/90">
+                {mainJobsList.map((mj: any, mjIdx: number) => (
                   <GanttTreeMJ
                     key={mj.id}
                     mj={mj}
@@ -612,39 +1098,30 @@ export default function TimelinePage() {
                     onToggleMJ={() => setExpandedMJ((p) => ({ ...p, [mj.id]: !p[mj.id] }))}
                     onToggleSMJ={(smjId) => setExpandedSMJ((p) => ({ ...p, [smjId]: !p[smjId] }))}
                     todayPct={todayPct}
-                    months={months}
+                    monthSegments={monthSegments}
                     milestones={milestones}
-                    onTooltip={(t) =>
-                      t
-                        ? setTooltip({
-                            x: t.x,
-                            y: t.y,
-                            title: t.text,
-                            subtitle: t.sub,
-                            details: t.details,
-                          })
-                        : setTooltip(null)
-                    }
-                    pct={pct}
-                    barWidth={barWidth}
-                    dayOffset={dayOffset}
+                    windowStart={windowStart}
+                    windowEnd={windowEnd}
+                    getBarPosition={getBarPosition}
+                    hoveredItemId={hoveredItemId}
+                    setHoveredItemId={setHoveredItemId}
+                    onTooltip={setTooltip}
                   />
-                ))
-              ) : (
-                <div className="p-12 text-center text-neutral-500 text-sm">
-                  No WBS data available for this project timeline.
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
-        </Card>
-      )}
+        </div>
+      </Card>
 
-      {/* 4. Sleek Floating Tooltip */}
+      {/* ─── 4. Sleek Floating Tooltip ──────────────────────────────────── */}
       {tooltip && (
         <div
           className="fixed z-50 bg-neutral-900/95 backdrop-blur-xs text-white text-[12px] px-3.5 py-2.5 rounded-xl shadow-2xl pointer-events-none border border-neutral-700/80 max-w-xs transition-opacity duration-150"
-          style={{ left: Math.min(window.innerWidth - 280, tooltip.x + 14), top: tooltip.y - 55 }}
+          style={{
+            left: Math.min(window.innerWidth - 290, Math.max(10, tooltip.x + 14)),
+            top: Math.max(10, tooltip.y - 70),
+          }}
         >
           <div className="font-bold text-neutral-100 text-[12.5px] leading-snug">{tooltip.title}</div>
           {tooltip.subtitle && <div className="text-[11px] text-neutral-400 mt-0.5">{tooltip.subtitle}</div>}
@@ -652,7 +1129,7 @@ export default function TimelinePage() {
             <div className="mt-2 pt-2 border-t border-neutral-700/70 space-y-1 text-[11px] text-neutral-300">
               {tooltip.details.map((d, i) => (
                 <div key={i} className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-brand flex-shrink-0" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand flex-shrink-0" />
                   <span>{d}</span>
                 </div>
               ))}
@@ -675,12 +1152,14 @@ function GanttTreeMJ({
   onToggleMJ,
   onToggleSMJ,
   todayPct,
-  months,
+  monthSegments,
   milestones,
+  windowStart,
+  windowEnd,
+  getBarPosition,
+  hoveredItemId,
+  setHoveredItemId,
   onTooltip,
-  pct,
-  barWidth,
-  dayOffset,
 }: {
   mj: any;
   phaseColor: { bg: string; text: string; light: string; border: string };
@@ -688,32 +1167,45 @@ function GanttTreeMJ({
   expandedSMJ: Record<string, boolean>;
   onToggleMJ: () => void;
   onToggleSMJ: (id: string) => void;
-  todayPct: number;
-  months: { label: string; pct: number }[];
+  todayPct: number | null;
+  monthSegments: any[];
   milestones: Milestone[];
-  onTooltip: (t: { x: number; y: number; text: string; sub?: string; details?: string[] } | null) => void;
-  pct: (dateStr: string) => number;
-  barWidth: (start: string, end: string) => number;
-  dayOffset: (dateStr: string) => number;
+  windowStart: Date;
+  windowEnd: Date;
+  getBarPosition: (s?: string | null, f?: string | null) => any;
+  hoveredItemId: string | null;
+  setHoveredItemId: (id: string | null) => void;
+  onTooltip: (t: any) => void;
 }) {
-  const startPct = pct(mj.startDate);
-  const width = barWidth(mj.startDate, mj.finishDate);
+  const mjPos = getBarPosition(mj.startDate, mj.finishDate);
+  const isHovered = hoveredItemId === mj.id;
 
   return (
     <>
-      {/* ─── Level 1: Main Job Row (Most Prominent) ─── */}
-      <div className="flex border-b border-neutral-200/90 bg-neutral-50/60 hover:bg-neutral-100/70 transition-colors group/mj">
+      {/* ─── Level 1: Main Job Row (Most Prominent) ────────────────────── */}
+      <div
+        className={`flex border-b border-neutral-200/90 transition-colors ${
+          isHovered ? 'bg-brand-50/40' : 'bg-neutral-50/60 hover:bg-neutral-100/70'
+        }`}
+        onMouseEnter={() => setHoveredItemId(mj.id)}
+        onMouseLeave={() => setHoveredItemId(null)}
+      >
         {/* Sticky Task Column */}
-        <div className="w-80 sm:w-96 lg:w-[420px] flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 border-r border-neutral-200 sticky left-0 z-20 bg-neutral-50/95 group-hover/mj:bg-neutral-100/90 transition-colors shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
+        <div
+          className={`w-72 sm:w-80 lg:w-[380px] flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 border-r border-neutral-200 sticky left-0 z-20 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)] transition-colors ${
+            isHovered ? 'bg-brand-50/60' : 'bg-neutral-50/95'
+          }`}
+        >
           <button
+            type="button"
             onClick={onToggleMJ}
-            className="text-neutral-500 hover:text-neutral-900 flex-shrink-0 p-1 rounded-md hover:bg-neutral-200/70 transition-colors"
+            className="text-neutral-500 hover:text-neutral-900 flex-shrink-0 p-1 rounded-md hover:bg-neutral-200/70 transition-colors cursor-pointer"
             title={expanded ? 'Collapse Phase' : 'Expand Phase'}
           >
             {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
           </button>
 
-          {/* Prominent Code Badge */}
+          {/* Code Badge */}
           <div
             className="w-5 h-5 rounded-md text-white flex items-center justify-center flex-shrink-0 shadow-2xs text-[10px] font-extrabold"
             style={{ backgroundColor: phaseColor.bg }}
@@ -721,96 +1213,127 @@ function GanttTreeMJ({
             {mj.code}
           </div>
 
-          <span className="text-[13px] font-bold text-neutral-900 truncate flex-1 tracking-tight" title={mj.name}>
-            {mj.name}
-          </span>
+          <div className="truncate flex-1 min-w-0">
+            <span className="text-[13px] font-bold text-neutral-900 truncate block tracking-tight" title={mj.name}>
+              {mj.name}
+            </span>
+            <div className="text-[10px] font-mono text-neutral-500 mt-0.5">
+              {formatDateDisplay(mj.startDate)} – {formatDateDisplay(mj.finishDate)}
+            </div>
+          </div>
 
           {/* Main Job Progress Badge */}
-          <span className="text-[11px] font-extrabold text-neutral-700 bg-white px-2 py-0.5 rounded-full border border-neutral-200/90 shadow-2xs ml-auto">
+          <span className="text-[11px] font-extrabold text-neutral-700 bg-white px-2 py-0.5 rounded-full border border-neutral-200/90 shadow-2xs ml-auto flex-shrink-0">
             {mj.progress}%
           </span>
         </div>
 
         {/* Timeline Canvas Cell */}
-        <div className="flex-1 relative border-l border-neutral-200 h-11 bg-white group-hover/mj:bg-neutral-100/70 transition-colors">
-          {/* Subtle grid lines */}
-          {months.map(({ pct: p }) => (
-            <div key={p} className="absolute inset-y-0 border-l border-neutral-100 pointer-events-none" style={{ left: `${p}%` }} />
+        <div className="flex-1 relative border-l border-neutral-200 h-11 bg-white group-hover/mj:bg-neutral-100/70 transition-colors flex items-center overflow-hidden">
+          {monthSegments.map((seg, i) => (
+            <div
+              key={`mj-grid-${i}`}
+              className="absolute inset-y-0 border-r border-neutral-100 pointer-events-none"
+              style={{ left: `${seg.leftPct + seg.widthPct}%` }}
+            />
           ))}
 
-          {/* Milestone guide lines */}
           {milestones.map((m) => {
-            const mPct = pct(m.dateStr);
+            const mDate = parseDate(m.dateStr);
+            if (!mDate || mDate < windowStart || mDate > windowEnd) return null;
+            const mPos = getBarPosition(m.dateStr, m.dateStr);
+            if (!mPos) return null;
             return (
               <div
                 key={`line-${m.id}`}
                 className="absolute inset-y-0 border-l border-amber-400/40 pointer-events-none z-10"
-                style={{ left: `${mPct}%` }}
+                style={{ left: `${mPos.leftPct}%` }}
               />
             );
           })}
 
-          {/* Today line */}
-          <div
-            className="absolute inset-y-0 border-l-2 border-dashed border-danger/50 pointer-events-none z-10"
-            style={{ left: `${todayPct}%` }}
-          />
+          {todayPct !== null && (
+            <div
+              className="absolute inset-y-0 border-l-2 border-dashed border-danger/50 pointer-events-none z-10"
+              style={{ left: `${todayPct}%` }}
+            />
+          )}
 
-          {/* Main Job Bar (Prominent, h-6) */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 h-6 rounded-lg flex items-center px-2 cursor-pointer shadow-xs transition-all hover:brightness-105 active:scale-98 z-10 border border-white/20"
-            style={{ left: `${startPct}%`, width: `${width}%`, minWidth: 8, background: phaseColor.bg }}
-            onMouseMove={(e) =>
-              onTooltip({
-                x: e.clientX,
-                y: e.clientY,
-                text: `${mj.code}. ${mj.name}`,
-                sub: `Main Project Phase`,
-                details: [
-                  `Schedule: ${formatDateDisplay(mj.startDate)} to ${formatDateDisplay(mj.finishDate)}`,
-                  `Duration: ${mj.duration || Math.max(1, dayOffset(mj.finishDate) - dayOffset(mj.startDate) + 1)} days`,
-                  `Total Progress: ${mj.progress}% completed`,
-                ],
-              })
-            }
-            onMouseLeave={() => onTooltip(null)}
-          >
-            <div className="absolute inset-0 rounded-lg overflow-hidden">
-              <div className="h-full bg-white/25 rounded-lg" style={{ width: `${Math.min(100, mj.progress)}%` }} />
+          {/* Main Job Bar */}
+          {mjPos && mjPos.isVisible && (
+            <div
+              className={`absolute top-1/2 -translate-y-1/2 h-6 flex items-center px-2 cursor-pointer shadow-xs transition-all hover:brightness-105 active:scale-98 z-10 border border-white/20 ${
+                mjPos.continuesLeft ? 'rounded-r-md' : mjPos.continuesRight ? 'rounded-l-md' : 'rounded-md'
+              }`}
+              style={{
+                left: `${mjPos.leftPct}%`,
+                width: `${mjPos.widthPct}%`,
+                minWidth: 10,
+                background: phaseColor.bg,
+              }}
+              onMouseMove={(e) =>
+                onTooltip({
+                  x: e.clientX,
+                  y: e.clientY,
+                  title: `${mj.code}. ${mj.name}`,
+                  subtitle: 'Main Project Phase',
+                  details: [
+                    `Schedule: ${formatDateDisplay(mj.startDate)} to ${formatDateDisplay(mj.finishDate)}`,
+                    `Phase Progress: ${mj.progress}% completed`,
+                  ],
+                })
+              }
+              onMouseLeave={() => onTooltip(null)}
+            >
+              <div className="absolute inset-0 rounded-md overflow-hidden">
+                <div className="h-full bg-white/25 rounded-md" style={{ width: `${Math.min(100, mj.progress)}%` }} />
+              </div>
+              {mjPos.continuesLeft && <span className="relative text-[9px] text-white/80 font-bold mr-1">◄</span>}
+              {mjPos.widthPct > 6 && (
+                <span className="relative text-[10px] text-white font-bold truncate leading-none drop-shadow-2xs">
+                  {mj.progress}%
+                </span>
+              )}
+              {mjPos.continuesRight && <span className="relative text-[9px] text-white/80 font-bold ml-auto pl-1">►</span>}
             </div>
-            {width > 6 && (
-              <span className="relative text-[10px] text-white font-bold truncate leading-none drop-shadow-2xs">
-                {mj.progress}%
-              </span>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* ─── Level 2: Sub Main Jobs ─── */}
+      {/* ─── Level 2: Sub Main Jobs ────────────────────────────────────── */}
       {expanded &&
         (mj.subMainJobs || []).map((smj: any) => {
-          const smjStart = pct(smj.startDate);
-          const smjWidth = barWidth(smj.startDate, smj.finishDate);
+          const smjPos = getBarPosition(smj.startDate, smj.finishDate);
           const smjExpanded = !!expandedSMJ[smj.id];
           const hasChildren = smj.subtasks && smj.subtasks.length > 0;
+          const isSmjHovered = hoveredItemId === smj.id;
 
           return (
             <div key={smj.id}>
-              <div className="flex border-b border-neutral-100 bg-white hover:bg-neutral-50/80 transition-colors group/smj">
+              <div
+                className={`flex border-b border-neutral-100 transition-colors ${
+                  isSmjHovered ? 'bg-brand-50/40' : 'bg-white hover:bg-neutral-50/80'
+                }`}
+                onMouseEnter={() => setHoveredItemId(smj.id)}
+                onMouseLeave={() => setHoveredItemId(null)}
+              >
                 {/* Sticky Task Column */}
-                <div className="w-80 sm:w-96 lg:w-[420px] flex-shrink-0 flex items-center gap-2 pl-7 sm:pl-8 pr-3.5 py-2 border-r border-neutral-200 sticky left-0 z-20 bg-white group-hover/smj:bg-neutral-50/80 transition-colors shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
-                  {/* Expand toggle or spacer */}
+                <div
+                  className={`w-72 sm:w-80 lg:w-[380px] flex-shrink-0 flex items-center gap-2 pl-6 sm:pl-7 pr-3.5 py-2 border-r border-neutral-200 sticky left-0 z-20 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)] transition-colors ${
+                    isSmjHovered ? 'bg-brand-50/60' : 'bg-white'
+                  }`}
+                >
                   {hasChildren ? (
                     <button
+                      type="button"
                       onClick={() => onToggleSMJ(smj.id)}
-                      className="text-neutral-400 hover:text-neutral-700 flex-shrink-0 p-0.5 rounded hover:bg-neutral-100 transition-colors"
+                      className="text-neutral-400 hover:text-neutral-700 flex-shrink-0 p-0.5 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
                       title={smjExpanded ? 'Collapse Sub Tasks' : 'Expand Sub Tasks'}
                     >
                       {smjExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                     </button>
                   ) : (
-                    <span className="w-4 flex-shrink-0" />
+                    <span className="w-3.5 flex-shrink-0" />
                   )}
 
                   {/* Level 2 Code Badge */}
@@ -818,103 +1341,128 @@ function GanttTreeMJ({
                     {smj.code}
                   </div>
 
-                  <span className="text-[12px] font-semibold text-neutral-800 truncate flex-1" title={smj.name}>
-                    {smj.name}
-                  </span>
+                  <div className="truncate flex-1 min-w-0">
+                    <span className="text-[12px] font-semibold text-neutral-800 truncate block" title={smj.name}>
+                      {smj.name}
+                    </span>
+                    <div className="text-[9.5px] font-mono text-neutral-400">
+                      {formatDateDisplay(smj.startDate)} – {formatDateDisplay(smj.finishDate)}
+                    </div>
+                  </div>
 
                   {/* PIC Pill */}
-                  <span className="text-[10px] font-medium text-neutral-500 bg-neutral-50 px-1.5 py-0.5 rounded border border-neutral-200/70 flex-shrink-0 truncate max-w-[85px]">
+                  <span className="text-[9.5px] font-medium text-neutral-500 bg-neutral-50 px-1.5 py-0.5 rounded border border-neutral-200/70 flex-shrink-0 truncate max-w-[80px]">
                     {formatDivisionName(smj.pic) || 'Internal'}
                   </span>
 
                   {/* Progress */}
-                  <span className="text-[10.5px] font-semibold text-neutral-600 ml-1">
+                  <span className="text-[10.5px] font-semibold text-neutral-600 min-w-[28px] text-right flex-shrink-0">
                     {smj.progress}%
                   </span>
                 </div>
 
                 {/* Timeline Canvas Cell */}
-                <div className="flex-1 relative border-l border-neutral-200 h-9 bg-white group-hover/smj:bg-neutral-50/80 transition-colors">
-                  {months.map(({ pct: p }) => (
-                    <div key={p} className="absolute inset-y-0 border-l border-neutral-100/80 pointer-events-none" style={{ left: `${p}%` }} />
+                <div className="flex-1 relative border-l border-neutral-200 h-9 bg-white flex items-center overflow-hidden">
+                  {monthSegments.map((seg, i) => (
+                    <div
+                      key={`smj-grid-${i}`}
+                      className="absolute inset-y-0 border-r border-neutral-100/80 pointer-events-none"
+                      style={{ left: `${seg.leftPct + seg.widthPct}%` }}
+                    />
                   ))}
 
-                  {milestones.map((m) => {
-                    const mPct = pct(m.dateStr);
-                    return (
-                      <div
-                        key={`line-${m.id}`}
-                        className="absolute inset-y-0 border-l border-amber-400/30 pointer-events-none z-10"
-                        style={{ left: `${mPct}%` }}
-                      />
-                    );
-                  })}
+                  {todayPct !== null && (
+                    <div
+                      className="absolute inset-y-0 border-l-2 border-dashed border-danger/35 pointer-events-none z-10"
+                      style={{ left: `${todayPct}%` }}
+                    />
+                  )}
 
-                  <div
-                    className="absolute inset-y-0 border-l-2 border-dashed border-danger/35 pointer-events-none z-10"
-                    style={{ left: `${todayPct}%` }}
-                  />
-
-                  {/* Sub Main Job Bar (Medium, h-4.5) */}
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 h-4.5 rounded-md cursor-pointer shadow-2xs transition-all hover:brightness-105 z-10"
-                    style={{ left: `${smjStart}%`, width: `${smjWidth}%`, minWidth: 6, background: phaseColor.bg + 'D8' }}
-                    onMouseMove={(e) =>
-                      onTooltip({
-                        x: e.clientX,
-                        y: e.clientY,
-                        text: `${smj.code} ${smj.name}`,
-                        sub: `Sub Main Job`,
-                        details: [
-                          `Schedule: ${formatDateDisplay(smj.startDate)} to ${formatDateDisplay(smj.finishDate)}`,
-                          `PIC / Division: ${formatDivisionName(smj.pic) || 'Internal'}`,
-                          `Progress: ${smj.progress}%`,
-                        ],
-                      })
-                    }
-                    onMouseLeave={() => onTooltip(null)}
-                  >
-                    <div className="absolute inset-0 rounded-md overflow-hidden">
-                      <div className="h-full bg-white/30" style={{ width: `${Math.min(100, smj.progress)}%` }} />
+                  {/* Sub Main Job Bar */}
+                  {smjPos && smjPos.isVisible && (
+                    <div
+                      className={`absolute top-1/2 -translate-y-1/2 h-5 cursor-pointer shadow-2xs transition-all hover:brightness-105 z-10 flex items-center px-1.5 ${
+                        smjPos.continuesLeft ? 'rounded-r-md' : smjPos.continuesRight ? 'rounded-l-md' : 'rounded-md'
+                      }`}
+                      style={{
+                        left: `${smjPos.leftPct}%`,
+                        width: `${smjPos.widthPct}%`,
+                        minWidth: 8,
+                        background: phaseColor.bg + 'D8',
+                      }}
+                      onMouseMove={(e) =>
+                        onTooltip({
+                          x: e.clientX,
+                          y: e.clientY,
+                          title: `${smj.code} ${smj.name}`,
+                          subtitle: 'Sub Main Job',
+                          details: [
+                            `Schedule: ${formatDateDisplay(smj.startDate)} to ${formatDateDisplay(smj.finishDate)}`,
+                            `PIC / Division: ${formatDivisionName(smj.pic) || 'Internal'}`,
+                            `Progress: ${smj.progress}%`,
+                          ],
+                        })
+                      }
+                      onMouseLeave={() => onTooltip(null)}
+                    >
+                      <div className="absolute inset-0 rounded-md overflow-hidden">
+                        <div className="h-full bg-white/30" style={{ width: `${Math.min(100, smj.progress)}%` }} />
+                      </div>
+                      {smjPos.continuesLeft && <span className="relative text-[8.5px] text-white/80 font-bold mr-0.5">◄</span>}
+                      {smjPos.widthPct > 8 && (
+                        <span className="relative text-[9.5px] text-white font-bold truncate">
+                          {smj.progress}%
+                        </span>
+                      )}
+                      {smjPos.continuesRight && <span className="relative text-[8.5px] text-white/80 font-bold ml-auto pl-0.5">►</span>}
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {/* ─── Level 3: Sub-Subtasks (Execution Level) ─── */}
+              {/* ─── Level 3: Subtasks (Execution Level) ──────────────────── */}
               {smjExpanded &&
                 (smj.subtasks || []).map((st: any) => {
-                  const stColor = STATUS_COLORS[st.status] || '#94A3B8';
-                  const stStart = pct(st.startDate);
-                  const stWidth = barWidth(st.startDate, st.finishDate);
+                  const stColor = STATUS_COLOR_BARS[st.status] || '#94A3B8';
+                  const stPos = getBarPosition(st.startDate, st.finishDate);
+                  const isStHovered = hoveredItemId === st.id;
 
                   return (
                     <div
                       key={st.id}
-                      className="flex border-b border-neutral-100/60 bg-neutral-50/20 hover:bg-neutral-50/70 transition-colors group/st"
+                      className={`flex border-b border-neutral-100/60 transition-colors ${
+                        isStHovered ? 'bg-brand-50/40' : 'bg-neutral-50/20 hover:bg-neutral-50/70'
+                      }`}
+                      onMouseEnter={() => setHoveredItemId(st.id)}
+                      onMouseLeave={() => setHoveredItemId(null)}
                     >
                       {/* Sticky Task Column */}
-                      <div className="w-80 sm:w-96 lg:w-[420px] flex-shrink-0 flex items-center gap-2 pl-12 sm:pl-16 pr-3.5 py-1.5 border-r border-neutral-200 sticky left-0 z-20 bg-neutral-50/30 group-hover/st:bg-neutral-50/70 transition-colors shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
-                        {/* Tree guideline dot */}
+                      <div
+                        className={`w-72 sm:w-80 lg:w-[380px] flex-shrink-0 flex items-center gap-2 pl-10 sm:pl-12 pr-3.5 py-1.5 border-r border-neutral-200 sticky left-0 z-20 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)] transition-colors ${
+                          isStHovered ? 'bg-brand-50/60' : 'bg-neutral-50/30'
+                        }`}
+                      >
                         <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 flex-shrink-0" />
 
-                        {/* Mono Code */}
                         <span className="text-[10px] font-mono text-neutral-400 font-bold flex-shrink-0">
                           {st.code}
                         </span>
 
-                        <span className="text-[11.5px] font-normal text-neutral-600 truncate flex-1" title={st.name}>
-                          {st.name}
-                        </span>
+                        <div className="truncate flex-1 min-w-0">
+                          <span className="text-[11.5px] font-normal text-neutral-700 truncate block" title={st.name}>
+                            {st.name}
+                          </span>
+                          <span className="text-[9px] font-mono text-neutral-400">
+                            {formatDateDisplay(st.startDate)} – {formatDateDisplay(st.finishDate)} ({st.duration || 0}d)
+                          </span>
+                        </div>
 
-                        {/* Predecessor Badge */}
                         {st.predecessor && (
-                          <span className="text-[9px] font-semibold text-brand bg-brand-light border border-brand/20 px-1 py-0.2 rounded flex-shrink-0">
+                          <span className="text-[8.5px] font-semibold text-brand bg-brand-light border border-brand/20 px-1 py-0.2 rounded flex-shrink-0">
                             {st.depType || 'FS'}{st.lag ? `+${st.lag}` : ''}
                           </span>
                         )}
 
-                        {/* Status indicator */}
                         <span
                           className="w-2 h-2 rounded-full flex-shrink-0"
                           style={{ backgroundColor: stColor }}
@@ -923,35 +1471,56 @@ function GanttTreeMJ({
                       </div>
 
                       {/* Timeline Canvas Cell */}
-                      <div className="flex-1 relative border-l border-neutral-200 h-7 bg-white group-hover/st:bg-neutral-50/70 transition-colors">
-                        {months.map(({ pct: p }) => (
-                          <div key={p} className="absolute inset-y-0 border-l border-neutral-50 pointer-events-none" style={{ left: `${p}%` }} />
+                      <div className="flex-1 relative border-l border-neutral-200 h-8 bg-white flex items-center overflow-hidden">
+                        {monthSegments.map((seg, i) => (
+                          <div
+                            key={`st-grid-${i}`}
+                            className="absolute inset-y-0 border-r border-neutral-50 pointer-events-none"
+                            style={{ left: `${seg.leftPct + seg.widthPct}%` }}
+                          />
                         ))}
 
-                        <div
-                          className="absolute inset-y-0 border-l border-dashed border-danger/25 pointer-events-none z-10"
-                          style={{ left: `${todayPct}%` }}
-                        />
+                        {todayPct !== null && (
+                          <div
+                            className="absolute inset-y-0 border-l border-dashed border-danger/25 pointer-events-none z-10"
+                            style={{ left: `${todayPct}%` }}
+                          />
+                        )}
 
-                        {/* Sub-Subtask Bar (Slim, h-3) */}
-                        <div
-                          className="absolute top-1/2 -translate-y-1/2 h-3 rounded-xs cursor-pointer shadow-2xs hover:brightness-110 z-10"
-                          style={{ left: `${stStart}%`, width: `${stWidth}%`, minWidth: 4, background: stColor }}
-                          onMouseMove={(e) =>
-                            onTooltip({
-                              x: e.clientX,
-                              y: e.clientY,
-                              text: `${st.code} ${st.name}`,
-                              sub: `Task Activity`,
-                              details: [
-                                `Dates: ${formatDateDisplay(st.startDate)} to ${formatDateDisplay(st.finishDate)} (${st.duration || 0} days)`,
-                                `Predecessor: ${st.predecessor || 'None'}`,
-                                `Status: ${st.status || 'Open'}`,
-                              ],
-                            })
-                          }
-                          onMouseLeave={() => onTooltip(null)}
-                        />
+                        {stPos && stPos.isVisible ? (
+                          <div
+                            className={`absolute top-1/2 -translate-y-1/2 h-3.5 cursor-pointer shadow-2xs hover:brightness-110 z-10 flex items-center px-1 ${
+                              stPos.continuesLeft ? 'rounded-r-xs' : stPos.continuesRight ? 'rounded-l-xs' : 'rounded-xs'
+                            }`}
+                            style={{
+                              left: `${stPos.leftPct}%`,
+                              width: `${stPos.widthPct}%`,
+                              minWidth: 6,
+                              background: stColor,
+                            }}
+                            onMouseMove={(e) =>
+                              onTooltip({
+                                x: e.clientX,
+                                y: e.clientY,
+                                title: `${st.code} ${st.name}`,
+                                subtitle: 'Task Activity',
+                                details: [
+                                  `Dates: ${formatDateDisplay(st.startDate)} to ${formatDateDisplay(st.finishDate)} (${st.duration || 0} days)`,
+                                  `Predecessor: ${st.predecessor || 'None'}`,
+                                  `Status: ${st.status || 'Open'}`,
+                                ],
+                              })
+                            }
+                            onMouseLeave={() => onTooltip(null)}
+                          >
+                            {stPos.continuesLeft && <span className="text-[7px] text-white/90">◄</span>}
+                            {stPos.continuesRight && <span className="text-[7px] text-white/90 ml-auto">►</span>}
+                          </div>
+                        ) : (
+                          <div className="px-3 text-[9px] text-neutral-300 italic">
+                            {stPos?.isBefore ? '◄ Earlier' : stPos?.isAfter ? 'Later ►' : ''}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

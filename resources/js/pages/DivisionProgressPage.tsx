@@ -9,7 +9,7 @@ import {
   PageHeader, Card, ProgressBar, StatusBadge, formatDateDisplay,
   formatDivisionName, Button
 } from '@/components/ui';
-import { PROJECT, Project } from '@/data/mockData';
+import type { Project } from '@/data/mockData';
 
 export interface TaskItem {
   id: string;
@@ -82,7 +82,7 @@ export default function DivisionProgressPage() {
           : 0;
 
         return {
-          division: g.division || 'General',
+          division: g.division ? formatDivisionName(g.division) : 'General',
           division_id: g.division_id,
           total: tasks.length,
           completed,
@@ -95,7 +95,10 @@ export default function DivisionProgressPage() {
     }
 
     // 2. Otherwise dynamically derive from active project task tree
-    const resolvedProject: Project = project && project.mainJobs ? project : PROJECT;
+    if (!project || !Array.isArray(project.mainJobs) || project.mainJobs.length === 0) {
+      return [];
+    }
+    const resolvedProject: Project = project;
     const map: Record<string, DivisionGroup> = {};
 
     (resolvedProject.mainJobs || []).forEach(mj => {
@@ -463,7 +466,7 @@ export default function DivisionProgressPage() {
                 <option value="all">All Divisions ({dynamicGroups.length})</option>
                 <option value="has-today">Has Active Tasks Today ({Object.keys(todayTasksByDivision).length})</option>
                 {dynamicGroups.map(g => (
-                  <option key={g.division} value={g.division}>{g.division} ({g.total})</option>
+                  <option key={g.division} value={g.division}>{formatDivisionName(g.division)} ({g.total})</option>
                 ))}
               </select>
             </div>
@@ -504,8 +507,8 @@ export default function DivisionProgressPage() {
                       {group.division.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-[16px] font-black text-neutral-900 tracking-tight truncate" title={group.division}>
-                        {group.division}
+                      <h3 className="text-[16px] font-black text-neutral-900 tracking-tight truncate" title={formatDivisionName(group.division)}>
+                        {formatDivisionName(group.division)}
                       </h3>
                       <span className="text-[11.5px] text-neutral-400 font-medium">
                         {group.total} Total Tasks
