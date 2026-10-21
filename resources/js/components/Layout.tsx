@@ -135,10 +135,13 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     const hasMultipleProjects = (user.permission_matrix?.features?.projects || []).includes('Multiple Projects');
 
     visibleNav = ALL_NAV_ITEMS.filter(item => {
-      // Project List is only visible for PIC if they have Multiple Projects enabled
-      if (item.to === '/projectlistpage' && isPIC) {
-        return hasMultipleProjects;
+      // Project List is visible for admin_utama, admin_progres, or PIC if they have Multiple Projects enabled
+      if (item.to === '/projectlistpage') {
+        if (isAdminUtama || isAdminProgres) return true;
+        if (isPIC) return hasMultipleProjects;
       }
+      if (item.to === '/dashboard' && (isAdminUtama || isPIC)) return true;
+      if (item.to === '/projectdetailpage' && (isAdminUtama || isPIC || isWorker)) return true;
       if (item.to === '/division-progress' && (isAdminProgres || isAdminUtama || isPIC)) return true;
       if (item.to === '/today-tasks') return true;
       return user.permission_matrix?.sidebar?.includes(item.label) ?? false;

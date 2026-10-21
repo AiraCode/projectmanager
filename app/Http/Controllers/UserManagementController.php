@@ -115,6 +115,30 @@ class UserManagementController extends Controller
         $data = $request->only(['username', 'email', 'roles_id', 'divisions_id', 'permission_matrix']);
         $data['password'] = Hash::make($request->password);
 
+        $targetRole = Role::find($request->roles_id);
+        if ($targetRole?->name === 'admin_utama' && (empty($data['permission_matrix']) || empty($data['permission_matrix']['sidebar']))) {
+            $data['permission_matrix'] = [
+                'sidebar' => ['Project List', 'Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
+                'features' => [
+                    'projects' => ['view'],
+                    'tasks' => ['view'],
+                    'weekly' => ['view'],
+                    'budget' => ['view', 'create', 'edit', 'delete'],
+                    'reports' => ['view']
+                ],
+                'data_scope' => 'all'
+            ];
+        } elseif ($targetRole?->name === 'admin_progres' && (empty($data['permission_matrix']) || empty($data['permission_matrix']['sidebar']))) {
+            $data['permission_matrix'] = [
+                'sidebar' => ['Project List', 'S-Curve Report', 'Division Progress'],
+                'features' => [
+                    'projects' => ['view'],
+                    'reports' => ['view']
+                ],
+                'data_scope' => 'all'
+            ];
+        }
+
         // Security enforcement for PIC
         if ($user->role?->name === 'pic') {
             $usersFeatures = $user->permission_matrix['features']['users'] ?? [];
@@ -122,7 +146,6 @@ class UserManagementController extends Controller
                 abort(403, 'Access Denied: You do not have permission to create users.');
             }
 
-            $targetRole = Role::find($request->roles_id);
             if (!$targetRole || in_array($targetRole->name, ['admin_utama', 'admin_progres', 'pic', 'SuperAdmin'])) {
                 abort(403, 'Access Denied: PIC tidak diizinkan membuat user dengan role ' . ($targetRole?->name ?? 'tersebut') . '.');
             }
@@ -262,13 +285,36 @@ class UserManagementController extends Controller
 
         $data = $request->only(['username', 'email', 'roles_id', 'divisions_id', 'permission_matrix']);
         
+        $targetRole = $request->filled('roles_id') ? Role::find($request->roles_id) : $targetUser->role;
+        if ($targetRole?->name === 'admin_utama' && (empty($data['permission_matrix']) || empty($data['permission_matrix']['sidebar']))) {
+            $data['permission_matrix'] = [
+                'sidebar' => ['Project List', 'Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
+                'features' => [
+                    'projects' => ['view'],
+                    'tasks' => ['view'],
+                    'weekly' => ['view'],
+                    'budget' => ['view', 'create', 'edit', 'delete'],
+                    'reports' => ['view']
+                ],
+                'data_scope' => 'all'
+            ];
+        } elseif ($targetRole?->name === 'admin_progres' && (empty($data['permission_matrix']) || empty($data['permission_matrix']['sidebar']))) {
+            $data['permission_matrix'] = [
+                'sidebar' => ['Project List', 'S-Curve Report', 'Division Progress'],
+                'features' => [
+                    'projects' => ['view'],
+                    'reports' => ['view']
+                ],
+                'data_scope' => 'all'
+            ];
+        }
+
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->password);
         }
 
         if ($user->role?->name === 'pic') {
             if ($request->filled('roles_id')) {
-                $targetRole = Role::find($request->roles_id);
                 if (!$targetRole || in_array($targetRole->name, ['admin_utama', 'admin_progres', 'pic', 'SuperAdmin'])) {
                     abort(403, 'Access Denied: PIC tidak diizinkan menetapkan role ' . ($targetRole?->name ?? 'tersebut') . '.');
                 }

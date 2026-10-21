@@ -250,7 +250,7 @@ export default function SuperAdminUserManagementPage({
 
   const selectedRoleName = roles.find(r => r.id.toString() === data.roles_id)?.name;
 
-  // Set default permissions for worker to prevent "broken worker" on login (403)
+  // Set default permissions for roles to prevent empty matrix issues
   useEffect(() => {
     if (selectedRoleName === 'worker' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
       setData('permission_matrix', {
@@ -261,6 +261,29 @@ export default function SuperAdminUserManagementPage({
           weekly: ['view'],
           reports: ['view']
         }
+      });
+    } else if (selectedRoleName === 'admin_utama' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
+      setData('permission_matrix', {
+        ...data.permission_matrix,
+        sidebar: ['Project List', 'Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
+        features: {
+          projects: ['view'],
+          tasks: ['view'],
+          weekly: ['view'],
+          budget: ['view', 'create', 'edit', 'delete'],
+          reports: ['view']
+        },
+        data_scope: 'all'
+      });
+    } else if (selectedRoleName === 'admin_progres' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
+      setData('permission_matrix', {
+        ...data.permission_matrix,
+        sidebar: ['Project List', 'S-Curve Report', 'Division Progress'],
+        features: {
+          projects: ['view'],
+          reports: ['view']
+        },
+        data_scope: 'all'
       });
     }
   }, [selectedRoleName]);
