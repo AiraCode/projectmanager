@@ -108,6 +108,60 @@ class User extends Authenticatable
         return $this->belongsTo(Division::class, 'divisions_id');
     }
 
+    public function divisions()
+    {
+        return $this->belongsToMany(Division::class, 'division_user', 'user_id', 'division_id')->withTimestamps();
+    }
+
+    /**
+     * Get all division IDs assigned to this user.
+     * Falls back to divisions_id if pivot table is empty.
+     */
+    public function getDivisionIds(): array
+    {
+        if ($this->relationLoaded('divisions')) {
+            $ids = $this->divisions->pluck('id')->all();
+        } else {
+            $ids = $this->divisions()->pluck('divisions.id')->all();
+        }
+
+        if (empty($ids) && $this->divisions_id) {
+            $ids = [(int) $this->divisions_id];
+        }
+
+        return array_values(array_unique(array_filter(array_map('intval', $ids))));
+    }
+
+    /**
+     * Check if user is associated with a given division.
+     */
+    public function hasDivision(int|string|null $divisionId): bool
+    {
+        if (!$divisionId) return false;
+        return in_array((int) $divisionId, $this->getDivisionIds(), true);
+    }
+
+    /**
+     * Synchronize user's assigned divisions and keep divisions_id in sync.
+     */
+    public function syncDivisions(array $divisionIds): void
+    {
+        $uniqueIds = array_values(array_unique(array_filter(array_map('intval', $divisionIds))));
+        $this->divisions()->sync($uniqueIds);
+        $this->divisions_id = $uniqueIds[0] ?? null;
+        $this->save();
+    }
+
+    public function projectMemberships()
+    {
+        return $this->hasMany(ProjectMember::class, 'user_id');
+    }
+
+    public function divisionRequests()
+    {
+        return $this->hasMany(DivisionRequest::class, 'user_id');
+    }
+
     public function role()
     {
         return $this->belongsTo(Role::class, 'roles_id');

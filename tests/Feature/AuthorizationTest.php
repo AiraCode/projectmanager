@@ -86,7 +86,7 @@ class AuthorizationTest extends TestCase
         $project = Project::where('project_manager', $pic4->id)->first();
         $this->assertNotNull($project, 'Project was not created for pic4');
         $this->assertEquals('PROJECT PIC 4 BARU', $project->title);
-        $response->assertRedirect("/projects/{$project->id}");
+        $response->assertRedirect("/projects/{$project->id}/setup");
     }
 
     /** 6. PIC can add Sub Task (Sub Main Job) */

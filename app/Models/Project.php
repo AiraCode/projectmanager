@@ -54,4 +54,14 @@ class Project extends Model
     {
         return $this->hasMany(WeeklyProgress::class, 'projects_id')->orderBy('week_number', 'asc');
     }
+
+    public function projectMembers()
+    {
+        return $this->hasMany(ProjectMember::class, 'project_id')->with(['user', 'division']);
+    }
+
+    public function members()
+    {
+        return $this->belongsToMany(User::class, 'project_members', 'project_id', 'user_id')->withPivot(['division_id', 'project_role', 'position_title'])->withTimestamps();
+    }
 }

@@ -90,7 +90,30 @@ Route::middleware('auth')->group(function () {
 
         // Project delete (SuperAdmin only)
         Route::delete('/projects/{id}',  [\App\Http\Controllers\ProjectController::class, 'superAdminDestroy'])->name('admin.projects.destroy');
+
+        // ── BE-08: Master Templates Management (SuperAdmin only) ──
+        Route::get('/templates',                                        [\App\Http\Controllers\Admin\TemplateController::class, 'index'])->name('admin.templates.index');
+        Route::post('/templates',                                       [\App\Http\Controllers\Admin\TemplateController::class, 'store'])->name('admin.templates.store');
+        Route::put('/templates/{id}',                                   [\App\Http\Controllers\Admin\TemplateController::class, 'update'])->name('admin.templates.update');
+        Route::delete('/templates/{id}',                                [\App\Http\Controllers\Admin\TemplateController::class, 'destroy'])->name('admin.templates.destroy');
+        Route::post('/templates/{id}/set-default',                      [\App\Http\Controllers\Admin\TemplateController::class, 'setDefault'])->name('admin.templates.set-default');
+        Route::post('/templates/{id}/main-tasks',                       [\App\Http\Controllers\Admin\TemplateController::class, 'addMainTask'])->name('admin.templates.main-tasks.store');
+        Route::put('/templates/{id}/main-tasks/{mainTaskId}',           [\App\Http\Controllers\Admin\TemplateController::class, 'updateMainTask'])->name('admin.templates.main-tasks.update');
+        Route::delete('/templates/{id}/main-tasks/{mainTaskId}',        [\App\Http\Controllers\Admin\TemplateController::class, 'deleteMainTask'])->name('admin.templates.main-tasks.destroy');
+        Route::post('/templates/{id}/main-tasks/reorder',               [\App\Http\Controllers\Admin\TemplateController::class, 'reorderMainTasks'])->name('admin.templates.main-tasks.reorder');
+        Route::post('/templates/{id}/main-tasks/{mainTaskId}/sub-tasks', [\App\Http\Controllers\Admin\TemplateController::class, 'addSubTask'])->name('admin.templates.sub-tasks.store');
+        Route::put('/templates/{id}/sub-tasks/{subTaskId}',             [\App\Http\Controllers\Admin\TemplateController::class, 'updateSubTask'])->name('admin.templates.sub-tasks.update');
+        Route::delete('/templates/{id}/sub-tasks/{subTaskId}',          [\App\Http\Controllers\Admin\TemplateController::class, 'deleteSubTask'])->name('admin.templates.sub-tasks.destroy');
+        Route::post('/templates/{id}/main-tasks/{mainTaskId}/sub-tasks/reorder', [\App\Http\Controllers\Admin\TemplateController::class, 'reorderSubTasks'])->name('admin.templates.sub-tasks.reorder');
+
+        // ── BE-09: Division Requests Approval (SuperAdmin only) ──
+        Route::get('/division-requests',              [\App\Http\Controllers\Admin\DivisionApprovalController::class, 'index'])->name('admin.division-requests.index');
+        Route::post('/division-requests/{id}/approve', [\App\Http\Controllers\Admin\DivisionApprovalController::class, 'approve'])->name('admin.division-requests.approve');
+        Route::post('/division-requests/{id}/reject',  [\App\Http\Controllers\Admin\DivisionApprovalController::class, 'reject'])->name('admin.division-requests.reject');
     });
+
+    // Division request submission (Worker or PIC or Admins)
+    Route::post('/division-requests', [\App\Http\Controllers\Admin\DivisionApprovalController::class, 'requestDivision'])->name('division-requests.store');
 
     // ── Project card selector (ProjectListPage) ──
     // Block SuperAdmin from landing here
@@ -122,6 +145,22 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects/{id}/tasks/{taskId}/dependencies', [ProjectController::class, 'getTaskDependencies'])->name('projects.tasks.dependencies.index');
     Route::post('/projects/{id}/tasks/{taskId}/dependencies', [ProjectController::class, 'addTaskDependency'])->name('projects.tasks.dependencies.store');
     Route::delete('/projects/{id}/tasks/{taskId}/dependencies/{depId}', [ProjectController::class, 'removeTaskDependency'])->name('projects.tasks.dependencies.destroy');
+
+    // ── BE-05: Drag and Drop Task Reordering API ──
+    Route::post('/projects/{id}/reorder-tasks', [ProjectController::class, 'reorderTasks'])->name('projects.tasks.reorder');
+    Route::post('/projects/{id}/reorder-sub-wbs', [ProjectController::class, 'reorderSubWbs'])->name('projects.subwbs.reorder');
+    Route::post('/projects/{id}/reorder-main-wbs', [ProjectController::class, 'reorderMainWbs'])->name('projects.mainwbs.reorder');
+
+    // ── BE-03: Custom Percentage / Weight Management API ──
+    Route::post('/projects/{id}/weights', [ProjectController::class, 'updateWeights'])->name('projects.weights.update');
+
+    // ── BE-04: Progress History / Activity Logs for a Task ──
+    Route::get('/projects/{id}/tasks/{taskId}/activity-logs', [ProjectController::class, 'getTaskActivityLogs'])->name('projects.tasks.activity-logs');
+
+    // ── BE-06: Working Tree Structure & Project User Assignment ──
+    Route::get('/projects/{id}/working-tree', [ProjectController::class, 'workingTree'])->name('projects.working-tree');
+    Route::post('/projects/{id}/members', [ProjectController::class, 'assignProjectMember'])->name('projects.members.assign');
+    Route::delete('/projects/{id}/members/{memberId}', [ProjectController::class, 'removeProjectMember'])->name('projects.members.remove');
 
     // Main Tasks (Main WBS)
     Route::delete('/projects/{id}/clear-wbs', [ProjectController::class, 'clearWbs'])->name('projects.wbs.clear');
@@ -172,3 +211,27 @@ Route::middleware('auth')->group(function () {
         Route::delete('/projects/{id}/budget/{entryId}', [ProjectController::class, 'deleteBudgetEntry'])->name('projects.budget.destroy');
     });
 });
+
+// ── Public Storage File Serving (Evidence PDF & Media Preview) ──
+Route::get('/storage/{path}', function (string $path) {
+    // Sanitize path against directory traversal
+    $path = str_replace(['..', "\0"], '', $path);
+    $fullPath = storage_path('app/public/' . $path);
+
+    if (!file_exists($fullPath) || is_dir($fullPath)) {
+        abort(404, 'File evidence tidak ditemukan di server.');
+    }
+
+    $mimeType = mime_content_type($fullPath) ?: 'application/octet-stream';
+    if (str_ends_with(strtolower($path), '.pdf')) {
+        $mimeType = 'application/pdf';
+    }
+
+    return response()->file($fullPath, [
+        'Content-Type' => $mimeType,
+        'Content-Disposition' => 'inline; filename="' . basename($fullPath) . '"',
+        'X-Frame-Options' => 'SAMEORIGIN',
+        'Cache-Control' => 'public, max-age=86400',
+    ]);
+})->where('path', '.*')->name('storage.serve');
+
