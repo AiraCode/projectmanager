@@ -395,6 +395,40 @@ export default function ProjectDetailPage() {
         </div>
       </Card>
 
+      {/* Project Team & Assigned Members (Backend BE-06) */}
+      {pageProps?.members && pageProps.members.length > 0 && (
+        <Card className="p-4 bg-white border border-neutral-200/90 shadow-2xs">
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-neutral-100">
+            <div className="flex items-center gap-2">
+              <User size={16} className="text-brand" />
+              <span className="text-[13px] font-bold text-neutral-800 tracking-tight">
+                Project Team & Assigned Members
+              </span>
+              <span className="text-[11px] font-semibold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">
+                {pageProps.members.length} Member{pageProps.members.length > 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {pageProps.members.map((m: any) => (
+              <div key={m.id} className="p-2.5 rounded-xl border border-neutral-200/80 bg-neutral-50/50 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold text-[12px] flex-shrink-0">
+                  {m.username?.substring(0, 2).toUpperCase() || 'U'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-bold text-neutral-900 truncate">{m.username}</div>
+                  <div className="text-[11px] text-neutral-500 flex items-center gap-1.5 mt-0.5">
+                    <span className="font-semibold text-brand capitalize">{m.project_role || 'Member'}</span>
+                    <span>•</span>
+                    <span className="truncate">{m.division_name || 'General'}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* 3-Tier WBS Working Tree Section */}
       <div className="space-y-3 pt-2">
         {/* Header & Controls Bar */}
@@ -418,11 +452,10 @@ export default function ProjectDetailPage() {
             {isPIC && (
               <a
                 href={`/tasks?project_id=${p.id}`}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-brand text-white hover:bg-brand-dark transition-colors shadow-xs"
+                className="inline-flex items-center px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-brand text-white hover:bg-brand-dark transition-colors shadow-xs"
                 title="Go to Task Management to edit tasks and update progress"
               >
-                <Plus size={13} /> Manage Tasks
-                <ArrowRight size={12} className="opacity-80" />
+                Manage Tasks
               </a>
             )}
             <div className="flex items-center gap-1 bg-neutral-100 p-0.5 rounded-lg border border-neutral-200 text-[11.5px]">
@@ -1421,7 +1454,7 @@ function TaskDetailModal({
                       {ev.size && <span className="text-[11px] text-neutral-400">({ev.size})</span>}
                     </div>
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="outline"
                       onClick={() => onOpenEvidence(ev)}
                       className="text-[11px] gap-1"

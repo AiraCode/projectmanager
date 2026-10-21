@@ -209,8 +209,24 @@ class ProjectController extends Controller
             return $redirect;
         }
 
+        $members = \App\Models\ProjectMember::where('project_id', $project->id)
+            ->with(['user.role', 'division'])
+            ->get()
+            ->map(function ($m) {
+                return [
+                    'id'             => $m->id,
+                    'user_id'        => $m->user_id,
+                    'username'       => $m->user?->username ?? $m->user?->name,
+                    'email'          => $m->user?->email,
+                    'project_role'   => $m->project_role,
+                    'position_title' => $m->position_title ?? 'Member',
+                    'division_name'  => $m->division?->divisi ?? 'General',
+                ];
+            });
+
         return Inertia::render('ProjectDetailPage', [
             'project'  => $this->transformProjectData($project),
+            'members'  => $members,
             'userRole' => $role,
         ]);
     }
@@ -296,7 +312,7 @@ class ProjectController extends Controller
         }
 
         $divisions = Division::select('id', 'divisi')->get();
-        $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
+        $workerDivisionId = ($role === 'worker') ? $user->getDivisionIds() : null;
 
         $availableProjects = [];
         if ($role === 'worker') {
@@ -341,7 +357,7 @@ class ProjectController extends Controller
             return $redirect;
         }
 
-        $workerDivisionId = ($role === 'worker') ? $user->divisions_id : null;
+        $workerDivisionId = ($role === 'worker') ? $user->getDivisionIds() : null;
 
         return Inertia::render('TimelinePage', [
             'project'  => $this->transformProjectData($project, $workerDivisionId),
@@ -1276,9 +1292,10 @@ class ProjectController extends Controller
         })->where('id', $subWbsId)->firstOrFail();
 
         $validated = $request->validate([
-            'name'  => 'required|string|max:255',
-            'start' => 'nullable|date',
-            'end'   => 'nullable|date',
+            'name'   => 'required|string|max:255',
+            'weight' => 'nullable|numeric|min:0|max:100',
+            'start'  => 'nullable|date',
+            'end'    => 'nullable|date',
         ]);
 
         $newStart = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($subWbs->start ? Carbon::parse($subWbs->start)->startOfDay() : null);
@@ -1307,6 +1324,9 @@ class ProjectController extends Controller
 
         $oldName = $subWbs->name;
         $subWbs->name = $validated['name'];
+        if (array_key_exists('weight', $validated)) {
+            $subWbs->weight = (float) $validated['weight'];
+        }
         if ($newStart) {
             $subWbs->start = $newStart;
             $subWbs->actual_start = $newStart;
@@ -1539,6 +1559,7 @@ class ProjectController extends Controller
 
         $validated = $request->validate([
             'name'              => 'required|string|max:255',
+            'weight'            => 'nullable|numeric|min:0|max:100',
             'divisions_id'      => 'nullable|exists:divisions,id',
             'duration'          => 'nullable|integer|min:1',
             'start'             => 'nullable|date',
@@ -1635,6 +1656,10 @@ class ProjectController extends Controller
                     'predecessor' => 'Ketergantungan tidak dapat diubah: terdeteksi circular dependency (siklus berulang).'
                 ]);
             }
+        }
+
+        if (array_key_exists('weight', $validated)) {
+            $task->weight = (float) $validated['weight'];
         }
 
         $task->save();
@@ -2114,7 +2139,7 @@ class ProjectController extends Controller
      *
      * @suppress PHP6613
      */
-    private function transformProjectData(Project $p, int|string|null $workerDivisionId = null)
+    private function transformProjectData(Project $p, int|string|array|null $workerDivisionId = null)
     {
         $start   = $p->start;
         $end     = $p->end;
@@ -2124,16 +2149,23 @@ class ProjectController extends Controller
         $sisaHari = $end ? $now->diffInDays($end, false) : 0;
         if ($sisaHari < 0) $sisaHari = 0;
 
-        $mainJobs = $p->mainWbs->sortBy('order_index')->values()->map(function ($mj, $mjIdx) use ($workerDivisionId) {
+        $workerDivisionIds = [];
+        if (!empty($workerDivisionId)) {
+            $workerDivisionIds = is_array($workerDivisionId)
+                ? array_values(array_filter(array_map('intval', $workerDivisionId)))
+                : [(int) $workerDivisionId];
+        }
+
+        $mainJobs = $p->mainWbs->sortBy('order_index')->values()->map(function ($mj, $mjIdx) use ($workerDivisionIds) {
             $mjCode = (string) ($mjIdx + 1);
 
-            $subMainJobs = $mj->subWbs->sortBy('order_index')->values()->map(function ($smj, $smjIdx) use ($mjCode, $workerDivisionId) {
+            $subMainJobs = $mj->subWbs->sortBy('order_index')->values()->map(function ($smj, $smjIdx) use ($mjCode, $workerDivisionIds) {
                 $smjCode = $mjCode . '.' . ($smjIdx + 1);
 
                 $tasksQuery = $smj->wbsTasks;
-                if ($workerDivisionId) {
-                    $tasksQuery = $tasksQuery->filter(function ($t) use ($workerDivisionId) {
-                        return $t->divisions_id == $workerDivisionId;
+                if (!empty($workerDivisionIds)) {
+                    $tasksQuery = $tasksQuery->filter(function ($t) use ($workerDivisionIds) {
+                        return in_array((int) $t->divisions_id, $workerDivisionIds, true);
                     });
                 }
 
@@ -2205,7 +2237,7 @@ class ProjectController extends Controller
                 ];
             });
 
-            if ($workerDivisionId) {
+            if (!empty($workerDivisionIds)) {
                 $subMainJobs = $subMainJobs->filter(function ($smj) {
                     return count($smj['subtasks']) > 0;
                 });
@@ -2226,7 +2258,7 @@ class ProjectController extends Controller
             ];
         });
 
-        if ($workerDivisionId) {
+        if (!empty($workerDivisionIds)) {
             $mainJobs = $mainJobs->filter(function ($mj) {
                 return count($mj['subMainJobs']) > 0;
             });
@@ -2501,14 +2533,12 @@ class ProjectController extends Controller
         // Sort divisions alphabetically
         ksort($divisionGroups);
 
-        // If user is a worker (division account), filter to ONLY their division
+        // If user is a worker (division account), filter to ONLY their assigned divisions
         if ($role === 'worker') {
-            $userDivName = strtolower(trim($user->division?->divisi ?? ''));
-            $userDivId   = $user->divisions_id;
-            if ($userDivName !== '' || $userDivId) {
-                $divisionGroups = array_filter($divisionGroups, function ($g) use ($userDivName, $userDivId) {
-                    return ($userDivName !== '' && strtolower(trim($g['division'])) === $userDivName)
-                        || ($userDivId && isset($g['division_id']) && $g['division_id'] == $userDivId);
+            $userDivIds = $user->getDivisionIds();
+            if (!empty($userDivIds)) {
+                $divisionGroups = array_filter($divisionGroups, function ($g) use ($userDivIds) {
+                    return isset($g['division_id']) && in_array((int) $g['division_id'], $userDivIds, true);
                 });
             }
         }
@@ -2762,7 +2792,7 @@ class ProjectController extends Controller
 
         $divisions = Division::all(['id', 'divisi']);
 
-        return Inertia::render('Project/WorkingTreePage', [
+        return Inertia::render('ProjectDetailPage', [
             'project' => $this->transformProjectData($project),
             'members' => $members,
             'availableUsers' => $availableUsers,

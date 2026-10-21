@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { usePage, router, Link } from '@inertiajs/react';
-import { ArrowLeft, Save, Plus, Edit2, Trash2, LayoutList, GitMerge, Lock, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Edit2, Trash2, LayoutList, GitMerge, Lock } from 'lucide-react';
 import { PageHeader, Card, Button, Modal, formatDateDisplay } from '@/components/ui';
 import { ReactFlow, Controls, Background, MiniMap, addEdge, applyNodeChanges, applyEdgeChanges, MarkerType, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';

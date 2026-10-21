@@ -100,7 +100,7 @@ class SuperAdminController extends Controller
 
     public function userManagement(Request $request)
     {
-        $users = User::with(['role', 'company', 'companies', 'division', 'creator'])
+        $users = User::with(['role', 'company', 'companies', 'division', 'divisions', 'creator'])
             ->latest()
             ->get()
             ->map(fn($u) => [
@@ -113,6 +113,8 @@ class SuperAdminController extends Controller
                 'company_ids' => $u->getCompanyIds(),
                 'companies'   => $u->companies->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
                 'divisions_id'=> $u->divisions_id,
+                'division_ids'=> $u->getDivisionIds(),
+                'divisions'   => $u->divisions->map(fn($d) => ['id' => $d->id, 'name' => $d->divisi])->values(),
                 'division'    => $u->division?->divisi,
                 'created_by'  => $u->creator?->username ?? 'System',
                 'is_standalone' => $u->is_standalone,

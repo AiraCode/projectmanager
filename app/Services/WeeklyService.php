@@ -176,6 +176,27 @@ class WeeklyService
     }
 
     /**
+     * Recalculate weekly data and return formatted weekly_data array for prediction engines.
+     */
+    public function recalculate($projectId): array
+    {
+        $data = $this->getWeeklyData($projectId);
+        return [
+            'weekly_data' => array_map(function ($w) {
+                return [
+                    'week' => $w['week'],
+                    'start_date' => $w['startDate'],
+                    'end_date' => $w['endDate'],
+                    'planned' => $w['planned'],
+                    'actual' => $w['actual'],
+                    'planned_cumulative' => $w['plannedCumulative'],
+                    'actual_cumulative' => $w['actualCumulative'],
+                ];
+            }, $data),
+        ];
+    }
+
+    /**
      * Get current cumulative planned progress up to current date.
      */
     public function getCurrentPlannedProgress($projectId)

@@ -22,7 +22,7 @@ class UserManagementController extends Controller
             abort(403, 'Unauthorized access.');
         }
 
-        $query = User::with(['role', 'company', 'companies', 'division']);
+        $query = User::with(['role', 'company', 'companies', 'division', 'divisions']);
 
         // Data Scope: If not SuperAdmin (or data_scope != all), restrict to own company
         if ($user->getDataScope() !== 'all') {

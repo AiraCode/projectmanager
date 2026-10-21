@@ -16,7 +16,7 @@ class TaskOrderService
      */
     public function reorderMainWbs(int|string $projectId, array $orderedIds): array
     {
-        $existing = MainWbs::where('projects_id', $projectId)->pluck('id')->all();
+        $existing = MainWbs::where('projects_id', $projectId)->pluck('id')->map(fn($v) => (int)$v)->all();
 
         // Validate that all orderedIds belong to the project
         foreach ($orderedIds as $id) {
@@ -48,7 +48,7 @@ class TaskOrderService
     public function reorderSubWbs(int|string $projectId, int|string $mainWbsId, array $orderedIds): array
     {
         $mainWbs = MainWbs::where('projects_id', $projectId)->where('id', $mainWbsId)->firstOrFail();
-        $existing = SubWbs::where('sub_wbs_id', $mainWbsId)->pluck('id')->all();
+        $existing = SubWbs::where('sub_wbs_id', $mainWbsId)->pluck('id')->map(fn($v) => (int)$v)->all();
 
         foreach ($orderedIds as $id) {
             if (!in_array((int)$id, $existing, true)) {
@@ -82,7 +82,7 @@ class TaskOrderService
             $q->where('projects_id', $projectId);
         })->where('id', $subWbsId)->firstOrFail();
 
-        $existing = Wbs::where('sub_wbs_id', $subWbsId)->pluck('id')->all();
+        $existing = Wbs::where('sub_wbs_id', $subWbsId)->pluck('id')->map(fn($v) => (string)$v)->all();
 
         foreach ($orderedIds as $id) {
             if (!in_array((string)$id, $existing, true)) {

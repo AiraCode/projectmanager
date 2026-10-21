@@ -21,7 +21,7 @@ class SCurvePredictionService
         $weeks = $projectWeekly['weekly_data'] ?? [];
         if (empty($weeks)) {
             return [
-                'weeks' => [],
+                'points' => [],
                 'metrics' => [
                     'spi' => 1.0,
                     'is_delayed' => false,
@@ -65,7 +65,7 @@ class SCurvePredictionService
                         $taskEnd = Carbon::parse($task->end)->endOfDay();
                         if ($now->gt($taskEnd)) {
                             $overdueTasksCount++;
-                            $overdueDays = $now->diffInDays($taskEnd);
+                            $overdueDays = (int) abs($now->diffInDays($taskEnd));
                             if ($overdueDays > $maxOverdueDays) {
                                 $maxOverdueDays = $overdueDays;
                             }

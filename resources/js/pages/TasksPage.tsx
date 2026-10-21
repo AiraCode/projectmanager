@@ -23,7 +23,6 @@ import {
     Clock,
     UploadCloud,
     FileText,
-    Sparkles,
     X,
     Eye,
     CalendarDays,
@@ -37,7 +36,6 @@ import {
 } from "lucide-react";
 import {
     Project,
-    PROJECT,
     MainJob,
     SubMainJob,
     SubSubtask,
@@ -839,7 +837,7 @@ export default function TasksPage() {
         });
     };
 
-    // Client-side Task Reordering within same Sub Main Job
+    // Persistent Task Reordering within same Sub Main Job
     const handleReorderTasks = (
         smjId: string,
         sourceTaskId: string,
@@ -848,6 +846,9 @@ export default function TasksPage() {
         if (sourceTaskId === targetTaskId) return;
 
         let moved = false;
+        let newOrderedIds: string[] = [];
+        const previousData = projectData;
+
         setProjectData((prev) => {
             const next = { ...prev };
             next.mainJobs = next.mainJobs.map((mj) => ({
@@ -862,15 +863,40 @@ export default function TasksPage() {
                     const [removed] = items.splice(sourceIdx, 1);
                     items.splice(targetIdx, 0, removed);
                     moved = true;
+                    newOrderedIds = items.map((t) => String(t.id));
                     return { ...smj, subtasks: items };
                 }),
             }));
             return next;
         });
 
-        if (moved) {
-            setToastMsg(
-                "Task reordered in view. Note: Persistent task ordering requires backend schema (e.g. order_index) and API support.",
+        if (moved && projectData?.id) {
+            router.post(
+                `/projects/${projectData.id}/reorder-tasks`,
+                {
+                    sub_wbs_id: smjId,
+                    ordered_ids: newOrderedIds,
+                },
+                {
+                    preserveScroll: true,
+                    onSuccess: (page: any) => {
+                        const flashSuccess = page?.props?.flash?.success;
+                        const flashError = page?.props?.flash?.error;
+                        const pageErrors = page?.props?.errors;
+                        const err = flashError || (pageErrors && Object.values(pageErrors)[0]);
+                        if (err) {
+                            setProjectData(previousData);
+                            setToastMsg(typeof err === "string" ? err : JSON.stringify(err));
+                            return;
+                        }
+                        setToastMsg(flashSuccess || "Task order successfully saved.");
+                    },
+                    onError: (errors) => {
+                        setProjectData(previousData);
+                        const err = errors?.message || Object.values(errors)[0] || "Failed to persist task order.";
+                        setToastMsg(typeof err === "string" ? err : JSON.stringify(err));
+                    },
+                }
             );
         }
     };
@@ -3376,7 +3402,7 @@ function TaskProgressHistoryModal({
                         </div>
                         <ProgressBar
                             value={task.progress}
-                            color={isComplete ? "emerald" : "brand"}
+                            color={isComplete ? "success" : "brand"}
                             size="sm"
                         />
                     </div>
@@ -4758,12 +4784,12 @@ function AddSubtaskModal({
                                 Start Date <span className="text-red-500">*</span>
                             </label>
                             {isFirstTask ? (
-                                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                    <Sparkles size={11} /> First Task
+                                <span className="text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    First Task
                                 </span>
                             ) : (
-                                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                    <Lock size={11} /> Locked
+                                <span className="text-[10.5px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                    Locked
                                 </span>
                             )}
                         </div>

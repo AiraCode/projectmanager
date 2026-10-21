@@ -3,7 +3,7 @@ import { usePage, Link } from '@inertiajs/react';
 import { PageHeader, Card, Button, formatDateDisplay, formatDivisionName, StatusBadge } from '@/components/ui';
 import {
   Calendar, ChevronDown, ChevronRight, ChevronLeft, Flag,
-  Sparkles, LayoutGrid, ListTree, CheckCircle2, Clock,
+  LayoutGrid, ListTree, CheckCircle2, Clock,
   Maximize2, Minimize2, Search, X, Filter, RotateCcw, Info,
   FolderOpen, Layers
 } from 'lucide-react';
@@ -704,8 +704,7 @@ export default function TimelinePage() {
         {/* Dynamic Project Phases Legend & Milestones Info */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-neutral-100 text-[11.5px]">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-neutral-400 uppercase tracking-wider text-[10.5px] flex items-center gap-1 flex-shrink-0">
-              <Sparkles size={12} className="text-brand" />
+            <span className="font-semibold text-neutral-400 uppercase tracking-wider text-[10.5px] flex-shrink-0">
               Phases
             </span>
             <div className="flex items-center gap-1.5 flex-wrap">

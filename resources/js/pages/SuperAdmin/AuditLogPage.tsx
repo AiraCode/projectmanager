@@ -1,7 +1,27 @@
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Head, router } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
-import { ScrollText, Filter, Search, Globe, User as UserIcon, ChevronDown, Check, X } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { Modal } from '@/components/ui';
+import {
+  ScrollText,
+  Filter,
+  Search,
+  Globe,
+  User as UserIcon,
+  ChevronDown,
+  Check,
+  X,
+  Eye,
+  Copy,
+  CheckCircle2,
+  RotateCcw,
+  Shield,
+  Activity,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Info,
+} from 'lucide-react';
 
 interface AuditEntry {
   id: number;
@@ -10,6 +30,7 @@ interface AuditEntry {
   action: string;
   description: string;
   ip_address: string | null;
+  metadata?: Record<string, any> | any[] | string | null;
   created_at: string;
 }
 
@@ -19,56 +40,122 @@ interface PaginatedLogs {
   last_page: number;
   per_page: number;
   total: number;
+  from?: number | null;
+  to?: number | null;
   links: { url: string | null; label: string; active: boolean }[];
 }
 
-const ACTION_COLORS: Record<string, string> = {
+/**
+ * Format audit timestamp to PROVIS convention (DD-MM-YYYY).
+ * Backend provides "d M Y, H:i:s" (e.g. "21 Oct 2026, 11:50:44").
+ */
+export function parseAuditTimestamp(dateStr?: string | null): { date: string; time: string; full: string } {
+  if (!dateStr || dateStr === '—') return { date: '—', time: '', full: '—' };
+
+  const months: Record<string, string> = {
+    Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+    Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+  };
+
+  const m = String(dateStr).trim().match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4}),?\s+(\d{2}:\d{2}(?::\d{2})?)/);
+  if (m) {
+    const [, d, mon, y, time] = m;
+    const mm = months[mon] || '01';
+    const dateFormatted = `${d.padStart(2, '0')}-${mm}-${y}`;
+    return {
+      date: dateFormatted,
+      time: time,
+      full: `${dateFormatted} ${time}`,
+    };
+  }
+
+  const parsed = new Date(dateStr);
+  if (!isNaN(parsed.getTime())) {
+    const d = String(parsed.getDate()).padStart(2, '0');
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+    const y = parsed.getFullYear();
+    const h = String(parsed.getHours()).padStart(2, '0');
+    const min = String(parsed.getMinutes()).padStart(2, '0');
+    const s = String(parsed.getSeconds()).padStart(2, '0');
+    const dateFormatted = `${d}-${mm}-${y}`;
+    const timeFormatted = `${h}:${min}:${s}`;
+    return {
+      date: dateFormatted,
+      time: timeFormatted,
+      full: `${dateFormatted} ${timeFormatted}`,
+    };
+  }
+
+  return { date: dateStr, time: '', full: dateStr };
+}
+
+/**
+ * Categorical badge styling for known and dynamic action types
+ */
+const getActionBadgeStyle = (action: string): string => {
+  const act = action.toUpperCase();
+
   // Authentication & Security
-  LOGIN:                    'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  LOGOUT:                   'bg-neutral-100 text-neutral-600 border border-neutral-200',
-  LOGIN_FAILED:             'bg-red-50 text-red-700 border border-red-200 font-bold',
-  ADMIN_LOGIN:              'bg-violet-50 text-violet-700 border border-violet-200 font-bold',
-  ADMIN_LOGIN_FAILED:       'bg-rose-50 text-rose-700 border border-rose-200 font-bold',
-  UNAUTHORIZED_ADMIN_LOGIN: 'bg-red-100 text-red-800 border border-red-300 font-black',
-  PASSWORD_CHANGE:          'bg-amber-50 text-amber-700 border border-amber-200',
+  if (act === 'LOGIN') return 'bg-emerald-50 text-emerald-700 border-emerald-200/80';
+  if (act === 'LOGOUT') return 'bg-neutral-100 text-neutral-600 border-neutral-200/80';
+  if (act === 'ADMIN_LOGIN') return 'bg-violet-50 text-violet-700 border-violet-200 font-bold';
+  if (act.includes('LOGIN_FAILED') || act.includes('UNAUTHORIZED')) {
+    return 'bg-rose-50 text-rose-700 border-rose-200 font-bold';
+  }
+  if (act === 'PASSWORD_CHANGE') return 'bg-amber-50 text-amber-700 border-amber-200/80';
 
-  // User Management
-  CREATE_USER:              'bg-emerald-100 text-emerald-800',
-  UPDATE_USER:              'bg-blue-100 text-blue-800',
-  DELETE_USER:              'bg-red-100 text-red-800',
-  UPDATE_PROJECT_ACCESS:    'bg-violet-100 text-violet-800',
+  // Deletions / Removals / Destructive
+  if (act.startsWith('DELETE_') || act.startsWith('REMOVE_') || act.includes('DESTROY')) {
+    return 'bg-red-50 text-red-700 border-red-200/80';
+  }
 
-  // Project Management
-  CREATE_PROJECT:           'bg-indigo-100 text-indigo-800 font-medium',
-  DELETE_PROJECT:           'bg-rose-100 text-rose-800 font-medium',
-  COMPLETE_PROJECT_SETUP:   'bg-teal-100 text-teal-800 font-medium',
-  TOGGLE_PRIVATE_PROJECT:   'bg-purple-100 text-purple-800',
+  // Creations & Additions
+  if (act.startsWith('CREATE_') || act.startsWith('ADD_')) {
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200/80';
+  }
 
-  // Task & WBS
-  TASK_COMPLETED:           'bg-emerald-100 text-emerald-800 font-semibold',
-  TASK_PROGRESS_UPDATED:    'bg-sky-100 text-sky-800',
-  CREATE_TASK:              'bg-blue-50 text-blue-700',
-  UPDATE_TASK:              'bg-blue-50/60 text-blue-700',
-  DELETE_TASK:              'bg-red-50 text-red-700',
+  // Updates & Modifications
+  if (act.startsWith('UPDATE_') || act.startsWith('REORDER_') || act.startsWith('SET_') || act.startsWith('TOGGLE_')) {
+    return 'bg-blue-50 text-blue-700 border-blue-200/80';
+  }
 
-  // Company & Division
-  CREATE_COMPANY:           'bg-cyan-100 text-cyan-800',
-  UPDATE_COMPANY:           'bg-cyan-50 text-cyan-700',
-  DELETE_COMPANY:           'bg-red-100 text-red-700',
-  CREATE_DIVISION:          'bg-teal-100 text-teal-800',
-  UPDATE_DIVISION:          'bg-teal-50 text-teal-700',
-  DELETE_DIVISION:          'bg-red-100 text-red-700',
+  // Approvals & Workflows
+  if (act.includes('APPROVE')) return 'bg-teal-50 text-teal-700 border-teal-200/80';
+  if (act.includes('REJECT')) return 'bg-rose-50 text-rose-700 border-rose-200/80';
+  if (act.includes('REQUEST')) return 'bg-amber-50 text-amber-700 border-amber-200/80';
+
+  // Completions
+  if (act.includes('COMPLETE')) return 'bg-indigo-50 text-indigo-700 border-indigo-200/80';
+
+  return 'bg-neutral-100 text-neutral-700 border-neutral-200/80';
 };
 
 export default function AuditLogPage({
-  logs, actionTypes, filters
-}: { logs: PaginatedLogs; actionTypes: string[]; filters: { action?: string; search?: string } }) {
+  logs,
+  actionTypes,
+  filters,
+}: {
+  logs: PaginatedLogs;
+  actionTypes: string[];
+  filters: { action?: string; search?: string };
+}) {
   const [selectedAction, setSelectedAction] = useState(filters.action ?? '');
   const [search, setSearch] = useState(filters.search ?? '');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownFilter, setDropdownFilter] = useState('');
+  const [selectedLog, setSelectedLog] = useState<AuditEntry | null>(null);
+  const [copiedDescription, setCopiedDescription] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Sync state if backend filters prop changes (e.g. browser back/forward)
+  useEffect(() => {
+    setSelectedAction(filters.action ?? '');
+    setSearch(filters.search ?? '');
+  }, [filters.action, filters.search]);
+
+  // Dropdown outside click & Escape key listener
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -91,10 +178,14 @@ export default function AuditLogPage({
   }, [dropdownOpen]);
 
   const handleFilterChange = (newAction: string, newSearch: string) => {
-    router.get('/admin/audit-log', {
-      action: newAction || undefined,
-      search: newSearch || undefined,
-    }, { preserveState: true, replace: true });
+    router.get(
+      '/admin/audit-log',
+      {
+        action: newAction || undefined,
+        search: newSearch.trim() || undefined,
+      },
+      { preserveState: true, replace: true }
+    );
   };
 
   const applyActionFilter = (action: string) => {
@@ -108,92 +199,164 @@ export default function AuditLogPage({
     handleFilterChange(selectedAction, search);
   };
 
-  const filteredActionTypes = actionTypes.filter(a =>
-    a.toLowerCase().replace(/_/g, ' ').includes(dropdownFilter.toLowerCase().trim())
-  );
+  const handleResetFilters = () => {
+    setSelectedAction('');
+    setSearch('');
+    router.get('/admin/audit-log', {}, { preserveState: true, replace: true });
+  };
+
+  const copyToClipboard = async (text: string, type: 'desc' | 'json') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (type === 'desc') {
+        setCopiedDescription(true);
+        setTimeout(() => setCopiedDescription(false), 2000);
+      } else {
+        setCopiedJson(true);
+        setTimeout(() => setCopiedJson(false), 2000);
+      }
+    } catch {
+      // Fallback
+    }
+  };
+
+  const filteredActionTypes = useMemo(() => {
+    return actionTypes.filter((a) =>
+      a.toLowerCase().replace(/_/g, ' ').includes(dropdownFilter.toLowerCase().trim())
+    );
+  }, [actionTypes, dropdownFilter]);
+
+  const hasActiveFilters = Boolean(filters.action || filters.search);
 
   return (
     <SuperAdminLayout>
       <Head title="Audit Log — PROVIS SuperAdmin" />
-      <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
 
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
+            <div
+              className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0 shadow-sm"
               style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
             >
               <ScrollText size={18} className="text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-black text-neutral-900 tracking-tight">System Audit Log</h1>
-              <p className="text-[12px] text-neutral-500">
-                Monitor all system activities: Authentication, Task Changes, User Management, Projects, and Security.
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-black text-neutral-900 tracking-tight">System Audit Log</h1>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                  {logs.total} Total Records
+                </span>
+              </div>
+              <p className="text-[12px] text-neutral-500 mt-0.5">
+                Inspect administrative actions, user activity, and system governance records.
               </p>
             </div>
           </div>
 
-          {/* Search & Filter Bar */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <form onSubmit={handleSearchSubmit} className="relative">
+          {/* Quick Active Filters Summary / Reset */}
+          {hasActiveFilters && (
+            <button
+              onClick={handleResetFilters}
+              className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100/80 border border-violet-200 transition-colors"
+            >
+              <RotateCcw size={13} />
+              Reset All Filters
+            </button>
+          )}
+        </div>
+
+        {/* Search & Filter Bar */}
+        <div className="bg-white rounded-2xl border border-neutral-200/90 shadow-2xs p-3 sm:p-4">
+          <div className="flex flex-col md:flex-row md:items-center gap-3">
+            {/* Search Input */}
+            <form onSubmit={handleSearchSubmit} className="relative flex-1">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
+              />
               <input
                 type="text"
-                placeholder="Search user, email, IP, activity..."
+                placeholder="Search user, email, action, description, or IP..."
                 value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="text-[12.5px] border border-neutral-200 rounded-xl pl-8 pr-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white text-neutral-800 w-56 sm:w-64 placeholder-neutral-400 shadow-2xs h-[34px]"
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full text-[13px] border border-neutral-200 rounded-xl pl-9 pr-9 py-2 bg-neutral-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-400/40 focus:border-violet-400 text-neutral-800 placeholder-neutral-400 transition-all h-[38px]"
               />
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch('');
+                    handleFilterChange(selectedAction, '');
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
             </form>
 
-            {/* Custom UI Dropdown */}
-            <div className="relative" ref={dropdownRef}>
+            {/* Action Type Dropdown */}
+            <div className="relative shrink-0" ref={dropdownRef}>
               <button
                 type="button"
                 onClick={() => {
-                  setDropdownOpen(prev => !prev);
+                  setDropdownOpen((prev) => !prev);
                   setDropdownFilter('');
                 }}
-                className={`flex items-center gap-2 h-[34px] px-3 rounded-xl border text-[12.5px] font-medium transition-all duration-150 select-none ${
+                className={`flex items-center justify-between gap-2 h-[38px] px-3.5 rounded-xl border text-[12.5px] font-medium transition-all duration-150 select-none w-full md:w-auto min-w-[200px] cursor-pointer ${
                   selectedAction
-                    ? 'bg-violet-50/90 border-violet-300 text-violet-900 font-semibold shadow-xs'
-                    : 'bg-white border-neutral-200 hover:border-neutral-300 text-neutral-700 hover:bg-neutral-50 shadow-2xs'
+                    ? 'bg-violet-50/90 border-violet-300 text-violet-900 font-semibold shadow-xs ring-1 ring-violet-300/40'
+                    : 'bg-white border-neutral-200 hover:border-neutral-300 text-neutral-700 hover:bg-neutral-50/80 shadow-2xs'
                 }`}
                 aria-expanded={dropdownOpen}
                 aria-haspopup="listbox"
               >
-                <Filter size={13} className={selectedAction ? 'text-violet-600' : 'text-violet-500'} />
-                <span className="truncate max-w-[160px] sm:max-w-[200px]">
-                  {selectedAction ? selectedAction.replace(/_/g, ' ') : `All Activities (${actionTypes.length})`}
-                </span>
-                {selectedAction ? (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      applyActionFilter('');
-                    }}
-                    className="p-0.5 -mr-1 rounded-full hover:bg-violet-200/70 text-violet-600 hover:text-violet-900 transition-colors"
-                    title="Clear filter"
-                  >
-                    <X size={12} />
+                <div className="flex items-center gap-2 truncate">
+                  <Filter size={13} className={selectedAction ? 'text-violet-600' : 'text-neutral-400'} />
+                  <span className="truncate">
+                    {selectedAction ? selectedAction.replace(/_/g, ' ') : `All Activities (${actionTypes.length})`}
                   </span>
-                ) : (
-                  <ChevronDown
-                    size={13}
-                    className={`text-neutral-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180 text-violet-600' : ''}`}
-                  />
-                )}
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0 ml-1">
+                  {selectedAction ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        applyActionFilter('');
+                      }}
+                      className="p-0.5 rounded-full hover:bg-violet-200/70 text-violet-600 hover:text-violet-900 transition-colors"
+                      title="Clear action filter"
+                    >
+                      <X size={12} />
+                    </span>
+                  ) : (
+                    <ChevronDown
+                      size={13}
+                      className={`text-neutral-400 transition-transform duration-200 ${
+                        dropdownOpen ? 'rotate-180 text-violet-600' : ''
+                      }`}
+                    />
+                  )}
+                </div>
               </button>
 
-              {/* Custom Dropdown Menu */}
+              {/* Dropdown Popover */}
               {dropdownOpen && (
                 <div
                   className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-violet-100 shadow-xl shadow-violet-950/10 z-50 py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-                  style={{ boxShadow: '0 10px 25px -5px rgba(124, 58, 237, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.05)' }}
+                  style={{
+                    boxShadow:
+                      '0 10px 25px -5px rgba(124, 58, 237, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
+                  }}
+                  role="listbox"
                 >
-                  {/* Dropdown Quick Search (if list > 6 items) */}
+                  {/* Quick Search inside dropdown if > 6 items */}
                   {actionTypes.length > 6 && (
                     <div className="px-2.5 pb-2 pt-1 border-b border-neutral-100">
                       <div className="relative">
@@ -205,7 +368,10 @@ export default function AuditLogPage({
                           className="w-full text-[11.5px] bg-neutral-50/90 border border-neutral-200 rounded-lg pl-7 pr-2.5 py-1 text-neutral-800 placeholder-neutral-400 focus:outline-none focus:ring-1.5 focus:ring-violet-400 focus:bg-white transition-all"
                           autoFocus
                         />
-                        <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+                        <Search
+                          size={11}
+                          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400"
+                        />
                       </div>
                     </div>
                   )}
@@ -251,7 +417,11 @@ export default function AuditLogPage({
                               : 'hover:bg-neutral-50/80 text-neutral-700 font-medium'
                           }`}
                         >
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-semibold tracking-wide ${ACTION_COLORS[action] ?? 'bg-neutral-100 text-neutral-600'}`}>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-semibold tracking-wide border ${getActionBadgeStyle(
+                              action
+                            )}`}
+                          >
                             {label}
                           </span>
                           {isSelected && <Check size={13} className="text-violet-600 shrink-0 ml-2" />}
@@ -269,81 +439,246 @@ export default function AuditLogPage({
               )}
             </div>
           </div>
+
+          {/* Active Filter Chips */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap items-center gap-2 pt-3 mt-3 border-t border-neutral-100 text-[12px]">
+              <span className="text-neutral-400 text-[11px] font-medium uppercase tracking-wider">
+                Active Filters:
+              </span>
+
+              {filters.search && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-neutral-100 text-neutral-700 border border-neutral-200">
+                  <span>
+                    Search: <strong className="text-neutral-900 font-semibold">"{filters.search}"</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch('');
+                      handleFilterChange(selectedAction, '');
+                    }}
+                    className="p-0.5 hover:bg-neutral-200 rounded-full transition-colors text-neutral-500 hover:text-neutral-800"
+                    title="Remove search filter"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              )}
+
+              {filters.action && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-violet-50 text-violet-800 border border-violet-200">
+                  <span>
+                    Action: <strong className="font-semibold">{filters.action.replace(/_/g, ' ')}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => applyActionFilter('')}
+                    className="p-0.5 hover:bg-violet-200/80 rounded-full transition-colors text-violet-600 hover:text-violet-900"
+                    title="Remove action filter"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="text-[11px] font-semibold text-violet-600 hover:text-violet-800 hover:underline ml-1"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Table Card */}
-        <div className="bg-white rounded-2xl border overflow-hidden"
-          style={{ borderColor: 'rgba(139,92,246,0.1)', boxShadow: '0 1px 8px rgba(139,92,246,0.06)' }}
+        <div
+          className="bg-white rounded-2xl border border-neutral-200/90 shadow-2xs overflow-hidden"
+          style={{ borderColor: 'rgba(139,92,246,0.12)' }}
         >
-          <div className="px-5 py-3 flex items-center justify-between"
-            style={{ borderBottom: '1px solid rgba(139,92,246,0.08)', background: 'rgba(139,92,246,0.02)' }}
+          {/* Table Header Bar */}
+          <div
+            className="px-5 py-3 flex items-center justify-between border-b"
+            style={{
+              borderColor: 'rgba(139,92,246,0.08)',
+              background: 'rgba(139,92,246,0.02)',
+            }}
           >
-            <span className="text-[12px] font-semibold text-neutral-500">
-              Showing {logs.data.length} of {logs.total} activity logs
+            <span className="text-[12px] font-semibold text-neutral-600">
+              Showing {logs.from ?? (logs.data.length > 0 ? 1 : 0)} to{' '}
+              {logs.to ?? logs.data.length} of {logs.total} records
             </span>
-            {(selectedAction || search) && (
-              <button
-                onClick={() => {
-                  setSelectedAction('');
-                  setSearch('');
-                  handleFilterChange('', '');
-                }}
-                className="text-[11px] font-bold text-violet-600 hover:text-violet-800 hover:underline"
-              >
-                Reset Filter
-              </button>
-            )}
+            <span className="text-[11px] text-neutral-400">
+              Tip: Click any row or the eye icon to inspect details
+            </span>
           </div>
+
+          {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-[13px]">
+            <table className="w-full text-left text-[13px] border-collapse">
               <thead>
-                <tr style={{ background: 'rgba(139,92,246,0.03)' }}>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">#</th>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Actor</th>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Action</th>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Description</th>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">IP Address</th>
-                  <th className="px-5 py-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Timestamp</th>
+                <tr className="border-b border-neutral-100 bg-neutral-50/70">
+                  <th className="px-4 py-3 text-[11px] font-bold text-neutral-500 uppercase tracking-wider w-14">
+                    #ID
+                  </th>
+                  <th className="px-4 py-3 text-[11px] font-bold text-neutral-500 uppercase tracking-wider w-36">
+                    Date & Time
+                  </th>
+                  <th className="px-4 py-3 text-[11px] font-bold text-neutral-500 uppercase tracking-wider w-48">
+                    Actor
+                  </th>
+                  <th className="px-4 py-3 text-[11px] font-bold text-neutral-500 uppercase tracking-wider w-44">
+                    Action
+                  </th>
+                  <th className="px-4 py-3 text-[11px] font-bold text-neutral-500 uppercase tracking-wider min-w-[280px]">
+                    Description
+                  </th>
+                  <th className="px-4 py-3 text-[11px] font-bold text-neutral-500 uppercase tracking-wider w-32">
+                    IP Address
+                  </th>
+                  <th className="px-4 py-3 text-[11px] font-bold text-neutral-500 uppercase tracking-wider w-20 text-center">
+                    Inspect
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {logs.data.map(log => (
-                  <tr key={log.id} className="hover:bg-violet-50/30 transition-colors">
-                    <td className="px-5 py-3 text-neutral-400 font-mono text-[11px]">#{log.id}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0">
-                          <UserIcon size={12} />
+                {logs.data.map((log) => {
+                  const ts = parseAuditTimestamp(log.created_at);
+                  const isSystem = log.actor.toLowerCase() === 'system';
+
+                  return (
+                    <tr
+                      key={log.id}
+                      onClick={() => setSelectedLog(log)}
+                      className="hover:bg-violet-50/25 transition-colors cursor-pointer group"
+                    >
+                      {/* ID */}
+                      <td className="px-4 py-3 text-neutral-400 font-mono text-[11px] whitespace-nowrap">
+                        #{log.id}
+                      </td>
+
+                      {/* Timestamp (DD-MM-YYYY) */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-neutral-800 text-[12px] tracking-tight">
+                            {ts.date}
+                          </span>
+                          <span className="text-[10.5px] text-neutral-400 font-mono">{ts.time}</span>
                         </div>
-                        <div>
-                          <div className="font-semibold text-neutral-800 leading-tight">{log.actor}</div>
-                          {log.actor_email && (
-                            <div className="text-[11px] text-neutral-400">{log.actor_email}</div>
-                          )}
+                      </td>
+
+                      {/* Actor */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold ${
+                              isSystem
+                                ? 'bg-neutral-100 text-neutral-700 border border-neutral-200'
+                                : 'bg-violet-100 text-violet-700 border border-violet-200'
+                            }`}
+                          >
+                            {isSystem ? (
+                              <Shield size={12} className="text-neutral-600" />
+                            ) : (
+                              log.actor.charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-neutral-800 text-[12.5px] truncate max-w-[150px]">
+                              {log.actor}
+                            </div>
+                            {log.actor_email && (
+                              <div className="text-[10.5px] text-neutral-400 truncate max-w-[150px]">
+                                {log.actor_email}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold tracking-wide ${ACTION_COLORS[log.action] ?? 'bg-neutral-100 text-neutral-600'}`}>
-                        {log.action.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-neutral-700 max-w-md text-[12.5px] leading-relaxed">
-                      {log.description}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-neutral-100/80 text-neutral-600 font-mono text-[11px] border border-neutral-200/60">
-                        <Globe size={11} className="text-neutral-400 shrink-0" />
-                        <span>{log.ip_address ?? '—'}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-neutral-500 text-[11.5px] whitespace-nowrap">{log.created_at}</td>
-                  </tr>
-                ))}
+                      </td>
+
+                      {/* Action */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-semibold tracking-wide border ${getActionBadgeStyle(
+                            log.action
+                          )}`}
+                        >
+                          {log.action.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+
+                      {/* Description */}
+                      <td className="px-4 py-3 text-neutral-700 text-[12.5px] leading-relaxed">
+                        <div className="line-clamp-2 max-w-xl group-hover:text-neutral-900 transition-colors">
+                          {log.description}
+                        </div>
+                      </td>
+
+                      {/* IP Address */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {log.ip_address ? (
+                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-neutral-100/90 text-neutral-600 font-mono text-[11px] border border-neutral-200/70">
+                            <Globe size={11} className="text-neutral-400 shrink-0" />
+                            <span>{log.ip_address}</span>
+                          </div>
+                        ) : (
+                          <span className="text-neutral-300 font-mono text-[11px]">—</span>
+                        )}
+                      </td>
+
+                      {/* Inspect Button */}
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedLog(log);
+                          }}
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-neutral-400 hover:text-violet-700 hover:bg-violet-100/70 transition-colors"
+                          title="Inspect record details"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* Empty State */}
                 {logs.data.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-5 py-12 text-center text-neutral-400">
-                      No audit log records match your search criteria.
+                    <td colSpan={7} className="px-6 py-16 text-center">
+                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                        <div
+                          className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-3 ${
+                            hasActiveFilters
+                              ? 'bg-violet-50 text-violet-600 border border-violet-100'
+                              : 'bg-neutral-100 text-neutral-400 border border-neutral-200'
+                          }`}
+                        >
+                          {hasActiveFilters ? <Search size={22} /> : <ScrollText size={22} />}
+                        </div>
+                        <h3 className="text-[14px] font-bold text-neutral-800 mb-1">
+                          {hasActiveFilters ? 'No matching audit records' : 'No audit logs recorded'}
+                        </h3>
+                        <p className="text-[12px] text-neutral-500 mb-4 leading-relaxed">
+                          {hasActiveFilters
+                            ? 'No records match your active search or action filter criteria. Try adjusting your search term or reset all filters.'
+                            : 'All system activities, project mutations, and user security events will be automatically recorded here.'}
+                        </p>
+                        {hasActiveFilters && (
+                          <button
+                            type="button"
+                            onClick={handleResetFilters}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-[12px] font-semibold transition-colors shadow-xs"
+                          >
+                            <RotateCcw size={13} />
+                            Reset Filters
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -353,39 +688,246 @@ export default function AuditLogPage({
 
           {/* Pagination */}
           {logs.last_page > 1 && (
-            <div className="px-5 py-3 flex items-center justify-between"
-              style={{ borderTop: '1px solid rgba(139,92,246,0.08)' }}
+            <div
+              className="px-5 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 border-t"
+              style={{ borderColor: 'rgba(139,92,246,0.08)' }}
             >
-              <span className="text-[12px] text-neutral-400">
-                Page {logs.current_page} of {logs.last_page}
+              <span className="text-[12px] text-neutral-500">
+                Page <strong className="text-neutral-800 font-semibold">{logs.current_page}</strong> of{' '}
+                <strong className="text-neutral-800 font-semibold">{logs.last_page}</strong> ({logs.total}{' '}
+                records)
               </span>
-              <div className="flex gap-1.5">
-                {logs.links.map((link, i) => (
-                  link.url ? (
+
+              <div className="flex items-center gap-1">
+                {logs.links.map((link, i) => {
+                  const isPrev = link.label.toLowerCase().includes('prev');
+                  const isNext = link.label.toLowerCase().includes('next');
+
+                  if (!link.url) {
+                    return (
+                      <span
+                        key={i}
+                        className="px-2.5 py-1 text-[11.5px] rounded-lg text-neutral-300 font-medium select-none pointer-events-none"
+                      >
+                        {isPrev ? <ChevronLeft size={14} /> : isNext ? <ChevronRight size={14} /> : link.label}
+                      </span>
+                    );
+                  }
+
+                  return (
                     <button
                       key={i}
+                      type="button"
                       onClick={() => router.visit(link.url!)}
-                      className="px-3 py-1 text-[12px] rounded-lg font-medium transition-colors"
-                      style={
+                      className={`px-3 py-1 text-[12px] rounded-lg font-semibold transition-all ${
                         link.active
-                          ? { background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', color: 'white' }
-                          : { background: 'rgba(139,92,246,0.08)', color: '#7c3aed' }
-                      }
-                      dangerouslySetInnerHTML={{ __html: link.label }}
-                    />
-                  ) : (
-                    <span
-                      key={i}
-                      className="px-3 py-1 text-[12px] rounded-lg text-neutral-300"
-                      dangerouslySetInnerHTML={{ __html: link.label }}
-                    />
-                  )
-                ))}
+                          ? 'bg-violet-600 text-white shadow-xs'
+                          : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900'
+                      }`}
+                    >
+                      {isPrev ? (
+                        <ChevronLeft size={14} className="inline" />
+                      ) : isNext ? (
+                        <ChevronRight size={14} className="inline" />
+                      ) : (
+                        <span dangerouslySetInnerHTML={{ __html: link.label }} />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Scope C: Detail Inspection Modal */}
+      {selectedLog && (
+        <Modal
+          isOpen={true}
+          onClose={() => setSelectedLog(null)}
+          title="Audit Trail Record Details"
+          subtitle={`Audit ID #${selectedLog.id} • ${parseAuditTimestamp(selectedLog.created_at).full}`}
+          size="lg"
+        >
+          <div className="space-y-4">
+            {/* Action & Status Banner */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11.5px] font-bold tracking-wide border ${getActionBadgeStyle(
+                    selectedLog.action
+                  )}`}
+                >
+                  {selectedLog.action.replace(/_/g, ' ')}
+                </span>
+                <span className="text-[11px] font-mono text-neutral-400">
+                  CODE: {selectedLog.action}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[11.5px] text-neutral-500 font-medium">
+                <Activity size={13} className="text-violet-600" />
+                <span>Audited Event</span>
+              </div>
+            </div>
+
+            {/* Full Activity Description */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[11.5px] font-bold text-neutral-700 uppercase tracking-wider">
+                  Full Activity Description
+                </label>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(selectedLog.description, 'desc')}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-600 hover:text-violet-800 transition-colors"
+                >
+                  {copiedDescription ? (
+                    <>
+                      <CheckCircle2 size={12} className="text-emerald-600" />
+                      <span className="text-emerald-600">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} />
+                      <span>Copy Description</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="p-3.5 rounded-xl bg-white border border-neutral-200 text-[13px] text-neutral-800 leading-relaxed font-normal shadow-2xs select-text">
+                {selectedLog.description}
+              </div>
+            </div>
+
+            {/* Audit Attributes Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12.5px]">
+              {/* Actor Details */}
+              <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/50 space-y-1">
+                <div className="text-[10.5px] font-bold uppercase tracking-wider text-neutral-400">
+                  Actor (Performed By)
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0 text-[10px] font-bold">
+                    <UserIcon size={11} />
+                  </div>
+                  <span className="font-bold text-neutral-900">{selectedLog.actor}</span>
+                </div>
+                {selectedLog.actor_email && (
+                  <div className="text-[11px] text-neutral-500 font-mono">
+                    {selectedLog.actor_email}
+                  </div>
+                )}
+              </div>
+
+              {/* IP Address */}
+              <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/50 space-y-1">
+                <div className="text-[10.5px] font-bold uppercase tracking-wider text-neutral-400">
+                  Client IP Address
+                </div>
+                <div className="flex items-center gap-1.5 font-mono text-neutral-800 text-[12px]">
+                  <Globe size={13} className="text-neutral-400" />
+                  <span>{selectedLog.ip_address ?? 'Not recorded (System Internal)'}</span>
+                </div>
+              </div>
+
+              {/* Exact Timestamp */}
+              <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/50 space-y-1">
+                <div className="text-[10.5px] font-bold uppercase tracking-wider text-neutral-400">
+                  Recorded Timestamp (DD-MM-YYYY)
+                </div>
+                <div className="font-semibold text-neutral-800 text-[12px]">
+                  {parseAuditTimestamp(selectedLog.created_at).full}
+                </div>
+              </div>
+
+              {/* Record Reference ID */}
+              <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/50 space-y-1">
+                <div className="text-[10.5px] font-bold uppercase tracking-wider text-neutral-400">
+                  Audit Record Identifier
+                </div>
+                <div className="font-mono text-neutral-800 text-[12px]">
+                  ID #{selectedLog.id}
+                </div>
+              </div>
+            </div>
+
+            {/* Context / Metadata */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11.5px] font-bold text-neutral-700 uppercase tracking-wider">
+                  Associated Metadata Payload
+                </label>
+                {selectedLog.metadata &&
+                  typeof selectedLog.metadata === 'object' &&
+                  Object.keys(selectedLog.metadata).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copyToClipboard(JSON.stringify(selectedLog.metadata, null, 2), 'json')
+                      }
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-600 hover:text-violet-800 transition-colors"
+                    >
+                      {copiedJson ? (
+                        <>
+                          <CheckCircle2 size={12} className="text-emerald-600" />
+                          <span className="text-emerald-600">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={12} />
+                          <span>Copy JSON</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+              </div>
+
+              {selectedLog.metadata &&
+              typeof selectedLog.metadata === 'object' &&
+              Object.keys(selectedLog.metadata).length > 0 ? (
+                <div className="space-y-2">
+                  {/* Key-Value Summary Badges */}
+                  <div className="flex flex-wrap gap-2 p-3 bg-neutral-50 rounded-xl border border-neutral-200">
+                    {Object.entries(selectedLog.metadata).map(([key, val]) => (
+                      <div
+                        key={key}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-neutral-200 text-[11px]"
+                      >
+                        <span className="font-semibold text-neutral-600 font-mono">{key}:</span>
+                        <span className="font-bold text-neutral-900 font-mono">
+                          {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Raw JSON Code Viewer */}
+                  <pre className="p-3 bg-neutral-900 text-neutral-100 rounded-xl text-[11.5px] font-mono overflow-x-auto select-text max-h-48 scrollbar-thin">
+                    {JSON.stringify(selectedLog.metadata, null, 2)}
+                  </pre>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-[12px] text-neutral-500">
+                  <Info size={14} className="text-neutral-400 shrink-0" />
+                  <span>No additional metadata payload was recorded for this activity.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex justify-end pt-3 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setSelectedLog(null)}
+                className="px-4 py-2 rounded-xl text-[12.5px] font-semibold bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </SuperAdminLayout>
   );
 }

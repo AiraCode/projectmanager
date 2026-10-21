@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X, Download, Loader2 } from 'lucide-react';
-import { PROJECT, BudgetEntry } from '@/data/mockData';
+import { BudgetEntry } from '@/data/mockData';
 import { exportToCSV } from '@/utils/exportEngine';
 import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState, formatDateDisplay } from '@/components/ui';
 
@@ -42,22 +42,22 @@ export default function BudgetPage() {
   const project = pageProps?.project;
 
   const [currentProject, setCurrentProject] = useState(() => {
-    return project && project.mainJobs ? project : PROJECT;
+    return project || { id: '', name: '', budgetEntries: [] };
   });
 
   useEffect(() => {
-    if (project && project.mainJobs) {
+    if (project) {
       setCurrentProject(project);
     }
   }, [project]);
 
   const [entries, setEntries] = useState<BudgetEntry[]>(() => {
-    return currentProject.budgetEntries?.length ? currentProject.budgetEntries : PROJECT.budgetEntries;
+    return currentProject.budgetEntries || [];
   });
 
   useEffect(() => {
-    if (currentProject && currentProject.budgetEntries) {
-      setEntries(currentProject.budgetEntries);
+    if (currentProject) {
+      setEntries(currentProject.budgetEntries || []);
     }
   }, [currentProject?.budgetEntries]);
 

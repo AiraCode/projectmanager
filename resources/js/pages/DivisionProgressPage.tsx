@@ -3,7 +3,7 @@ import { usePage, Link } from '@inertiajs/react';
 import {
   Users, CheckCircle2, Clock, ListChecks, ChevronDown, ChevronRight,
   CheckSquare, Square, Shield, Search, Filter, AlertCircle, ArrowUpRight,
-  Calendar, Layers, Sparkles, FileText, Camera, X
+  Calendar, Layers, FileText, Camera, X
 } from 'lucide-react';
 import {
   PageHeader, Card, ProgressBar, StatusBadge, formatDateDisplay,

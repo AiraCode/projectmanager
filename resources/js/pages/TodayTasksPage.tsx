@@ -5,7 +5,7 @@ import {
   AlertCircle, Clock, Filter, Paperclip, X, Eye, Download,
   Layers, ArrowUpRight, Shield, AlertTriangle, UploadCloud, Edit2, FileText, Lock
 } from 'lucide-react';
-import { Project, PROJECT, MainJob, SubMainJob, SubSubtask, Status, EvidenceItem } from '@/data/mockData';
+import { Project, MainJob, SubMainJob, SubSubtask, Status, EvidenceItem } from '@/data/mockData';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
 import { canStartTask } from '@/utils/taskDependencies';
 import { recalculateProgress } from '@/utils/progressEngine';
@@ -75,14 +75,28 @@ export default function TodayTasksPage() {
   const isAdmin  = authUser?.isAdminUtama === true || authUser?.isAdminProgres === true || rawRole === 'admin_utama' || rawRole === 'admin_progres' || rawRole === 'admin';
 
   const [projectData, setProjectData] = useState<Project>(() => {
-    if (!project || !project.mainJobs) {
-      return recalculateSchedule(recalculateProgress(PROJECT));
-    }
-    return recalculateSchedule(recalculateProgress(project));
+    const raw = project || {
+      id: '',
+      name: '',
+      company: '',
+      projectManager: '',
+      startDate: '',
+      endDate: '',
+      status: 'Open',
+      overallProgress: 0,
+      hariKe: 0,
+      sisaHari: 0,
+      totalBudget: 0,
+      usedBudget: 0,
+      mainJobs: [],
+      weeklyData: [],
+      budgetEntries: [],
+    };
+    return recalculateSchedule(recalculateProgress(raw));
   });
 
   useEffect(() => {
-    if (project && project.mainJobs) {
+    if (project) {
       setProjectData(recalculateSchedule(recalculateProgress(project)));
     }
   }, [project]);

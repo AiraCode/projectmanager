@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { usePage, router } from '@inertiajs/react';
-import { Project, PROJECT, WeekData, SubSubtask, scaleProjectTemplateDates } from '@/data/mockData';
+import { Project, WeekData, SubSubtask } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { PageHeader, Card, Button, Toast, formatDateDisplay, StatusBadge } from '@/components/ui';
 import { Info, ChevronLeft, ChevronRight, ChevronDown, Check, Calendar, TrendingUp, Edit3, X, Loader2, Layers } from 'lucide-react';
@@ -12,22 +12,33 @@ export default function WeeklyPage() {
   const project = pageProps?.project;
 
   const [projectData, setProjectData] = useState<Project>(() => {
-    const raw = project && project.mainJobs?.length
-      ? project
-      : scaleProjectTemplateDates(project || PROJECT, project?.startDate, project?.endDate);
+    const raw = project || {
+      id: '',
+      name: '',
+      company: '',
+      projectManager: '',
+      startDate: '',
+      endDate: '',
+      status: 'Open',
+      overallProgress: 0,
+      hariKe: 0,
+      sisaHari: 0,
+      totalBudget: 0,
+      usedBudget: 0,
+      mainJobs: [],
+      weeklyData: [],
+      budgetEntries: [],
+    };
     return recalculateWeeklyData(raw);
   });
 
   useEffect(() => {
     if (project) {
-      const raw = project.mainJobs?.length
-        ? project
-        : scaleProjectTemplateDates(project, project?.startDate, project?.endDate);
-      setProjectData(recalculateWeeklyData(raw));
+      setProjectData(recalculateWeeklyData(project));
     }
   }, [project]);
 
-  const weeks = projectData.weeklyData;
+  const weeks = projectData.weeklyData || [];
   const [page, setPage] = useState(0);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 

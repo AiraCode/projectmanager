@@ -33,21 +33,29 @@ class ProgressService
             $subCount = $subWbsList->count();
 
             if ($subCount > 0) {
+                $hasCustomSubWeights = $subWbsList->sum('weight') > 0;
                 $subWeight = round($mjWeight / $subCount, 2);
+
                 foreach ($subWbsList as $subWbs) {
-                    $subWbs->weight = $subWeight;
-                    if ($subWbs->isDirty('weight')) {
-                        $subWbs->save();
+                    if (!$hasCustomSubWeights) {
+                        $subWbs->weight = $subWeight;
+                        if ($subWbs->isDirty('weight')) {
+                            $subWbs->save();
+                        }
                     }
 
                     $tasks = $subWbs->wbsTasks;
                     $taskCount = $tasks->count();
                     if ($taskCount > 0) {
-                        $taskWeight = round($subWeight / $taskCount, 2);
-                        foreach ($tasks as $task) {
-                            $task->weight = $taskWeight;
-                            if ($task->isDirty('weight')) {
-                                $task->save();
+                        $hasCustomTaskWeights = $tasks->sum('weight') > 0;
+                        if (!$hasCustomTaskWeights) {
+                            $effectiveParentWeight = $subWbs->weight ?: $subWeight;
+                            $taskWeight = round($effectiveParentWeight / $taskCount, 2);
+                            foreach ($tasks as $task) {
+                                $task->weight = $taskWeight;
+                                if ($task->isDirty('weight')) {
+                                    $task->save();
+                                }
                             }
                         }
                     }

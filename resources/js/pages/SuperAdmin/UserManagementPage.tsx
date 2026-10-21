@@ -24,6 +24,8 @@ interface User {
   company_ids?: number[];
   companies?: { id: number; name: string }[];
   divisions_id: number | null;
+  division_ids?: number[];
+  divisions?: { id: number; name: string }[];
   division: string | null;
   created_by: string;
   is_standalone: boolean;
@@ -65,6 +67,7 @@ export default function SuperAdminUserManagementPage({
   const [isGlobalMatrixOpen, setIsGlobalMatrixOpen] = useState(false);
   const [isProjectAccessOpen, setIsProjectAccessOpen] = useState(false);
   const [allowMultiCompany, setAllowMultiCompany] = useState(false);
+  const [allowMultiDivision, setAllowMultiDivision] = useState(false);
 
   useEffect(() => {
     if (toast) {
@@ -89,6 +92,8 @@ export default function SuperAdminUserManagementPage({
     company_ids: [] as number[],
     multi_company_agreement: false,
     divisions_id: '',
+    division_ids: [] as number[],
+    multi_division_agreement: false,
     permission_matrix: {
       sidebar: [] as string[],
       features: {} as Record<string, string[]>,
@@ -102,6 +107,7 @@ export default function SuperAdminUserManagementPage({
     setSelectedDomain('@provis.id');
     setIsCustomDomain(false);
     setAllowMultiCompany(false);
+    setAllowMultiDivision(false);
     setData({
       username: '',
       email: '',
@@ -111,6 +117,8 @@ export default function SuperAdminUserManagementPage({
       company_ids: [],
       multi_company_agreement: false,
       divisions_id: '',
+      division_ids: [],
+      multi_division_agreement: false,
       permission_matrix: { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
     });
     setModalOpen(false);
@@ -139,6 +147,12 @@ export default function SuperAdminUserManagementPage({
     const isMulti = initialCompanyIds.length > 1;
     setAllowMultiCompany(isMulti);
 
+    const initialDivisionIds: number[] = (u.division_ids && u.division_ids.length > 0)
+      ? u.division_ids
+      : (u.divisions_id ? [u.divisions_id] : []);
+    const isMultiDiv = initialDivisionIds.length > 1;
+    setAllowMultiDivision(isMultiDiv);
+
     setData({
       username: u.username,
       email: u.email,
@@ -147,7 +161,9 @@ export default function SuperAdminUserManagementPage({
       companies_id: u.companies_id?.toString() ?? (initialCompanyIds[0]?.toString() ?? ''),
       company_ids: initialCompanyIds,
       multi_company_agreement: isMulti,
-      divisions_id: u.divisions_id?.toString() ?? '',
+      divisions_id: u.divisions_id?.toString() ?? (initialDivisionIds[0]?.toString() ?? ''),
+      division_ids: initialDivisionIds,
+      multi_division_agreement: isMultiDiv,
       permission_matrix: u.permission_matrix ?? { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} },
     });
     setModalOpen(true);
@@ -643,21 +659,124 @@ export default function SuperAdminUserManagementPage({
         {showDivision && (
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-[12px] font-bold text-neutral-700">Division</label>
+              <label className="block text-[12px] font-bold text-neutral-700">Division Assignment</label>
               <a href="/admin/divisions" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Divisions</a>
             </div>
-            <CustomSelect
-              value={data.divisions_id ?? ''}
-              onChange={val => setData('divisions_id', val)}
-              placeholder="No Division"
-              options={[
-                { value: '', label: 'No Division' },
-                ...divisions.map(d => ({
-                  value: d.id.toString(),
-                  label: d.divisi,
-                })),
-              ]}
-            />
+
+            <label className="flex items-center gap-2 mb-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allowMultiDivision}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setAllowMultiDivision(checked);
+                  setData((prev: any) => {
+                    let updatedDivIds = prev.division_ids || [];
+                    if (checked) {
+                      if (updatedDivIds.length === 0 && prev.divisions_id) {
+                        updatedDivIds = [Number(prev.divisions_id)];
+                      }
+                    } else {
+                      updatedDivIds = prev.division_ids && prev.division_ids.length > 0 ? [prev.division_ids[0]] : (prev.divisions_id ? [Number(prev.divisions_id)] : []);
+                    }
+                    return {
+                      ...prev,
+                      multi_division_agreement: checked && updatedDivIds.length > 1,
+                      division_ids: updatedDivIds,
+                      divisions_id: updatedDivIds.length > 0 ? updatedDivIds[0].toString() : prev.divisions_id,
+                    };
+                  });
+                }}
+                className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 accent-violet-600 cursor-pointer"
+              />
+              <span className="text-[12px] font-semibold text-neutral-700">Allow Multiple Divisions (SuperAdmin Access)</span>
+            </label>
+
+            {!allowMultiDivision ? (
+              <CustomSelect
+                value={data.divisions_id ?? ''}
+                onChange={val => {
+                  setData((prev: any) => ({
+                    ...prev,
+                    divisions_id: val,
+                    division_ids: val ? [Number(val)] : [],
+                    multi_division_agreement: false,
+                  }));
+                }}
+                placeholder="No Division"
+                options={[
+                  { value: '', label: 'No Division' },
+                  ...divisions.map(d => ({
+                    value: d.id.toString(),
+                    label: d.divisi,
+                  })),
+                ]}
+              />
+            ) : (
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold text-neutral-500 mb-1">
+                  Select Divisions ({data.division_ids.length} selected)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-neutral-50/60 rounded-xl border border-neutral-200">
+                  {divisions.map((d) => {
+                    const isChecked = data.division_ids.includes(d.id);
+                    const isPrimary = data.divisions_id === d.id.toString() || (!data.divisions_id && data.division_ids[0] === d.id);
+                    return (
+                      <div
+                        key={d.id}
+                        onClick={() => {
+                          let updated = [...data.division_ids];
+                          if (isChecked) {
+                            updated = updated.filter(id => id !== d.id);
+                          } else {
+                            updated.push(d.id);
+                          }
+                          const newPrimary = isPrimary && !isChecked
+                            ? (updated[0]?.toString() ?? '')
+                            : (data.divisions_id || (updated[0]?.toString() ?? ''));
+
+                          setData((prev: any) => ({
+                            ...prev,
+                            division_ids: updated,
+                            divisions_id: newPrimary,
+                            multi_division_agreement: updated.length > 1,
+                          }));
+                        }}
+                        className={`flex items-center justify-between p-2.5 rounded-lg border transition-all cursor-pointer select-none ${
+                          isChecked ? 'bg-violet-50 border-violet-200 text-violet-900 shadow-2xs' : 'bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-700'
+                        }`}
+                      >
+                        <label className="flex items-center gap-2.5 cursor-pointer flex-1">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {}}
+                            className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 accent-violet-600 cursor-pointer"
+                          />
+                          <span className="text-[13px] font-semibold">{d.divisi}</span>
+                        </label>
+                        {isChecked && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setData((prev: any) => ({ ...prev, divisions_id: d.id.toString() }));
+                            }}
+                            title={isPrimary ? 'Primary Division' : 'Click to set as Primary'}
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full cursor-pointer transition-transform active:scale-95 ${
+                              isPrimary ? 'bg-violet-600 text-white shadow-2xs' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+                            }`}
+                          >
+                            {isPrimary ? '★ Primary' : 'Set as Primary'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {errors.division_ids && <p className="text-red-500 text-[11px] mt-1">{errors.division_ids}</p>}
+                {errors.multi_division_agreement && <p className="text-red-500 text-[11px] mt-1">{errors.multi_division_agreement}</p>}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -984,7 +1103,21 @@ export default function SuperAdminUserManagementPage({
                             u.company ?? '—'
                           )}
                         </td>
-                        <td className="px-5 py-3 text-neutral-600">{u.division ?? '—'}</td>
+                        <td className="px-5 py-3 text-neutral-600">
+                          {u.divisions && u.divisions.length > 1 ? (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-semibold text-neutral-900">{u.divisions[0].name}</span>
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs"
+                                title={u.divisions.map(d => d.name).join(', ')}
+                              >
+                                +{u.divisions.length - 1} more
+                              </span>
+                            </div>
+                          ) : (
+                            u.division ?? '—'
+                          )}
+                        </td>
                         <td className="px-5 py-3 text-neutral-500 text-[12px]">{u.created_by}</td>
                         <td className="px-5 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">

@@ -1,7 +1,7 @@
 import { Calendar, Clock, TrendingUp, DollarSign, CheckCircle2, AlertTriangle, XCircle, Layers, ArrowUpRight, Users } from 'lucide-react';
 import { Link, usePage } from '@inertiajs/react';
 import { useState, useEffect, useMemo } from 'react';
-import { Project, PROJECT, scaleProjectTemplateDates } from '@/data/mockData';
+import { Project } from '@/data/mockData';
 import { StatusBadge, ProgressBar, formatRupiah, PageHeader, Card, KpiCard, formatDateDisplay, formatDivisionName } from '@/components/ui';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { recalculateProgress } from '@/utils/progressEngine';
@@ -16,29 +16,40 @@ export default function DashboardPage() {
 
   // Initialize with recalculated progress and schedule using the project from DB
   const [p, setP] = useState<Project>(() => {
-    const raw = project && project.mainJobs?.length
-      ? project
-      : scaleProjectTemplateDates(project || PROJECT, project?.startDate, project?.endDate);
-    const dbProject = { ...raw, weeklyData: raw.weeklyData?.length ? raw.weeklyData : PROJECT.weeklyData, budgetEntries: raw.budgetEntries?.length ? raw.budgetEntries : PROJECT.budgetEntries };
+    const raw = project || {
+      id: '',
+      name: '',
+      company: '',
+      projectManager: '',
+      startDate: '',
+      endDate: '',
+      status: 'Open',
+      overallProgress: 0,
+      hariKe: 0,
+      sisaHari: 0,
+      totalBudget: 0,
+      usedBudget: 0,
+      mainJobs: [],
+      weeklyData: [],
+      budgetEntries: [],
+    };
+    const dbProject = { ...raw, mainJobs: raw.mainJobs || [], weeklyData: raw.weeklyData || [], budgetEntries: raw.budgetEntries || [] };
     return recalculateWeeklyData(recalculateSchedule(recalculateProgress(dbProject)));
   });
 
   useEffect(() => {
     if (project) {
-      const raw = project.mainJobs?.length
-        ? project
-        : scaleProjectTemplateDates(project, project?.startDate, project?.endDate);
-      const dbProject = { ...raw, weeklyData: raw.weeklyData?.length ? raw.weeklyData : PROJECT.weeklyData, budgetEntries: raw.budgetEntries?.length ? raw.budgetEntries : PROJECT.budgetEntries };
+      const dbProject = { ...project, mainJobs: project.mainJobs || [], weeklyData: project.weeklyData || [], budgetEntries: project.budgetEntries || [] };
       setP(recalculateWeeklyData(recalculateSchedule(recalculateProgress(dbProject))));
     }
   }, [project]);
 
-  const usedBudget = p.budgetEntries?.reduce((a, b) => a + b.hargaTotal, 0) || p.usedBudget;
-  const budgetUsedPct = Math.round((usedBudget / p.totalBudget) * 100);
-  const remaining = p.totalBudget - usedBudget;
+  const usedBudget = p.budgetEntries?.reduce((a, b) => a + (b.hargaTotal || 0), 0) || p.usedBudget || 0;
+  const budgetUsedPct = (p.totalBudget && p.totalBudget > 0) ? Math.round((usedBudget / p.totalBudget) * 100) : 0;
+  const remaining = (p.totalBudget || 0) - usedBudget;
   const budgetHealth = budgetUsedPct <= 80 ? 'good' : budgetUsedPct <= 95 ? 'warning' : 'critical';
 
-  const statusCounts = p.mainJobs.reduce((acc, mj) => {
+  const statusCounts = (p.mainJobs || []).reduce((acc, mj) => {
     acc[mj.status] = (acc[mj.status] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);

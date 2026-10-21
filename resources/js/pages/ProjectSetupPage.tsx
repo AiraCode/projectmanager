@@ -13,7 +13,6 @@ import {
     CheckCircle2,
     AlertTriangle,
     ArrowLeft,
-    Sparkles,
     Shield,
     Clock,
     HelpCircle,
@@ -2646,12 +2645,12 @@ export default function ProjectSetupPage() {
                                                 </span>
                                             </label>
                                             {isFirstTask ? (
-                                                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                                    <Sparkles size={11} /> First Task
+                                                <span className="text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                                    First Task
                                                 </span>
                                             ) : (
-                                                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                                    <Lock size={11} /> Locked
+                                                <span className="text-[10.5px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                                    Locked
                                                 </span>
                                             )}
                                         </div>
