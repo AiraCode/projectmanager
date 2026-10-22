@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FolderOpen, CheckSquare, GitBranch,
   BarChart2, TrendingUp, DollarSign, Menu, X, LogOut,
   ChevronRight, ChevronLeft, Shield, User, Users, Clock, CalendarDays,
-  Lock, Layers, Key
+  Lock, Layers, Key, Network
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button, formatDivisionName } from '@/components/ui';
@@ -117,6 +117,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     { to: '/projectlistpage',   icon: FolderOpen,      label: 'Project List' },
     { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/projectdetailpage', icon: FolderOpen,      label: 'Project Detail' },
+    { to: '/working-tree',      icon: Network,         label: 'Working Tree' },
     { to: '/tasks',             icon: CheckSquare,     label: 'Tasks' },
     { to: '/today-tasks',       icon: CalendarDays,    label: "Today's Tasks" },
     { to: '/timeline',          icon: GitBranch,       label: 'Timeline' },
@@ -141,7 +142,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
         if (isPIC) return hasMultipleProjects;
       }
       if (item.to === '/dashboard' && (isAdminUtama || isPIC)) return true;
-      if (item.to === '/projectdetailpage' && (isAdminUtama || isPIC || isWorker)) return true;
+      if ((item.to === '/projectdetailpage' || item.to === '/working-tree') && (isAdminUtama || isPIC || isWorker)) return true;
       if (item.to === '/division-progress' && (isAdminProgres || isAdminUtama || isPIC)) return true;
       if (item.to === '/today-tasks') return true;
       return user.permission_matrix?.sidebar?.includes(item.label) ?? false;

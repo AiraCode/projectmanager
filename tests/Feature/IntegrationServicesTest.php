@@ -319,4 +319,166 @@ class IntegrationServicesTest extends TestCase
         $this->assertGreaterThan(0, $delayedResult['metrics']['overdue_tasks_count']);
         $this->assertGreaterThan(0, $delayedResult['metrics']['delay_days']);
     }
+
+    /**
+     * 8. Test Task Evidence Upload is Recorded in Activity Log.
+     */
+    public function test_task_evidence_upload_recorded_in_activity_log(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $superadmin = User::where('email', 'superadmin@provis.id')->first();
+        $project = Project::first();
+        $this->assertNotNull($project, 'Project must exist');
+
+        $task = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($project) {
+            $q->where('projects_id', $project->id);
+        })->first();
+        $this->assertNotNull($task, 'Task must exist');
+
+        $evidenceFile = \Illuminate\Http\UploadedFile::fake()->create('laporan_progress_12.pdf', 100, 'application/pdf');
+
+        $response = $this->actingAs($superadmin)->post("/projects/{$project->id}/tasks/{$task->id}/toggle", [
+            'progress' => 50,
+            'evidence_file' => $evidenceFile,
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $latestLog = \App\Models\ProjectActivityLog::where('project_id', $project->id)
+            ->where('wbs_id', $task->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($latestLog, 'Activity log must be recorded');
+        $this->assertStringContainsString('laporan_progress_12.pdf', $latestLog->description);
+        $this->assertStringContainsString('Input evidence:', $latestLog->description);
+        $this->assertIsArray($latestLog->metadata);
+        $this->assertContains('laporan_progress_12.pdf', $latestLog->metadata['evidence_files'] ?? []);
+    }
+
+    /**
+     * 10. Test PIC creates private project with selected members and MasterTemplate.
+     */
+    public function test_pic_create_private_project_with_members_and_master_template(): void
+    {
+        $pic = User::whereHas('role', fn($q) => $q->where('name', 'pic'))->first();
+        $this->assertNotNull($pic, 'PIC user must exist');
+
+        // Grant multiple projects and private projects permission
+        $pic->permission_matrix = [
+            'features' => [
+                'projects' => ['Multiple Projects', 'Private Projects'],
+            ],
+            'sidebar' => ['*'],
+        ];
+        $pic->save();
+
+        $worker = User::whereHas('role', fn($q) => $q->where('name', 'worker'))->first();
+        $this->assertNotNull($worker, 'Worker user must exist');
+
+        $response = $this->actingAs($pic)->post('/projectlistpage', [
+            'title' => 'Special Secret Project ' . uniqid(),
+            'company_id' => $pic->companies_id,
+            'start' => '2026-11-01',
+            'end' => '2027-11-01',
+            'is_private' => true,
+            'member_ids' => [$worker->id],
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $createdProject = Project::where('project_manager', $pic->id)->latest('id')->first();
+        $this->assertNotNull($createdProject);
+        $this->assertTrue((bool) $createdProject->is_private);
+
+        // Verify PIC is registered as PM member
+        $pmMember = ProjectMember::where('project_id', $createdProject->id)->where('user_id', $pic->id)->first();
+        $this->assertNotNull($pmMember);
+        $this->assertEquals('pm', $pmMember->project_role);
+
+        // Verify Worker is registered as worker member
+        $workerMember = ProjectMember::where('project_id', $createdProject->id)->where('user_id', $worker->id)->first();
+        $this->assertNotNull($workerMember);
+        $this->assertEquals('worker', $workerMember->project_role);
+
+        // Verify Master Template initialized MainWbs
+        $mainWbsCount = \App\Models\MainWbs::where('projects_id', $createdProject->id)->count();
+        $this->assertGreaterThan(0, $mainWbsCount);
+
+        // Verify Working Tree endpoint returns member data
+        $treeRes = $this->actingAs($pic)->get("/projects/{$createdProject->id}/working-tree", ['Accept' => 'application/json']);
+        $treeRes->assertStatus(200);
+        $treeData = $treeRes->json();
+        $this->assertNotEmpty($treeData['members']);
+        $this->assertEquals(2, count($treeData['members']));
+    }
+
+    /**
+     * 11. Test SuperAdmin WBS Template CRUD and Reordering.
+     */
+    public function test_superadmin_template_management_crud_and_reorder(): void
+    {
+        $superadmin = User::where('email', 'superadmin@provis.id')->first();
+        $this->assertNotNull($superadmin);
+
+        // 1. Create Template
+        $resCreate = $this->actingAs($superadmin)->post('/admin/templates', [
+            'name' => 'Template Uji Coba ' . uniqid(),
+            'description' => 'Test template for automated verification',
+            'is_default' => false,
+        ]);
+        $resCreate->assertSessionHasNoErrors();
+
+        $template = \App\Models\ProjectTemplate::latest('id')->first();
+        $this->assertNotNull($template);
+
+        // 2. Add Main Tasks
+        $this->actingAs($superadmin)->post("/admin/templates/{$template->id}/main-tasks", [
+            'code' => '1',
+            'name' => 'Fase Perencanaan',
+            'weight' => 50,
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($superadmin)->post("/admin/templates/{$template->id}/main-tasks", [
+            'code' => '2',
+            'name' => 'Fase Eksekusi',
+            'weight' => 50,
+        ])->assertSessionHasNoErrors();
+
+        $mainTasks = \App\Models\TemplateMainTask::where('template_id', $template->id)->orderBy('order_index')->get();
+        $this->assertCount(2, $mainTasks);
+
+        // 3. Reorder Main Tasks
+        $reorderRes = $this->actingAs($superadmin)->post("/admin/templates/{$template->id}/main-tasks/reorder", [
+            'ordered_ids' => [$mainTasks[1]->id, $mainTasks[0]->id],
+        ]);
+        $reorderRes->assertSessionHasNoErrors();
+
+        $this->assertEquals(1, \App\Models\TemplateMainTask::find($mainTasks[1]->id)->order_index);
+        $this->assertEquals(2, \App\Models\TemplateMainTask::find($mainTasks[0]->id)->order_index);
+
+        // 4. Set as default
+        $this->actingAs($superadmin)->post("/admin/templates/{$template->id}/set-default")->assertSessionHasNoErrors();
+        $this->assertTrue((bool) \App\Models\ProjectTemplate::find($template->id)->is_default);
+    }
+
+    /**
+     * 12. Test Project List Page loads cleanly for PIC and provides availableUsers without column errors.
+     */
+    public function test_project_list_page_loads_cleanly_for_pic_with_available_users(): void
+    {
+        $pic = User::whereHas('role', fn($q) => $q->where('name', 'pic'))->first();
+        $this->assertNotNull($pic);
+
+        $response = $this->actingAs($pic)->get('/projectlistpage');
+        $response->assertStatus(200);
+        $response->assertInertia(fn($page) => $page
+            ->component('ProjectListPage')
+            ->has('projects')
+            ->has('availableUsers')
+            ->has('templates')
+        );
+    }
 }
+

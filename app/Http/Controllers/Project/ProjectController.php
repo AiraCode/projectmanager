@@ -88,12 +88,20 @@ class ProjectController extends Controller
                     $q->where(function ($sub) use ($companyIds) {
                         $sub->whereIn('companies_id', $companyIds)
                             ->where('is_private', false);
-                    })->orWhere('project_manager', $user->id);
+                    })->orWhere('project_manager', $user->id)
+                      ->orWhereHas('projectMembers', function ($pm) use ($user) {
+                          $pm->where('user_id', $user->id);
+                      });
                 });
             } else {
-                $picProjectsQuery->where('project_manager', $user->id);
+                $picProjectsQuery->where(function ($q) use ($user) {
+                    $q->where('project_manager', $user->id)
+                      ->orWhereHas('projectMembers', function ($pm) use ($user) {
+                          $pm->where('user_id', $user->id);
+                      });
+                });
             }
-            $picProjects = $picProjectsQuery->with(['manager', 'company'])->get();
+            $picProjects = $picProjectsQuery->with(['manager', 'company', 'projectMembers.user.role', 'projectMembers.division'])->get();
 
             $companies = Company::select('id', 'name')->get();
             $mappedProjects = $picProjects->map(function (Project $p) {
@@ -109,22 +117,82 @@ class ProjectController extends Controller
                     'end_date'         => $p->end ? $p->end->format('Y-m-d') : null,
                     'setup_status'     => $p->setup_status ?? 'active',
                     'is_private'       => (bool) $p->is_private,
+                    'members'          => $p->projectMembers->map(function ($m) {
+                        return [
+                            'id'             => $m->id,
+                            'user_id'        => $m->user_id,
+                            'name'           => $m->user?->username ?? $m->user?->name,
+                            'email'          => $m->user?->email,
+                            'system_role'    => $m->user?->role?->name ?? 'worker',
+                            'project_role'   => $m->project_role,
+                            'position_title' => $m->position_title ?? 'Member',
+                            'division_name'  => $m->division?->divisi ?? 'General',
+                        ];
+                    }),
                 ];
             });
 
+            // Users available for private project assignment
+            $availableUsers = User::where('id', '!=', $user->id)
+                ->where(function ($q) use ($companyIds, $user) {
+                    if (!empty($companyIds)) {
+                        $q->whereHas('companies', fn($c) => $c->whereIn('companies.id', $companyIds))
+                          ->orWhereIn('companies_id', $companyIds);
+                    } elseif ($user->companies_id) {
+                        $q->where('companies_id', $user->companies_id);
+                    }
+                })
+                ->with(['role', 'division'])
+                ->select('id', 'username', 'email', 'roles_id', 'divisions_id', 'companies_id')
+                ->get()
+                ->map(fn($u) => [
+                    'id' => $u->id,
+                    'name' => $u->username,
+                    'email' => $u->email,
+                    'role' => $u->role?->name ?? 'worker',
+                    'division' => $u->division?->divisi ?? 'General',
+                    'company_id' => $u->companies_id,
+                ]);
+
+            if ($availableUsers->isEmpty()) {
+                $availableUsers = User::where('id', '!=', $user->id)
+                    ->with(['role', 'division'])
+                    ->select('id', 'username', 'email', 'roles_id', 'divisions_id', 'companies_id')
+                    ->limit(50)
+                    ->get()
+                    ->map(fn($u) => [
+                        'id' => $u->id,
+                        'name' => $u->username,
+                        'email' => $u->email,
+                        'role' => $u->role?->name ?? 'worker',
+                        'division' => $u->division?->divisi ?? 'General',
+                        'company_id' => $u->companies_id,
+                    ]);
+            }
+
+            $availableTemplates = \App\Models\ProjectTemplate::select('id', 'name', 'is_default')->get();
+
             return Inertia::render('ProjectListPage', [
-                'projects'  => $mappedProjects,
-                'canCreate' => $hasMultiple,
-                'companies' => $companies,
-                'userRole'  => $role,
+                'projects'          => $mappedProjects,
+                'canCreate'         => $hasMultiple,
+                'companies'         => $companies,
+                'userRole'          => $role,
                 'hasPrivateFeature' => $hasPrivate,
+                'availableUsers'    => $availableUsers,
+                'templates'         => $availableTemplates,
             ]);
         }
 
         // Admin Utama & Admin Progres: show all projects as cards
-        $query = Project::with(['manager', 'company']);
+        $query = Project::with(['manager', 'company', 'projectMembers.user.role', 'projectMembers.division']);
         if ($role !== 'SuperAdmin') {
-            $query->where('is_private', false);
+            $query->where(function ($q) use ($user) {
+                $q->where('is_private', false)
+                  ->orWhere('project_manager', $user->id)
+                  ->orWhereHas('projectMembers', function ($pm) use ($user) {
+                      $pm->where('user_id', $user->id);
+                  });
+            });
         }
         $projects = $query->get()->map(function (Project $p) {
             return [
@@ -482,6 +550,9 @@ class ProjectController extends Controller
             'start'        => 'required|date',
             'end'          => 'required|date|after:start',
             'is_private'   => 'nullable|boolean',
+            'template_id'  => 'nullable|integer|exists:project_templates,id',
+            'member_ids'   => 'nullable|array',
+            'member_ids.*' => 'integer|exists:users,id',
         ]);
 
         // Assign company to PIC if not yet set
@@ -520,8 +591,37 @@ class ProjectController extends Controller
             'is_private'      => $validated['is_private'] ?? false,
         ]);
 
-        // Automatically initialize standard 17 Main Jobs WBS template for new project
-        app(ProjectTemplateService::class)->applyTemplateToProject($project);
+        // Automatically initialize standard WBS template from MasterTemplateService
+        app(\App\Services\MasterTemplateService::class)->applyTemplateToProject($project, $validated['template_id'] ?? null);
+
+        // Assign PIC as Project Manager in project members
+        \App\Models\ProjectMember::updateOrCreate(
+            ['project_id' => $project->id, 'user_id' => $user->id],
+            [
+                'project_role' => 'pm',
+                'position_title' => 'Project Manager',
+                'division_id' => $user->divisions_id,
+                'assigned_by' => $user->id,
+            ]
+        );
+
+        // Assign selected members if provided (especially for private projects)
+        if (!empty($validated['member_ids'])) {
+            foreach ($validated['member_ids'] as $mUserId) {
+                if ($mUserId != $user->id) {
+                    $mUser = User::find($mUserId);
+                    \App\Models\ProjectMember::updateOrCreate(
+                        ['project_id' => $project->id, 'user_id' => $mUserId],
+                        [
+                            'project_role' => 'worker',
+                            'position_title' => 'Member',
+                            'division_id' => $mUser?->divisions_id,
+                            'assigned_by' => $user->id,
+                        ]
+                    );
+                }
+            }
+        }
 
         AuditLog::record('CREATE_PROJECT', "PIC {$user->username} created project '{$project->title}' (ID #{$project->id}).");
 
@@ -1954,6 +2054,7 @@ class ProjectController extends Controller
             }
         }
 
+        $newUploadedFileNames = [];
         if ($hasFiles) {
             $existingPaths = [];
             $existingNames = [];
@@ -1971,7 +2072,9 @@ class ProjectController extends Controller
             foreach ($uploadedFiles as $f) {
                 $path = $f->store('evidence', 'public');
                 $existingPaths[] = $path;
-                $existingNames[] = $f->getClientOriginalName();
+                $originalName = $f->getClientOriginalName();
+                $existingNames[] = $originalName;
+                $newUploadedFileNames[] = $originalName;
             }
 
             $task->evidence_path = json_encode(array_values($existingPaths));
@@ -1980,40 +2083,65 @@ class ProjectController extends Controller
 
         $task->save();
 
+        $evidenceCount = count($newUploadedFileNames);
+        $evidenceNamesStr = implode(', ', $newUploadedFileNames);
+
+        // Build precise activity log and audit trail messages
+        if ($task->is_completed) {
+            $activityAction = 'task_completed';
+            $activityDesc = "Task '{$task->name}' ditandai selesai (100%)." . ($evidenceCount > 0 ? " Input evidence: {$evidenceNamesStr}." : "");
+            $auditDesc = "User {$user->username} menandai task '{$task->name}' selesai (100%) pada proyek '{$project->title}'." . ($evidenceCount > 0 ? " Mengunggah evidence: {$evidenceNamesStr}." : "");
+        } elseif ($evidenceCount > 0 && $oldProgress == $task->progress) {
+            $activityAction = 'evidence_uploaded';
+            $activityDesc = "Task '{$task->name}' input evidence: {$evidenceNamesStr}.";
+            $auditDesc = "User {$user->username} mengunggah evidence: {$evidenceNamesStr} pada task '{$task->name}' (proyek '{$project->title}').";
+        } else {
+            $activityAction = 'task_updated';
+            $activityDesc = "Task '{$task->name}' diupdate progressnya dari {$oldProgress}% menjadi {$task->progress}%." . ($evidenceCount > 0 ? " Input evidence: {$evidenceNamesStr}." : "");
+            $auditDesc = "User {$user->username} mengubah progress task '{$task->name}' dari {$oldProgress}% ke {$task->progress}% pada proyek '{$project->title}'." . ($evidenceCount > 0 ? " Mengunggah evidence: {$evidenceNamesStr}." : "");
+        }
+
+        $activityMetadata = [
+            'task_name' => $task->name,
+            'old_progress' => $oldProgress,
+            'new_progress' => $task->progress,
+            'delta' => $task->progress - $oldProgress,
+            'division' => $task->division?->divisi ?? 'General',
+        ];
+        if ($evidenceCount > 0) {
+            $activityMetadata['evidence_files'] = $newUploadedFileNames;
+            $activityMetadata['evidence_count'] = $evidenceCount;
+        }
+
         // Log the activity with structured before/after diff
         ProjectActivityLog::create([
             'project_id' => $projectId,
             'wbs_id' => $task->id,
             'user_id' => Auth::id(),
-            'action' => $task->is_completed ? 'task_completed' : 'task_updated',
+            'action' => $activityAction,
             'old_progress' => $oldProgress,
             'new_progress' => $task->progress,
-            'description' => $task->is_completed
-                ? "Task '{$task->name}' ditandai selesai (100%)."
-                : "Task '{$task->name}' diupdate progressnya dari {$oldProgress}% menjadi {$task->progress}%.",
-            'metadata' => [
-                'task_name' => $task->name,
-                'old_progress' => $oldProgress,
-                'new_progress' => $task->progress,
-                'delta' => $task->progress - $oldProgress,
-                'division' => $task->division?->divisi ?? 'General',
-            ],
+            'description' => $activityDesc,
+            'metadata' => $activityMetadata,
         ]);
 
+        $auditMetadata = [
+            'task_id' => $task->id,
+            'project_id' => $projectId,
+            'old_progress' => $oldProgress,
+            'new_progress' => $task->progress,
+            'delta' => $task->progress - $oldProgress,
+        ];
+        if ($evidenceCount > 0) {
+            $auditMetadata['evidence_files'] = $newUploadedFileNames;
+        }
+
         AuditLog::record(
-            $task->is_completed ? 'TASK_COMPLETED' : 'TASK_PROGRESS_UPDATED',
-            $task->is_completed
-                ? "User {$user->username} menandai task '{$task->name}' selesai (100%) pada proyek '{$project->title}'."
-                : "User {$user->username} mengubah progress task '{$task->name}' dari {$oldProgress}% ke {$task->progress}% pada proyek '{$project->title}'.",
+            $task->is_completed ? 'TASK_COMPLETED' : ($evidenceCount > 0 && $oldProgress == $task->progress ? 'TASK_EVIDENCE_UPLOADED' : 'TASK_PROGRESS_UPDATED'),
+            $auditDesc,
             $user->id,
             $request->ip(),
-            [
-                'task_id' => $task->id,
-                'project_id' => $projectId,
-                'old_progress' => $oldProgress,
-                'new_progress' => $task->progress,
-                'delta' => $task->progress - $oldProgress,
-            ]
+            $auditMetadata
         );
 
         app(ProgressService::class)->recalculateProjectProgress($projectId);
@@ -2029,7 +2157,8 @@ class ProjectController extends Controller
     {
         if (!$user || !$project) return false;
         if ($project->project_manager == $user->id) return true;
-        if ($user->hasCompany($project->companies_id)) return true;
+        if ($project->projectMembers()->where('user_id', $user->id)->exists()) return true;
+        if (!$project->is_private && $user->hasCompany($project->companies_id)) return true;
         return false;
     }
 
@@ -2303,6 +2432,7 @@ class ProjectController extends Controller
                     'user'        => $log->user?->username ?? $log->user?->name ?? 'System',
                     'wbs_name'    => $log->wbs?->name ?? '-',
                     'created_at'  => $log->created_at?->format('Y-m-d H:i:s'),
+                    'metadata'    => $log->metadata,
                 ];
             })->toArray();
 
@@ -2783,20 +2913,71 @@ class ProjectController extends Controller
             });
 
         // Get company users available for assignment
-        $availableUsers = User::whereHas('companies', function ($q) use ($project) {
-            $q->where('companies.id', $project->companies_id);
-        })->orWhere('companies_id', $project->companies_id)
-          ->select('id', 'username', 'email', 'roles_id', 'divisions_id')
-          ->with(['role', 'division'])
-          ->get();
+        $availableUsers = User::where(function ($q) use ($project) {
+            $q->whereHas('companies', function ($sq) use ($project) {
+                $sq->where('companies.id', $project->companies_id);
+            })->orWhere('companies_id', $project->companies_id);
+        })
+        ->select('id', 'username', 'email', 'roles_id', 'divisions_id')
+        ->with(['role', 'division'])
+        ->get()
+        ->map(fn($u) => [
+            'id' => $u->id,
+            'username' => $u->username,
+            'email' => $u->email,
+            'system_role' => $u->role?->name ?? 'worker',
+            'default_division_id' => $u->divisions_id,
+            'default_division' => $u->division?->divisi ?? 'General',
+        ]);
 
         $divisions = Division::all(['id', 'divisi']);
 
-        return Inertia::render('ProjectDetailPage', [
+        // Gather project task breakdown per division
+        $tasksByDivision = [];
+        $allTasks = [];
+        foreach ($project->mainWbs ?? [] as $mainWbs) {
+            foreach ($mainWbs->subWbs ?? [] as $subWbs) {
+                foreach ($subWbs->wbsTasks ?? [] as $task) {
+                    $divName = $task->division?->divisi ?? 'General';
+                    $divId = $task->divisions_id;
+                    $item = [
+                        'id' => $task->id,
+                        'name' => $task->name,
+                        'status' => $task->status,
+                        'progress' => (int) $task->progress,
+                        'weight' => (float) $task->weight,
+                        'divisions_id' => $divId,
+                        'division_name' => $divName,
+                        'main_name' => $mainWbs->name,
+                        'sub_name' => $subWbs->name,
+                    ];
+                    $allTasks[] = $item;
+                    if (!isset($tasksByDivision[$divName])) {
+                        $tasksByDivision[$divName] = [];
+                    }
+                    $tasksByDivision[$divName][] = $item;
+                }
+            }
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'project' => $this->transformProjectData($project),
+                'members' => $members,
+                'availableUsers' => $availableUsers,
+                'divisions' => $divisions,
+                'tasksByDivision' => $tasksByDivision,
+                'allTasks' => $allTasks,
+            ]);
+        }
+
+        return Inertia::render('WorkingTreePage', [
             'project' => $this->transformProjectData($project),
             'members' => $members,
             'availableUsers' => $availableUsers,
             'divisions' => $divisions,
+            'tasksByDivision' => $tasksByDivision,
+            'allTasks' => $allTasks,
             'userRole' => Auth::user()?->role?->name ?? '',
         ]);
     }

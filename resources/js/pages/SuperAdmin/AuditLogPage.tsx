@@ -21,6 +21,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
+  Code2,
+  LayoutGrid,
+  Paperclip,
+  TrendingUp,
+  Layers,
 } from 'lucide-react';
 
 interface AuditEntry {
@@ -146,6 +151,8 @@ export default function AuditLogPage({
   const [selectedLog, setSelectedLog] = useState<AuditEntry | null>(null);
   const [copiedDescription, setCopiedDescription] = useState(false);
   const [copiedJson, setCopiedJson] = useState(false);
+  const [metadataTab, setMetadataTab] = useState<'structured' | 'json'>('structured');
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -218,6 +225,50 @@ export default function AuditLogPage({
     } catch {
       // Fallback
     }
+  };
+
+  const copySpecificValue = async (text: string, keyName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(keyName);
+      setTimeout(() => setCopiedKey(null), 1800);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const activeMetadata = useMemo(() => {
+    if (!selectedLog?.metadata) return null;
+    let obj: any = selectedLog.metadata;
+    if (typeof obj === 'string') {
+      try {
+        obj = JSON.parse(obj);
+      } catch {
+        return { raw: obj };
+      }
+    }
+    return typeof obj === 'object' && obj !== null && Object.keys(obj).length > 0 ? obj : null;
+  }, [selectedLog]);
+
+  const highlightJson = (json: string) => {
+    return json.replace(
+      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\\-]?\d+)?)/g,
+      (match) => {
+        let cls = 'text-amber-400 font-semibold';
+        if (/^"/.test(match)) {
+          if (/:$/.test(match)) {
+            cls = 'text-sky-300 font-bold';
+          } else {
+            cls = 'text-emerald-300';
+          }
+        } else if (/true|false/.test(match)) {
+          cls = 'text-rose-400 font-bold';
+        } else if (/null/.test(match)) {
+          cls = 'text-neutral-400 italic';
+        }
+        return `<span class="${cls}">${match}</span>`;
+      }
+    );
   };
 
   const filteredActionTypes = useMemo(() => {
@@ -853,20 +904,54 @@ export default function AuditLogPage({
             </div>
 
             {/* Context / Metadata */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[11.5px] font-bold text-neutral-700 uppercase tracking-wider">
-                  Associated Metadata Payload
-                </label>
-                {selectedLog.metadata &&
-                  typeof selectedLog.metadata === 'object' &&
-                  Object.keys(selectedLog.metadata).length > 0 && (
+            <div className="space-y-2 pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-[11.5px] font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers size={13} className="text-violet-600" />
+                    <span>Associated Metadata Payload</span>
+                  </label>
+                  {activeMetadata && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 font-bold border border-violet-200">
+                      {Object.keys(activeMetadata).length} attributes
+                    </span>
+                  )}
+                </div>
+
+                {activeMetadata && (
+                  <div className="flex items-center gap-2">
+                    {/* Switch between Structured and Raw JSON */}
+                    <div className="inline-flex p-0.5 bg-neutral-100 rounded-lg border border-neutral-200 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setMetadataTab('structured')}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                          metadataTab === 'structured'
+                            ? 'bg-white text-violet-700 shadow-2xs font-bold'
+                            : 'text-neutral-500 hover:text-neutral-800'
+                        }`}
+                      >
+                        <LayoutGrid size={11} />
+                        <span>Structured</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMetadataTab('json')}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                          metadataTab === 'json'
+                            ? 'bg-white text-violet-700 shadow-2xs font-bold'
+                            : 'text-neutral-500 hover:text-neutral-800'
+                        }`}
+                      >
+                        <Code2 size={11} />
+                        <span>Raw JSON</span>
+                      </button>
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() =>
-                        copyToClipboard(JSON.stringify(selectedLog.metadata, null, 2), 'json')
-                      }
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-600 hover:text-violet-800 transition-colors"
+                      onClick={() => copyToClipboard(JSON.stringify(activeMetadata, null, 2), 'json')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-neutral-600 hover:text-violet-700 hover:bg-neutral-100 border border-neutral-200 transition-colors cursor-pointer"
                     >
                       {copiedJson ? (
                         <>
@@ -880,35 +965,174 @@ export default function AuditLogPage({
                         </>
                       )}
                     </button>
-                  )}
+                  </div>
+                )}
               </div>
 
-              {selectedLog.metadata &&
-              typeof selectedLog.metadata === 'object' &&
-              Object.keys(selectedLog.metadata).length > 0 ? (
-                <div className="space-y-2">
-                  {/* Key-Value Summary Badges */}
-                  <div className="flex flex-wrap gap-2 p-3 bg-neutral-50 rounded-xl border border-neutral-200">
-                    {Object.entries(selectedLog.metadata).map(([key, val]) => (
-                      <div
-                        key={key}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-neutral-200 text-[11px]"
-                      >
-                        <span className="font-semibold text-neutral-600 font-mono">{key}:</span>
-                        <span className="font-bold text-neutral-900 font-mono">
-                          {typeof val === 'object' ? JSON.stringify(val) : String(val)}
-                        </span>
+              {activeMetadata ? (
+                metadataTab === 'structured' ? (
+                  <div className="space-y-2.5">
+                    {/* Progress Transition Card */}
+                    {(activeMetadata.old_progress !== undefined || activeMetadata.new_progress !== undefined) && (
+                      <div className="p-3 rounded-xl bg-gradient-to-r from-violet-50/80 via-indigo-50/50 to-white border border-violet-200/70 flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600">
+                            Task Progress Transition
+                          </span>
+                          <div className="flex items-center gap-2 text-[14px] font-extrabold text-neutral-800 font-mono">
+                            <span className="text-neutral-500">{activeMetadata.old_progress ?? 0}%</span>
+                            <span className="text-violet-400">→</span>
+                            <span className="text-violet-700">{activeMetadata.new_progress ?? 0}%</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono border ${
+                              (activeMetadata.delta ?? 0) > 0
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : (activeMetadata.delta ?? 0) < 0
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-neutral-100 text-neutral-600 border-neutral-200'
+                            }`}
+                          >
+                            <TrendingUp size={12} />
+                            <span>
+                              {(activeMetadata.delta ?? 0) > 0
+                                ? `+${activeMetadata.delta}%`
+                                : `${activeMetadata.delta ?? 0}%`}
+                            </span>
+                          </span>
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                    )}
 
-                  {/* Raw JSON Code Viewer */}
-                  <pre className="p-3 bg-neutral-900 text-neutral-100 rounded-xl text-[11.5px] font-mono overflow-x-auto select-text max-h-48 scrollbar-thin">
-                    {JSON.stringify(selectedLog.metadata, null, 2)}
-                  </pre>
-                </div>
+                    {/* Evidence Verification Files Card */}
+                    {activeMetadata.evidence_files &&
+                      Array.isArray(activeMetadata.evidence_files) &&
+                      activeMetadata.evidence_files.length > 0 && (
+                        <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200/80 space-y-1.5 shadow-2xs">
+                          <div className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-blue-700">
+                            <Paperclip size={12} className="text-blue-600" />
+                            <span>Attached Verification Evidences ({activeMetadata.evidence_files.length})</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2 pt-0.5">
+                            {activeMetadata.evidence_files.map((fileName: string, idx: number) => {
+                              const ext = fileName.split('.').pop()?.toUpperCase() || 'FILE';
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white border border-blue-200 shadow-2xs text-[11px]"
+                                >
+                                  <FileText size={13} className="text-blue-600 shrink-0" />
+                                  <span className="font-semibold text-neutral-800 max-w-[220px] truncate" title={fileName}>
+                                    {fileName}
+                                  </span>
+                                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono">
+                                    {ext}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                    {/* Attributes Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Object.entries(activeMetadata).map(([key, val]) => {
+                        const isId = key.endsWith('_id') || key === 'id' || key === 'task_id' || key === 'project_id';
+                        const isCopied = copiedKey === key;
+                        const displayLabel = key.replace(/_/g, ' ');
+
+                        return (
+                          <div
+                            key={key}
+                            className="flex items-start justify-between gap-2 p-2.5 rounded-xl border border-neutral-200/80 bg-neutral-50/60 hover:bg-white hover:border-neutral-300 transition-all shadow-2xs"
+                          >
+                            <div className="space-y-1 min-w-0 flex-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 font-mono block">
+                                {displayLabel}
+                              </span>
+                              <div className="text-[12px] font-medium text-neutral-800">
+                                {typeof val === 'boolean' ? (
+                                  <span
+                                    className={`inline-flex px-2 py-0.5 rounded text-[10.5px] font-bold uppercase ${
+                                      val ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-200 text-neutral-700'
+                                    }`}
+                                  >
+                                    {val ? 'True' : 'False'}
+                                  </span>
+                                ) : Array.isArray(val) ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {val.map((item, i) => (
+                                      <span
+                                        key={i}
+                                        className="inline-flex px-1.5 py-0.5 rounded bg-white border border-neutral-200 text-[10.5px] font-mono text-neutral-700"
+                                      >
+                                        {typeof item === 'object' ? JSON.stringify(item) : String(item)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : typeof val === 'object' && val !== null ? (
+                                  <pre className="text-[10.5px] font-mono text-neutral-700 bg-white p-1.5 rounded border border-neutral-200 overflow-x-auto max-h-24">
+                                    {JSON.stringify(val, null, 2)}
+                                  </pre>
+                                ) : (
+                                  <span
+                                    className={
+                                      isId
+                                        ? 'font-mono font-semibold text-neutral-900 bg-white px-2 py-0.5 rounded border border-neutral-200 text-[11px] inline-block shadow-2xs'
+                                        : typeof val === 'number'
+                                        ? 'font-mono font-bold text-violet-700'
+                                        : 'font-semibold text-neutral-800'
+                                    }
+                                  >
+                                    {String(val)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Copy button for primitive values */}
+                            {val !== null && typeof val !== 'object' && (
+                              <button
+                                type="button"
+                                onClick={() => copySpecificValue(String(val), key)}
+                                title={`Copy ${displayLabel}`}
+                                className="p-1 rounded text-neutral-400 hover:text-violet-600 hover:bg-violet-50 transition-colors shrink-0 cursor-pointer"
+                              >
+                                {isCopied ? (
+                                  <Check size={12} className="text-emerald-600" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  /* Raw JSON Code Viewer with syntax highlighting */
+                  <div className="rounded-xl overflow-hidden border border-slate-800 shadow-md">
+                    <div className="bg-slate-950 px-3.5 py-2 flex items-center justify-between border-b border-slate-800 text-[11px] text-slate-400 font-mono">
+                      <div className="flex items-center gap-1.5">
+                        <Code2 size={12} className="text-violet-400" />
+                        <span>payload.json</span>
+                      </div>
+                      <span>{Object.keys(activeMetadata).length} properties</span>
+                    </div>
+                    <pre
+                      className="p-3.5 bg-slate-900 text-slate-100 text-[11.5px] font-mono overflow-x-auto select-text max-h-56 scrollbar-thin leading-relaxed"
+                      dangerouslySetInnerHTML={{
+                        __html: highlightJson(JSON.stringify(activeMetadata, null, 2)),
+                      }}
+                    />
+                  </div>
+                )
               ) : (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-[12px] text-neutral-500">
+                <div className="flex items-center gap-2 p-3.5 rounded-xl bg-neutral-50 border border-neutral-200 text-[12px] text-neutral-500">
                   <Info size={14} className="text-neutral-400 shrink-0" />
                   <span>No additional metadata payload was recorded for this activity.</span>
                 </div>

@@ -1,7 +1,21 @@
-import { useState, useId } from 'react';
+import { useState, useId, useMemo } from 'react';
 import { usePage, Link, router } from '@inertiajs/react';
-import { Calendar, FolderOpen, Plus, ShieldAlert, Settings, Lock } from 'lucide-react';
+import {
+  Calendar, FolderOpen, Plus, ShieldAlert, Settings, Lock,
+  Users, Search, Trash2, UserPlus, X, Network, ExternalLink
+} from 'lucide-react';
 import { PageHeader, Button, Modal, formatDateDisplay } from '@/components/ui';
+
+interface ProjectMemberItem {
+  id: number;
+  user_id: number;
+  name: string;
+  email: string;
+  system_role: string;
+  project_role: string;
+  position_title: string;
+  division_name: string;
+}
 
 interface Project {
   id: number;
@@ -15,6 +29,7 @@ interface Project {
   start_date: string | null;
   end_date: string | null;
   is_private: boolean;
+  members?: ProjectMemberItem[];
 }
 
 interface CompanyItem {
@@ -22,8 +37,31 @@ interface CompanyItem {
   name: string;
 }
 
+interface AvailableUserItem {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  division: string;
+  company_id: number | null;
+}
+
+interface TemplateItem {
+  id: number;
+  name: string;
+  is_default: boolean;
+}
+
 export default function ProjectListPage() {
-  const { projects = [], canCreate = false, companies = [], auth, hasPrivateFeature = false } = usePage().props as any;
+  const {
+    projects = [],
+    canCreate = false,
+    companies = [],
+    auth,
+    hasPrivateFeature = false,
+    availableUsers = [],
+    templates = [],
+  } = usePage().props as any;
   const role = auth?.user?.role ?? '';
   const isAdminProgres = role === 'admin_progres';
   const isAdminUtama   = role === 'admin_utama';
@@ -38,9 +76,29 @@ export default function ProjectListPage() {
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10));
   const [isPrivate, setIsPrivate] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
+    const def = templates.find((t: any) => t.is_default);
+    return def ? String(def.id) : (templates[0]?.id ? String(templates[0].id) : '');
+  });
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [settingsProject, setSettingsProject] = useState<Project | null>(null);
+  const [settingsUserToAdd, setSettingsUserToAdd] = useState<string>('');
+
+  const filteredAvailableUsers = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    return availableUsers.filter((u: AvailableUserItem) => {
+      if (!q) return true;
+      return (
+        (u.name && u.name.toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q)) ||
+        (u.division && u.division.toLowerCase().includes(q)) ||
+        (u.role && u.role.toLowerCase().includes(q))
+      );
+    });
+  }, [availableUsers, memberSearch]);
 
   const handleCreateProject = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,6 +122,8 @@ export default function ProjectListPage() {
       start: startDate,
       end: endDate,
       is_private: isPrivate,
+      template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
+      member_ids: isPrivate ? selectedMemberIds : [],
     }, {
       onError: (errors) => {
         setErrorMsg(Object.values(errors)[0] as string || 'Failed to create project.');
@@ -237,14 +297,14 @@ function getProjectTitleClasses(title: string) {
       {/* Project Settings Modal */}
       {settingsProject && (
         <Modal
-          title="Project Settings"
+          title="Project Settings & Access"
           onClose={() => setSettingsProject(null)}
-          size="sm"
+          size="md"
         >
           <div className="space-y-4">
             <div>
               <h4 className="text-[14px] font-bold text-neutral-800 mb-1">{settingsProject.name}</h4>
-              <p className="text-[12px] text-neutral-500">Configure access and visibility settings for this project.</p>
+              <p className="text-[12px] text-neutral-500">Configure access, privacy, and team members for this project.</p>
             </div>
             
             <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl space-y-3">
@@ -254,6 +314,11 @@ function getProjectTitleClasses(title: string) {
                     <ShieldAlert size={15} className="text-amber-500" />
                     Private Project
                   </h5>
+                  <p className="text-[11.5px] text-neutral-500 mt-0.5">
+                    {settingsProject.is_private
+                      ? 'Only explicitly assigned members and you can see this project.'
+                      : 'Public to all users in this company.'}
+                  </p>
                 </div>
                 
                 {/* Switch Toggle */}
@@ -272,6 +337,131 @@ function getProjectTitleClasses(title: string) {
                 </button>
               </div>
             </div>
+
+            {/* Direct Member Management for Private Project */}
+            {settingsProject.is_private && (
+              <div className="space-y-3 pt-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="text-[13px] font-bold text-neutral-800 flex items-center gap-1.5">
+                      <Users size={15} className="text-brand" />
+                      Private Project Members ({(settingsProject.members || []).length})
+                    </h5>
+                    <p className="text-[11.5px] text-neutral-500">
+                      Add or remove individuals granted access by name.
+                    </p>
+                  </div>
+                  <Link
+                    href={`/working-tree?project_id=${settingsProject.id}`}
+                    className="inline-flex items-center gap-1 text-[11.5px] font-bold text-brand hover:underline"
+                  >
+                    Working Tree Structure <ExternalLink size={12} />
+                  </Link>
+                </div>
+
+                {/* Add new member row */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={settingsUserToAdd}
+                    onChange={e => setSettingsUserToAdd(e.target.value)}
+                    className="flex-1 px-3 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] bg-white outline-none focus:border-brand"
+                  >
+                    <option value="">-- Add Team Member by Name --</option>
+                    {availableUsers
+                      .filter((u: any) => !(settingsProject.members || []).some((m: any) => m.user_id === u.id))
+                      .map((u: any) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role} - {u.division})
+                        </option>
+                      ))}
+                  </select>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!settingsUserToAdd}
+                    onClick={() => {
+                      if (!settingsUserToAdd) return;
+                      router.post(`/projects/${settingsProject.id}/members`, {
+                        user_id: Number(settingsUserToAdd),
+                        project_role: 'worker',
+                        position_title: 'Member',
+                      }, {
+                        preserveScroll: true,
+                        onSuccess: () => {
+                          const addedUser = availableUsers.find((u: any) => u.id === Number(settingsUserToAdd));
+                          if (addedUser) {
+                            const newMembers = [
+                              ...(settingsProject.members || []),
+                              {
+                                id: Date.now(),
+                                user_id: addedUser.id,
+                                name: addedUser.name,
+                                email: addedUser.email,
+                                system_role: addedUser.role,
+                                project_role: 'worker',
+                                position_title: 'Member',
+                                division_name: addedUser.division,
+                              }
+                            ];
+                            setSettingsProject({ ...settingsProject, members: newMembers });
+                          }
+                          setSettingsUserToAdd('');
+                        }
+                      });
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+
+                {/* Current Members List */}
+                <div className="max-h-44 overflow-y-auto divide-y divide-neutral-200/60 border border-neutral-200 rounded-lg bg-white">
+                  {(!settingsProject.members || settingsProject.members.length === 0) ? (
+                    <div className="p-3 text-center text-[12px] text-neutral-400">
+                      No members assigned yet. Use the dropdown above to add members.
+                    </div>
+                  ) : (
+                    settingsProject.members.map((m: any) => (
+                      <div key={m.id || m.user_id} className="flex items-center justify-between p-2.5 hover:bg-neutral-50 text-[12px]">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-6 h-6 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold text-[10px]">
+                            {(m.name || 'M').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-bold text-neutral-800 truncate block">{m.name}</span>
+                            <span className="text-[11px] text-neutral-400 truncate block">{m.email}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+                            {m.division_name || 'General'}
+                          </span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-brand/10 text-brand uppercase">
+                            {m.project_role || 'worker'}
+                          </span>
+                          <button
+                            type="button"
+                            title="Remove Member"
+                            onClick={() => {
+                              router.delete(`/projects/${settingsProject.id}/members/${m.id}`, {
+                                preserveScroll: true,
+                                onSuccess: () => {
+                                  const updated = (settingsProject.members || []).filter((mem: any) => mem.id !== m.id);
+                                  setSettingsProject({ ...settingsProject, members: updated });
+                                }
+                              });
+                            }}
+                            className="p-1 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </Modal>
       )}
@@ -349,6 +539,26 @@ function getProjectTitleClasses(title: string) {
               )}
             </div>
 
+            {/* Template Selection */}
+            {templates && templates.length > 0 && (
+              <div>
+                <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                  Initial WBS Template
+                </label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={e => setSelectedTemplateId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
+                >
+                  {templates.map((t: any) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} {t.is_default ? '★ (Default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
@@ -396,18 +606,125 @@ function getProjectTitleClasses(title: string) {
             )}
 
             {hasPrivateFeature && (
-              <label className="flex items-center gap-2 mt-4 p-3 border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50">
-                <input 
-                  type="checkbox" 
-                  checked={isPrivate} 
-                  onChange={e => setIsPrivate(e.target.checked)} 
-                  className="rounded text-brand focus:ring-brand"
-                />
-                <div className="flex items-center gap-1.5 text-[13px] font-semibold text-neutral-800">
-                  <ShieldAlert size={15} className="text-amber-500" />
-                  Make this project Private
-                </div>
-              </label>
+              <div className="space-y-3 pt-1">
+                <label className="flex items-center gap-2 p-3 border border-neutral-200 rounded-xl cursor-pointer hover:bg-neutral-50 transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={isPrivate} 
+                    onChange={e => {
+                      setIsPrivate(e.target.checked);
+                      if (!e.target.checked) setSelectedMemberIds([]);
+                    }} 
+                    className="rounded text-brand focus:ring-brand"
+                  />
+                  <div className="flex items-center gap-1.5 text-[13px] font-semibold text-neutral-800">
+                    <ShieldAlert size={15} className="text-amber-500" />
+                    Make this project Private
+                  </div>
+                </label>
+
+                {isPrivate && (
+                  <div className="p-3.5 bg-neutral-50/80 rounded-xl border border-neutral-200 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[12.5px] font-bold text-neutral-800 flex items-center gap-1.5">
+                          <Users size={14} className="text-brand" />
+                          Select Private Project Members
+                        </div>
+                        <p className="text-[11.5px] text-neutral-500">
+                          Choose team members who are granted access to this private project by name.
+                        </p>
+                      </div>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand/10 text-brand">
+                        {selectedMemberIds.length} selected
+                      </span>
+                    </div>
+
+                    {/* Member search bar */}
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                      <input
+                        type="text"
+                        value={memberSearch}
+                        onChange={e => setMemberSearch(e.target.value)}
+                        placeholder="Search member by name or email..."
+                        className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-neutral-200 text-[12px] bg-white outline-none focus:border-brand"
+                      />
+                    </div>
+
+                    {/* Quick selection buttons */}
+                    <div className="flex items-center justify-between text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMemberIds(filteredAvailableUsers.map((u: any) => u.id))}
+                        className="text-brand font-semibold hover:underline"
+                      >
+                        Select All Filtered
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMemberIds([])}
+                        className="text-neutral-500 hover:text-neutral-700 hover:underline"
+                      >
+                        Clear Selection
+                      </button>
+                    </div>
+
+                    {/* Member Selection list */}
+                    <div className="max-h-48 overflow-y-auto divide-y divide-neutral-200/60 border border-neutral-200 rounded-lg bg-white">
+                      {filteredAvailableUsers.length === 0 ? (
+                        <div className="p-4 text-center text-[12px] text-neutral-400">
+                          No matching team members found.
+                        </div>
+                      ) : (
+                        filteredAvailableUsers.map((u: any) => {
+                          const isSelected = selectedMemberIds.includes(u.id);
+                          return (
+                            <label
+                              key={u.id}
+                              className={`flex items-center justify-between p-2.5 cursor-pointer hover:bg-neutral-50 transition-colors ${
+                                isSelected ? 'bg-blue-50/50' : ''
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setSelectedMemberIds(prev =>
+                                      isSelected ? prev.filter(id => id !== u.id) : [...prev, u.id]
+                                    );
+                                  }}
+                                  className="rounded text-brand focus:ring-brand"
+                                />
+                                <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center font-bold text-[10px] flex-shrink-0">
+                                  {(u.name || u.username || 'U').slice(0, 2).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[12.5px] font-bold text-neutral-800 truncate">
+                                    {u.name || u.username}
+                                  </div>
+                                  <div className="text-[11px] text-neutral-400 truncate">
+                                    {u.email}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-600">
+                                  {u.division || 'General'}
+                                </span>
+                                <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md bg-brand/10 text-brand">
+                                  {u.role || 'worker'}
+                                </span>
+                              </div>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
 

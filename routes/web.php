@@ -158,6 +158,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects/{id}/tasks/{taskId}/activity-logs', [ProjectController::class, 'getTaskActivityLogs'])->name('projects.tasks.activity-logs');
 
     // ── BE-06: Working Tree Structure & Project User Assignment ──
+    Route::get('/working-tree', [ProjectController::class, 'workingTree'])->name('projects.working-tree.page');
     Route::get('/projects/{id}/working-tree', [ProjectController::class, 'workingTree'])->name('projects.working-tree');
     Route::post('/projects/{id}/members', [ProjectController::class, 'assignProjectMember'])->name('projects.members.assign');
     Route::delete('/projects/{id}/members/{memberId}', [ProjectController::class, 'removeProjectMember'])->name('projects.members.remove');

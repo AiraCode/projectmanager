@@ -32,10 +32,13 @@ class TemplateController extends Controller
         $templates = ProjectTemplate::withCount(['mainTasks'])->with(['creator'])->latest()->get();
 
         $selectedId = $request->query('id', $templates->firstWhere('is_default', true)?->id ?? $templates->first()?->id);
-        $selectedTemplate = null;
+        $divisions = \App\Models\Division::orderBy('divisi')->get(['id', 'divisi']);
 
         if ($selectedId) {
             $selectedTemplate = ProjectTemplate::with([
+                'mainTasks' => function ($q) {
+                    $q->orderBy('order_index')->orderBy('id');
+                },
                 'mainTasks.subTasks' => function ($q) {
                     $q->orderBy('order_index')->orderBy('id');
                 }
@@ -46,12 +49,14 @@ class TemplateController extends Controller
             return response()->json([
                 'templates' => $templates,
                 'selectedTemplate' => $selectedTemplate,
+                'divisions' => $divisions,
             ]);
         }
 
         return Inertia::render('SuperAdmin/TemplateManagementPage', [
             'templates' => $templates,
             'selectedTemplate' => $selectedTemplate,
+            'divisions' => $divisions,
         ]);
     }
 

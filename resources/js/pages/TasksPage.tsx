@@ -33,6 +33,7 @@ import {
     GripVertical,
     History,
     Scale,
+    Users,
 } from "lucide-react";
 import {
     Project,
@@ -1435,6 +1436,12 @@ export default function TasksPage() {
                                     className="inline-flex items-center justify-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors h-[34px] flex-shrink-0"
                                 >
                                     <Link2 size={14} /> Manage Predecessors
+                                </Link>
+                                <Link
+                                    href={`/working-tree?project_id=${projectData.id}`}
+                                    className="inline-flex items-center justify-center gap-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 border border-blue-200 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors h-[34px] flex-shrink-0"
+                                >
+                                    <Users size={14} /> Working Tree Structure
                                 </Link>
                             </>
                         )}
@@ -3560,6 +3567,20 @@ function TaskProgressHistoryModal({
                                     <p className="text-neutral-700 text-[11.5px] leading-relaxed pl-6.5">
                                         {log.description}
                                     </p>
+
+                                    {log.metadata?.evidence_files && Array.isArray(log.metadata.evidence_files) && log.metadata.evidence_files.length > 0 && (
+                                        <div className="pl-6.5 pt-0.5 flex flex-wrap gap-1.5">
+                                            {log.metadata.evidence_files.map((file: string, idx: number) => (
+                                                <span
+                                                    key={idx}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 text-[10.5px] font-medium"
+                                                >
+                                                    <Paperclip size={10} className="text-blue-500" />
+                                                    <span className="truncate max-w-[220px]" title={file}>{file}</span>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
