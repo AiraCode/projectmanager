@@ -47,7 +47,7 @@ class SuperAdminController extends Controller
                 'action'      => $log->action,
                 'description' => $log->description,
                 'ip_address'  => $log->ip_address,
-                'created_at'  => $log->created_at?->diffForHumans(),
+                'created_at'  => $log->created_at?->timezone('Asia/Jakarta')->diffForHumans(),
             ]);
 
         return Inertia::render('SuperAdmin/DashboardPage', [
@@ -86,7 +86,7 @@ class SuperAdminController extends Controller
             'description' => $log->description,
             'ip_address'  => $log->ip_address,
             'metadata'    => $log->metadata,
-            'created_at'  => $log->created_at?->format('d M Y, H:i:s'),
+            'created_at'  => $log->created_at?->timezone('Asia/Jakarta')->format('d M Y, H:i:s'),
         ]);
 
         $actionTypes = AuditLog::select('action')->distinct()->pluck('action');

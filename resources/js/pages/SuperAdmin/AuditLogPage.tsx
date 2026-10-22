@@ -573,7 +573,7 @@ export default function AuditLogPage({
                     #ID
                   </th>
                   <th className="px-4 py-3 text-[11px] font-bold text-neutral-500 uppercase tracking-wider w-36">
-                    Date & Time
+                    Timestamp (GMT+7)
                   </th>
                   <th className="px-4 py-3 text-[11px] font-bold text-neutral-500 uppercase tracking-wider w-48">
                     Actor
@@ -608,13 +608,15 @@ export default function AuditLogPage({
                         #{log.id}
                       </td>
 
-                      {/* Timestamp (DD-MM-YYYY) */}
+                      {/* Timestamp (DD-MM-YYYY, GMT+7) */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex flex-col">
                           <span className="font-semibold text-neutral-800 text-[12px] tracking-tight">
                             {ts.date}
                           </span>
-                          <span className="text-[10.5px] text-neutral-400 font-mono">{ts.time}</span>
+                          <span className="text-[10.5px] text-neutral-400 font-mono">
+                            {ts.time} <span className="text-[9.5px] text-neutral-400 font-sans font-medium">WIB</span>
+                          </span>
                         </div>
                       </td>
 
@@ -795,7 +797,7 @@ export default function AuditLogPage({
           isOpen={true}
           onClose={() => setSelectedLog(null)}
           title="Audit Trail Record Details"
-          subtitle={`Audit ID #${selectedLog.id} • ${parseAuditTimestamp(selectedLog.created_at).full}`}
+          subtitle={`Audit ID #${selectedLog.id} • ${parseAuditTimestamp(selectedLog.created_at).full} (GMT+7)`}
           size="lg"
         >
           <div className="space-y-4">
@@ -882,10 +884,13 @@ export default function AuditLogPage({
               {/* Exact Timestamp */}
               <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/50 space-y-1">
                 <div className="text-[10.5px] font-bold uppercase tracking-wider text-neutral-400">
-                  Recorded Timestamp (DD-MM-YYYY)
+                  Recorded Timestamp (GMT+7 / WIB)
                 </div>
-                <div className="font-semibold text-neutral-800 text-[12px]">
-                  {parseAuditTimestamp(selectedLog.created_at).full}
+                <div className="font-semibold text-neutral-800 text-[12px] flex items-center gap-1.5">
+                  <span>{parseAuditTimestamp(selectedLog.created_at).full}</span>
+                  <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-mono">
+                    WIB
+                  </span>
                 </div>
               </div>
 

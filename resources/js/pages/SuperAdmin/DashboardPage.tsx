@@ -154,7 +154,7 @@ export default function SuperAdminDashboardPage({
                   <tr style={{ background: 'rgba(139,92,246,0.03)' }}>
                     <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Actor</th>
                     <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Action</th>
-                    <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Timestamp</th>
+                    <th className="px-4 py-2.5 font-semibold text-neutral-500 text-[11px] uppercase tracking-wider">Timestamp (GMT+7)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-50">
