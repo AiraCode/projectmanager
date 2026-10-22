@@ -274,8 +274,7 @@ export default function TemplateManagementPage({ templates, selectedTemplate, di
           <div className="absolute right-0 top-0 translate-x-8 -translate-y-8 w-64 h-64 bg-violet-500/10 rounded-full blur-3xl pointer-events-none" />
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/20 border border-violet-400/30 text-violet-200 text-[11px] font-bold tracking-wider uppercase mb-2">
-                <FolderTree size={13} className="text-violet-300" />
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-violet-500/20 border border-violet-400/30 text-violet-200 text-[11px] font-bold tracking-wider uppercase mb-2">
                 Dynamic WBS Template Management
               </div>
               <h1 className="text-2xl font-black tracking-tight text-white">
@@ -290,7 +289,6 @@ export default function TemplateManagementPage({ templates, selectedTemplate, di
               <Button
                 variant="primary"
                 size="md"
-                icon={Plus}
                 onClick={() => {
                   setTemplateForm({ name: '', description: '', is_default: false });
                   setShowCreateTemplateModal(true);
@@ -324,15 +322,13 @@ export default function TemplateManagementPage({ templates, selectedTemplate, di
             </div>
 
             {selectedTemplate?.is_default ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[12px] font-bold">
-                <CheckCircle2 size={14} className="text-emerald-600" />
+              <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[12px] font-bold">
                 Default Master Template
               </span>
             ) : selectedTemplate ? (
               <Button
                 variant="outline"
                 size="sm"
-                icon={Star}
                 loading={submitting}
                 onClick={() => handleSetDefault(selectedTemplate.id)}
                 className="text-amber-700 hover:bg-amber-50 border-amber-200 font-semibold"
@@ -347,7 +343,6 @@ export default function TemplateManagementPage({ templates, selectedTemplate, di
               <Button
                 variant="outline"
                 size="sm"
-                icon={Edit2}
                 onClick={() => {
                   setTemplateForm({
                     name: selectedTemplate.name,
@@ -364,7 +359,6 @@ export default function TemplateManagementPage({ templates, selectedTemplate, di
                 <Button
                   variant="outline"
                   size="sm"
-                  icon={Trash2}
                   onClick={() => setShowDeleteTemplateModal(true)}
                   className="text-red-600 hover:bg-red-50 border-red-200"
                 >
@@ -417,12 +411,11 @@ export default function TemplateManagementPage({ templates, selectedTemplate, di
           <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs overflow-hidden">
             <div className="p-4 sm:p-5 border-b border-neutral-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-neutral-50/60">
               <div>
-                <h2 className="text-[16px] font-black text-neutral-900 flex items-center gap-2">
-                  <FolderTree size={18} className="text-violet-600" />
+                <h2 className="text-[16px] font-black text-neutral-900">
                   WBS Structure & Tasks Hierarchy
                 </h2>
                 <p className="text-[12px] text-neutral-500 mt-0.5">
-                  Drag handles or use position arrows to reorder. Click "+ Add Sub Task" to add tasks under any main job.
+                  Drag handles or use position arrows to reorder. Click "Add Sub Task" to add tasks under any main job.
                 </p>
               </div>
 
@@ -448,7 +441,6 @@ export default function TemplateManagementPage({ templates, selectedTemplate, di
                 <Button
                   variant="primary"
                   size="sm"
-                  icon={Plus}
                   onClick={() => {
                     setMainForm({
                       code: String((selectedTemplate.main_tasks?.length || 0) + 1),
@@ -559,7 +551,6 @@ export default function TemplateManagementPage({ templates, selectedTemplate, di
                           <Button
                             variant="ghost"
                             size="sm"
-                            icon={Plus}
                             onClick={() => {
                               setSubForm({
                                 code: `${mainTask.code || mIdx + 1}.${subTasks.length + 1}`,
@@ -616,7 +607,7 @@ export default function TemplateManagementPage({ templates, selectedTemplate, di
                         <div className="bg-neutral-50/70 border-t border-neutral-200/70 pl-8 sm:pl-14 pr-4 py-3 space-y-2">
                           {subTasks.length === 0 ? (
                             <div className="py-3 px-4 rounded-xl border border-dashed border-neutral-300 text-center text-[12.5px] text-neutral-400 bg-white">
-                              No Sub Tasks in this section. Click "+ Add Sub Task" above to add one.
+                              No Sub Tasks in this section. Click "Add Sub Task" above to add one.
                             </div>
                           ) : (
                             subTasks.map((sub, sIdx) => (

@@ -5,7 +5,6 @@ import {
   FolderOpen, Search, Filter, ChevronDown, ChevronRight, CheckSquare,
   Clock, ArrowRight, ExternalLink, AlertCircle, Sparkles, Building2, UserCheck
 } from 'lucide-react';
-import Layout from '@/components/Layout';
 import { PageHeader, Button, Modal, Card, formatDivisionName } from '@/components/ui';
 
 interface MemberItem {
@@ -253,40 +252,37 @@ export default function WorkingTreePage({
   };
 
   return (
-    <Layout>
-      <div className="space-y-6">
-        {/* Page Header */}
-        <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-indigo-950 rounded-2xl p-6 text-white shadow-lg border border-blue-800/40 relative overflow-hidden">
-          <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200 text-[11px] font-bold tracking-wider uppercase mb-2">
-                <Users size={13} className="text-blue-300" />
-                Working Tree Structure & Project Role Management
-              </div>
-              <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-                {project?.name || 'Project Working Tree'}
-              </h1>
-              <p className="text-[13px] text-blue-200/80 max-w-2xl mt-1">
-                Fluid project organization: appoint who is who (Project Manager, Co-PM, Lead, Worker), customize their division in this project, and assign who handles which tasks.
-              </p>
+    <div className="p-4 sm:p-6 lg:p-7 max-w-7xl mx-auto space-y-6">
+      {/* Page Header */}
+      <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-indigo-950 rounded-2xl p-6 text-white shadow-lg border border-blue-800/40 relative overflow-hidden">
+        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200 text-[11px] font-bold tracking-wider uppercase mb-2">
+              Working Tree Structure & Project Role Management
             </div>
-
-            {isPIC && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="primary"
-                  size="md"
-                  icon={UserPlus}
-                  onClick={() => setShowAssignModal(true)}
-                  className="bg-blue-600 hover:bg-blue-500 border-none shadow-md font-semibold"
-                >
-                  Assign Member
-                </Button>
-              </div>
-            )}
+            <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              {project?.name || 'Project Working Tree'}
+            </h1>
+            <p className="text-[13px] text-blue-200/80 max-w-2xl mt-1">
+              Fluid project organization: appoint who is who (Project Manager, Co-PM, Lead, Worker), customize their division in this project, and assign who handles which tasks.
+            </p>
           </div>
+
+          {isPIC && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => setShowAssignModal(true)}
+                className="bg-blue-600 hover:bg-blue-500 border-none shadow-md font-semibold"
+              >
+                Assign Member
+              </Button>
+            </div>
+          )}
         </div>
+      </div>
 
         {/* Stats Summary KPIs */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
@@ -336,25 +332,23 @@ export default function WorkingTreePage({
           <button
             type="button"
             onClick={() => setActiveTab('team')}
-            className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
               activeTab === 'team'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
             }`}
           >
-            <Users size={15} />
             Team Hierarchy & Members ({members.length})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('task_divisions')}
-            className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
               activeTab === 'task_divisions'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
             }`}
           >
-            <Layers size={15} />
             Division Task Assignments ({allTasks.length} Tasks)
           </button>
         </div>
@@ -478,10 +472,7 @@ export default function WorkingTreePage({
                             onClick={() => toggleMemberTasks(m.id)}
                             className="w-full flex items-center justify-between text-[12px] font-bold text-neutral-700 p-2 rounded-lg hover:bg-neutral-50 transition-colors"
                           >
-                            <span className="flex items-center gap-1.5">
-                              <CheckSquare size={13} className="text-blue-600" />
-                              Division Tasks ({memberTasks.length})
-                            </span>
+                            <span>Division Tasks ({memberTasks.length})</span>
                             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           </button>
 
@@ -510,11 +501,10 @@ export default function WorkingTreePage({
 
                       {/* Actions */}
                       {isPIC && (
-                        <div className="pt-3 border-t border-neutral-100 flex items-center justify-end gap-2 mt-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            icon={Edit3}
+                        <div className="pt-3 border-t border-neutral-100 flex items-center justify-end gap-1.5 mt-2">
+                          <button
+                            type="button"
+                            title="Edit Role & Division"
                             onClick={() => {
                               setEditForm({
                                 project_role: m.project_role,
@@ -523,20 +513,19 @@ export default function WorkingTreePage({
                               });
                               setEditMemberModal({ open: true, member: m });
                             }}
-                            className="text-[12px]"
+                            className="p-1.5 rounded-lg text-neutral-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                           >
-                            Edit Role
-                          </Button>
+                            <Edit3 size={15} />
+                          </button>
 
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            icon={Trash2}
+                          <button
+                            type="button"
+                            title="Remove Member"
                             onClick={() => setRemoveMemberModal({ open: true, member: m })}
-                            className="text-neutral-400 hover:text-red-600 hover:bg-red-50 text-[12px]"
+                            className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                           >
-                            Remove
-                          </Button>
+                            <Trash2 size={15} />
+                          </button>
                         </div>
                       )}
                     </div>
@@ -553,8 +542,7 @@ export default function WorkingTreePage({
             <div className="bg-white rounded-2xl border border-neutral-200 p-5 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <div>
-                  <h3 className="text-[16px] font-black text-neutral-900 flex items-center gap-2">
-                    <Layers size={18} className="text-blue-600" />
+                  <h3 className="text-[16px] font-black text-neutral-900">
                     Task Division Assignments
                   </h3>
                   <p className="text-[12.5px] text-neutral-500 mt-0.5">
@@ -564,9 +552,9 @@ export default function WorkingTreePage({
 
                 <Link
                   href={`/tasks?project_id=${project?.id}`}
-                  className="inline-flex items-center gap-1.5 text-[12.5px] font-bold text-blue-600 hover:underline"
+                  className="text-[12.5px] font-bold text-blue-600 hover:underline"
                 >
-                  Open Task Management <ArrowRight size={13} />
+                  Open Task Management
                 </Link>
               </div>
 
@@ -600,8 +588,7 @@ export default function WorkingTreePage({
                       </div>
 
                       <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className="px-3 py-1 rounded-lg bg-neutral-100 text-neutral-800 font-bold text-[12px] border border-neutral-200 flex items-center gap-1.5">
-                          <Briefcase size={12} className="text-neutral-500" />
+                        <span className="px-3 py-1 rounded-lg bg-neutral-100 text-neutral-800 font-bold text-[12px] border border-neutral-200">
                           {task.division_name || 'General'}
                         </span>
 
@@ -609,7 +596,6 @@ export default function WorkingTreePage({
                           <Button
                             variant="outline"
                             size="sm"
-                            icon={Edit3}
                             onClick={() => {
                               setTaskDivForm({
                                 divisions_id: task.divisions_id ? String(task.divisions_id) : '',
@@ -914,6 +900,5 @@ export default function WorkingTreePage({
           </Modal>
         )}
       </div>
-    </Layout>
   );
 }

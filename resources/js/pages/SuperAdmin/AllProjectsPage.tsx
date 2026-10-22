@@ -73,8 +73,6 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                 className={`px-3 py-1.5 text-[12px] font-semibold rounded-md transition-all capitalize ${
                   filterPrivate === f ? 'bg-white text-violet-700 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
                 }`}>
-                {f === 'private' && <Lock size={10} className="inline mr-1" />}
-                {f === 'public' && <Globe size={10} className="inline mr-1" />}
                 {f}
               </button>
             ))}

@@ -2893,6 +2893,19 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        // Auto-seed Project Manager if not yet in project_members
+        if ($project->project_manager) {
+            \App\Models\ProjectMember::firstOrCreate(
+                ['project_id' => $project->id, 'user_id' => $project->project_manager],
+                [
+                    'project_role' => 'pm',
+                    'position_title' => 'Project Manager',
+                    'division_id' => $project->manager?->divisions_id,
+                    'assigned_by' => $project->project_manager,
+                ]
+            );
+        }
+
         $members = \App\Models\ProjectMember::where('project_id', $project->id)
             ->with(['user.role', 'user.company', 'division', 'assigner'])
             ->get()

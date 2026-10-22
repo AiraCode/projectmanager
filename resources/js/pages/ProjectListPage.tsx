@@ -167,7 +167,6 @@ function getProjectTitleClasses(title: string) {
               <Button
                 variant="primary"
                 size="sm"
-                icon={Plus}
                 onClick={() => setShowCreateModal(true)}
               >
                 New Project
@@ -208,7 +207,6 @@ function getProjectTitleClasses(title: string) {
             <Button
               variant="primary"
               size="md"
-              icon={Plus}
               onClick={() => setShowCreateModal(true)}
             >
               Create New Project
@@ -471,7 +469,7 @@ function getProjectTitleClasses(title: string) {
         <Modal
           title="Create New Project (PIC)"
           onClose={() => setShowCreateModal(false)}
-          size="md"
+          maxWidth="max-w-2xl"
         >
           <form onSubmit={handleCreateProject} className="space-y-4">
             {errorMsg && (
@@ -606,74 +604,80 @@ function getProjectTitleClasses(title: string) {
             )}
 
             {hasPrivateFeature && (
-              <div className="space-y-3 pt-1">
-                <label className="flex items-center gap-2 p-3 border border-neutral-200 rounded-xl cursor-pointer hover:bg-neutral-50 transition-colors">
-                  <input 
-                    type="checkbox" 
-                    checked={isPrivate} 
-                    onChange={e => {
-                      setIsPrivate(e.target.checked);
-                      if (!e.target.checked) setSelectedMemberIds([]);
-                    }} 
-                    className="rounded text-brand focus:ring-brand"
-                  />
-                  <div className="flex items-center gap-1.5 text-[13px] font-semibold text-neutral-800">
-                    <ShieldAlert size={15} className="text-amber-500" />
-                    Make this project Private
-                  </div>
-                </label>
+              <div className="space-y-3 pt-2">
+                <div className="p-3.5 border border-neutral-200 rounded-xl bg-white hover:border-neutral-300 transition-colors">
+                  <label className="flex items-center justify-between cursor-pointer select-none">
+                    <div>
+                      <div className="text-[13px] font-bold text-neutral-800">
+                        Make this project Private
+                      </div>
+                      <p className="text-[11.5px] text-neutral-500 mt-0.5">
+                        Restricts project access to only selected team members.
+                      </p>
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      checked={isPrivate} 
+                      onChange={e => {
+                        setIsPrivate(e.target.checked);
+                        if (!e.target.checked) setSelectedMemberIds([]);
+                      }} 
+                      className="w-4 h-4 rounded text-brand focus:ring-brand cursor-pointer"
+                    />
+                  </label>
+                </div>
 
                 {isPrivate && (
-                  <div className="p-3.5 bg-neutral-50/80 rounded-xl border border-neutral-200 space-y-3">
+                  <div className="p-4 bg-neutral-50/80 rounded-xl border border-neutral-200/90 space-y-3">
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <div className="text-[12.5px] font-bold text-neutral-800 flex items-center gap-1.5">
-                          <Users size={14} className="text-brand" />
+                        <div className="text-[13px] font-bold text-neutral-900">
                           Select Private Project Members
                         </div>
-                        <p className="text-[11.5px] text-neutral-500">
-                          Choose team members who are granted access to this private project by name.
+                        <p className="text-[11.5px] text-neutral-500 mt-0.5">
+                          Choose team members who are granted access to this private project.
                         </p>
                       </div>
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand/10 text-brand">
+                      <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-brand/10 text-brand flex-shrink-0">
                         {selectedMemberIds.length} selected
                       </span>
                     </div>
 
-                    {/* Member search bar */}
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                      <input
-                        type="text"
-                        value={memberSearch}
-                        onChange={e => setMemberSearch(e.target.value)}
-                        placeholder="Search member by name or email..."
-                        className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-neutral-200 text-[12px] bg-white outline-none focus:border-brand"
-                      />
-                    </div>
+                    {/* Member search bar and quick actions */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div className="relative flex-1">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={memberSearch}
+                          onChange={e => setMemberSearch(e.target.value)}
+                          placeholder="Search members by name or email..."
+                          className="w-full pl-8 pr-3 py-2 rounded-lg border border-neutral-200 text-[12.5px] bg-white outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 transition-all"
+                        />
+                      </div>
 
-                    {/* Quick selection buttons */}
-                    <div className="flex items-center justify-between text-[11px]">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedMemberIds(filteredAvailableUsers.map((u: any) => u.id))}
-                        className="text-brand font-semibold hover:underline"
-                      >
-                        Select All Filtered
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedMemberIds([])}
-                        className="text-neutral-500 hover:text-neutral-700 hover:underline"
-                      >
-                        Clear Selection
-                      </button>
+                      <div className="flex items-center gap-2 text-[11.5px] flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMemberIds(filteredAvailableUsers.map((u: any) => u.id))}
+                          className="px-2.5 py-1.5 rounded-lg text-brand font-semibold hover:bg-brand/10 transition-colors"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMemberIds([])}
+                          className="px-2.5 py-1.5 rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200/60 transition-colors"
+                        >
+                          Clear
+                        </button>
+                      </div>
                     </div>
 
                     {/* Member Selection list */}
-                    <div className="max-h-48 overflow-y-auto divide-y divide-neutral-200/60 border border-neutral-200 rounded-lg bg-white">
+                    <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
                       {filteredAvailableUsers.length === 0 ? (
-                        <div className="p-4 text-center text-[12px] text-neutral-400">
+                        <div className="p-6 text-center text-[12.5px] text-neutral-400 bg-white rounded-xl border border-dashed border-neutral-200">
                           No matching team members found.
                         </div>
                       ) : (
@@ -682,11 +686,13 @@ function getProjectTitleClasses(title: string) {
                           return (
                             <label
                               key={u.id}
-                              className={`flex items-center justify-between p-2.5 cursor-pointer hover:bg-neutral-50 transition-colors ${
-                                isSelected ? 'bg-blue-50/50' : ''
+                              className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-blue-50/70 border-brand/40 shadow-xs'
+                                  : 'bg-white border-neutral-200/80 hover:bg-neutral-50 hover:border-neutral-300'
                               }`}
                             >
-                              <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex items-center gap-3 min-w-0">
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
@@ -695,25 +701,25 @@ function getProjectTitleClasses(title: string) {
                                       isSelected ? prev.filter(id => id !== u.id) : [...prev, u.id]
                                     );
                                   }}
-                                  className="rounded text-brand focus:ring-brand"
+                                  className="w-4 h-4 rounded text-brand focus:ring-brand cursor-pointer flex-shrink-0"
                                 />
-                                <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center font-bold text-[10px] flex-shrink-0">
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-[11px] flex-shrink-0 shadow-2xs">
                                   {(u.name || u.username || 'U').slice(0, 2).toUpperCase()}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-[12.5px] font-bold text-neutral-800 truncate">
+                                  <div className="text-[13px] font-bold text-neutral-900 truncate">
                                     {u.name || u.username}
                                   </div>
-                                  <div className="text-[11px] text-neutral-400 truncate">
+                                  <div className="text-[11.5px] text-neutral-400 truncate">
                                     {u.email}
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1.5 flex-shrink-0">
-                                <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-600">
+                              <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                                <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-600 border border-neutral-200/60">
                                   {u.division || 'General'}
                                 </span>
-                                <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md bg-brand/10 text-brand">
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-brand/10 text-brand border border-brand/20">
                                   {u.role || 'worker'}
                                 </span>
                               </div>
@@ -727,12 +733,11 @@ function getProjectTitleClasses(title: string) {
               </div>
             )}
 
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
+                size="md"
                 onClick={() => setShowCreateModal(false)}
                 disabled={submitting}
               >
@@ -741,7 +746,7 @@ function getProjectTitleClasses(title: string) {
               <Button
                 type="submit"
                 variant="primary"
-                size="sm"
+                size="md"
                 loading={submitting}
               >
                 Save & Open Project

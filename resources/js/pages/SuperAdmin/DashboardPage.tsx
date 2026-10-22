@@ -97,8 +97,7 @@ export default function SuperAdminDashboardPage({
           {/* Recent Users */}
           <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: 'rgba(139,92,246,0.1)', boxShadow: '0 1px 8px rgba(139,92,246,0.06)' }}>
             <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(139,92,246,0.08)' }}>
-              <div className="flex items-center gap-2.5">
-                <UserPlus size={16} style={{ color: '#7c3aed' }} />
+              <div>
                 <h2 className="font-bold text-[14px] text-neutral-900">Recently Created Users</h2>
               </div>
               <a href="/admin/users" className="text-[12px] font-semibold hover:underline" style={{ color: '#7c3aed' }}>
@@ -142,8 +141,7 @@ export default function SuperAdminDashboardPage({
           {/* Recent Audit Logs */}
           <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: 'rgba(139,92,246,0.1)', boxShadow: '0 1px 8px rgba(139,92,246,0.06)' }}>
             <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(139,92,246,0.08)' }}>
-              <div className="flex items-center gap-2.5">
-                <Clock size={16} style={{ color: '#7c3aed' }} />
+              <div>
                 <h2 className="font-bold text-[14px] text-neutral-900">Recent Activity Log</h2>
               </div>
               <a href="/admin/audit-log" className="text-[12px] font-semibold hover:underline" style={{ color: '#7c3aed' }}>

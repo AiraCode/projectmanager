@@ -310,9 +310,8 @@ export default function AuditLogPage({
           {hasActiveFilters && (
             <button
               onClick={handleResetFilters}
-              className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100/80 border border-violet-200 transition-colors"
+              className="self-start sm:self-auto inline-flex items-center px-3 py-1.5 rounded-xl text-[12px] font-semibold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100/80 border border-violet-200 transition-colors"
             >
-              <RotateCcw size={13} />
               Reset All Filters
             </button>
           )}
@@ -366,7 +365,6 @@ export default function AuditLogPage({
                 aria-haspopup="listbox"
               >
                 <div className="flex items-center gap-2 truncate">
-                  <Filter size={13} className={selectedAction ? 'text-violet-600' : 'text-neutral-400'} />
                   <span className="truncate">
                     {selectedAction ? selectedAction.replace(/_/g, ' ') : `All Activities (${actionTypes.length})`}
                   </span>
@@ -723,9 +721,8 @@ export default function AuditLogPage({
                           <button
                             type="button"
                             onClick={handleResetFilters}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-[12px] font-semibold transition-colors shadow-xs"
+                            className="inline-flex items-center px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-[12px] font-semibold transition-colors shadow-xs"
                           >
-                            <RotateCcw size={13} />
                             Reset Filters
                           </button>
                         )}

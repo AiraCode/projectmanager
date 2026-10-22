@@ -59,8 +59,7 @@ export default function AdminLoginPage() {
         {/* Middle: Hero text */}
         <div className="relative z-10 my-auto py-6">
           {/* Prominent Header Badge */}
-          <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-violet-500/10 border border-violet-400/30 backdrop-blur-md shadow-[0_0_20px_rgba(139,92,246,0.15)] mb-6 transition-all hover:bg-violet-500/15 hover:border-violet-400/50">
-            <Layers size={15} className="text-violet-400" />
+          <div className="inline-flex items-center px-4 py-2 rounded-full bg-violet-500/10 border border-violet-400/30 backdrop-blur-md shadow-[0_0_20px_rgba(139,92,246,0.15)] mb-6 transition-all hover:bg-violet-500/15 hover:border-violet-400/50">
             <span className="text-[12px] font-extrabold tracking-[0.16em] text-violet-300 uppercase">
               System Control Panel
             </span>
