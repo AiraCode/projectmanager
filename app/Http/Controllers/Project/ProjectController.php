@@ -1514,6 +1514,8 @@ class ProjectController extends Controller
             'sub_wbs_id'   => 'required|exists:sub_wbs,id',
             'name'         => 'required|string|max:255',
             'divisions_id' => 'nullable|exists:divisions,id',
+            'division_ids' => 'nullable|array',
+            'division_ids.*' => 'integer|exists:divisions,id',
             'duration'     => 'nullable|integer|min:1',
             'start'        => 'nullable|date',
             'end'          => 'nullable|date',
@@ -1554,7 +1556,11 @@ class ProjectController extends Controller
             return back()->withErrors(['end' => "End date Task ({$endDate->format('d/m/Y')}) tidak boleh melebihi batas waktu selesai Main Task ({$maxLimit->format('d/m/Y')})."]);
         }
 
-        $divisionId = $validated['divisions_id'] ?? $user->divisions_id ?? Division::first()?->id;
+        $divisionIds = !empty($validated['division_ids']) ? array_values(array_filter(array_map('intval', $validated['division_ids']))) : [];
+        if (empty($divisionIds) && !empty($validated['divisions_id'])) {
+            $divisionIds = [(int) $validated['divisions_id']];
+        }
+        $primaryDivisionId = !empty($divisionIds) ? $divisionIds[0] : ($validated['divisions_id'] ?? $user->divisions_id ?? Division::first()?->id);
 
         $primaryPredecessor = null;
         $primaryDepType = 'FS';
@@ -1579,7 +1585,7 @@ class ProjectController extends Controller
         $taskObj = Wbs::create([
             'id'           => 'st-' . uniqid(),
             'sub_wbs_id'   => $subWbs->id,
-            'divisions_id' => $divisionId,
+            'divisions_id' => $primaryDivisionId,
             'name'         => $validated['name'],
             'weight'       => 0, // Auto-calculated below by ProgressService
             'vendor'       => $validated['vendor'] ?? 'INTERNAL',
@@ -1594,6 +1600,12 @@ class ProjectController extends Controller
             'lead'         => $primaryLead,
             'requires_evidence' => $validated['requires_evidence'] ?? false,
         ]);
+
+        if (!empty($divisionIds)) {
+            $taskObj->divisions()->sync($divisionIds);
+        } elseif ($primaryDivisionId) {
+            $taskObj->divisions()->sync([(int) $primaryDivisionId]);
+        }
 
         $scheduler = app(DependencyScheduler::class);
         $hasDependencies = false;
@@ -1661,6 +1673,8 @@ class ProjectController extends Controller
             'name'              => 'required|string|max:255',
             'weight'            => 'nullable|numeric|min:0|max:100',
             'divisions_id'      => 'nullable|exists:divisions,id',
+            'division_ids'      => 'nullable|array',
+            'division_ids.*'    => 'integer|exists:divisions,id',
             'duration'          => 'nullable|integer|min:1',
             'start'             => 'nullable|date',
             'end'               => 'nullable|date',
@@ -1676,8 +1690,17 @@ class ProjectController extends Controller
         $oldPredecessorId  = $task->predecessor;
 
         $task->name = $validated['name'];
-        if (isset($validated['divisions_id'])) {
+        if (array_key_exists('division_ids', $validated)) {
+            $divIds = array_values(array_filter(array_map('intval', (array) $validated['division_ids'])));
+            $task->divisions()->sync($divIds);
+            $task->divisions_id = !empty($divIds) ? $divIds[0] : null;
+        } elseif (array_key_exists('divisions_id', $validated)) {
             $task->divisions_id = $validated['divisions_id'];
+            if ($validated['divisions_id']) {
+                $task->divisions()->sync([(int) $validated['divisions_id']]);
+            } else {
+                $task->divisions()->detach();
+            }
         }
 
         $newStart = !empty($validated['start'])
@@ -2294,11 +2317,23 @@ class ProjectController extends Controller
                 $tasksQuery = $smj->wbsTasks;
                 if (!empty($workerDivisionIds)) {
                     $tasksQuery = $tasksQuery->filter(function ($t) use ($workerDivisionIds) {
-                        return in_array((int) $t->divisions_id, $workerDivisionIds, true);
+                        $taskDivIds = $t->divisions ? $t->divisions->pluck('id')->toArray() : [];
+                        if (empty($taskDivIds) && $t->divisions_id) {
+                            $taskDivIds = [(int) $t->divisions_id];
+                        }
+                        return count(array_intersect($taskDivIds, $workerDivisionIds)) > 0;
                     });
                 }
 
                 $subtasks = $tasksQuery->sortBy('order_index')->values()->map(function ($st, $stIdx) use ($smjCode) {
+                    $taskDivs = $st->divisions;
+                    if (($taskDivs === null || $taskDivs->isEmpty()) && $st->division) {
+                        $taskDivs = collect([$st->division]);
+                    }
+                    $divNames = $taskDivs ? $taskDivs->pluck('divisi')->toArray() : [];
+                    $divIds = $taskDivs ? $taskDivs->pluck('id')->toArray() : [];
+                    $divNameString = !empty($divNames) ? implode(', ', $divNames) : ($st->division?->divisi ?? 'General');
+
                     return [
                         'id'          => $st->id,
                         'code'        => $smjCode . '.' . ($stIdx + 1),
@@ -2327,7 +2362,11 @@ class ProjectController extends Controller
                         'weight'      => (float) ($st->weight ?? 0),
                         'checked'     => (bool) $st->is_completed,
                         'requiresEvidence' => (bool) $st->requires_evidence,
-                        'division'    => $st->division?->divisi ?? 'General',
+                        'divisions_id'=> $st->divisions_id ?: ($divIds[0] ?? null),
+                        'division_ids'=> $divIds,
+                        'division_names' => $divNames,
+                        'divisions'   => $taskDivs ? $taskDivs->map(fn($d) => ['id' => $d->id, 'name' => $d->divisi])->values()->toArray() : [],
+                        'division'    => $divNameString,
                         'evidences'   => $st->evidence_path ? (function () use ($st) {
                             $decoded = json_decode($st->evidence_path, true);
                             if (is_array($decoded)) {
@@ -2951,8 +2990,15 @@ class ProjectController extends Controller
         foreach ($project->mainWbs ?? [] as $mainWbs) {
             foreach ($mainWbs->subWbs ?? [] as $subWbs) {
                 foreach ($subWbs->wbsTasks ?? [] as $task) {
-                    $divName = $task->division?->divisi ?? 'General';
-                    $divId = $task->divisions_id;
+                    $taskDivs = $task->divisions;
+                    if (($taskDivs === null || $taskDivs->isEmpty()) && $task->division) {
+                        $taskDivs = collect([$task->division]);
+                    }
+                    $divNames = $taskDivs ? $taskDivs->pluck('divisi')->toArray() : [];
+                    $divIds = $taskDivs ? $taskDivs->pluck('id')->toArray() : [];
+                    $divNameString = !empty($divNames) ? implode(', ', $divNames) : ($task->division?->divisi ?? 'General');
+                    $divId = $task->divisions_id ?: ($divIds[0] ?? null);
+
                     $item = [
                         'id' => $task->id,
                         'name' => $task->name,
@@ -2960,15 +3006,28 @@ class ProjectController extends Controller
                         'progress' => (int) $task->progress,
                         'weight' => (float) $task->weight,
                         'divisions_id' => $divId,
-                        'division_name' => $divName,
+                        'division_ids' => $divIds,
+                        'division_names' => $divNames,
+                        'division_name' => $divNameString,
                         'main_name' => $mainWbs->name,
                         'sub_name' => $subWbs->name,
                     ];
                     $allTasks[] = $item;
-                    if (!isset($tasksByDivision[$divName])) {
-                        $tasksByDivision[$divName] = [];
+
+                    if ($taskDivs && $taskDivs->isNotEmpty()) {
+                        foreach ($taskDivs as $td) {
+                            $tName = $td->divisi;
+                            if (!isset($tasksByDivision[$tName])) {
+                                $tasksByDivision[$tName] = [];
+                            }
+                            $tasksByDivision[$tName][] = $item;
+                        }
+                    } else {
+                        if (!isset($tasksByDivision[$divNameString])) {
+                            $tasksByDivision[$divNameString] = [];
+                        }
+                        $tasksByDivision[$divNameString][] = $item;
                     }
-                    $tasksByDivision[$divName][] = $item;
                 }
             }
         }
@@ -2996,7 +3055,7 @@ class ProjectController extends Controller
     }
 
     /**
-     * BE-06: Assign a user to a project with division and role.
+     * BE-06: Assign a user to a project with division.
      */
     public function assignProjectMember(Request $request, int|string $projectId)
     {
@@ -3011,9 +3070,11 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'user_id' => 'required|integer|exists:users,id',
             'division_id' => 'nullable|integer|exists:divisions,id',
-            'project_role' => 'required|string|in:pm,co_pm,lead,worker',
+            'project_role' => 'nullable|string',
             'position_title' => 'nullable|string|max:100',
         ]);
+
+        $projectRole = !empty($validated['project_role']) ? $validated['project_role'] : 'member';
 
         $member = \App\Models\ProjectMember::updateOrCreate(
             [
@@ -3022,7 +3083,7 @@ class ProjectController extends Controller
             ],
             [
                 'division_id' => $validated['division_id'] ?? null,
-                'project_role' => $validated['project_role'],
+                'project_role' => $projectRole,
                 'position_title' => $validated['position_title'] ?? null,
                 'assigned_by' => $user->id,
             ]
@@ -3031,7 +3092,7 @@ class ProjectController extends Controller
         $targetUser = User::find($validated['user_id']);
         AuditLog::record(
             'ASSIGN_PROJECT_MEMBER',
-            "User {$user->username} assigned user '{$targetUser?->username}' as {$validated['project_role']} in project '{$project->title}'.",
+            "User {$user->username} assigned user '{$targetUser?->username}' to project '{$project->title}'.",
             $user->id,
             $request->ip(),
             ['project_id' => $project->id, 'member_user_id' => $validated['user_id']]

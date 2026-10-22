@@ -716,6 +716,7 @@ export default function TasksPage() {
         taskData: Partial<SubSubtask> & {
             smjDbId?: number;
             divisionId?: number;
+            division_ids?: number[];
         },
         onComplete?: (error?: string) => void,
     ) => {
@@ -726,10 +727,14 @@ export default function TasksPage() {
             (smjId.startsWith("smj-")
                 ? parseInt(smjId.replace("smj-", ""))
                 : parseInt(smjId));
+        const divIds = taskData.division_ids && taskData.division_ids.length > 0
+            ? taskData.division_ids
+            : (taskData.divisionId ? [taskData.divisionId] : []);
         const payload = {
             sub_wbs_id: cleanSubWbsId,
             name: taskData.name,
-            divisions_id: taskData.divisionId || null,
+            divisions_id: divIds[0] || taskData.divisionId || null,
+            division_ids: divIds,
             duration: taskData.duration || 1,
             start: taskData.startDate || null,
             end: taskData.finishDate || null,
@@ -1013,12 +1018,15 @@ export default function TasksPage() {
         if (isAdmin || isPIC) return false;
         if (isWorker) {
             const workerDiv = (authUser?.division ?? "").trim().toLowerCase();
-            const targetDiv = (taskDivision ?? "").trim().toLowerCase();
+            if (!workerDiv) return false;
+            const targetDivs = (taskDivision ?? "")
+                .split(",")
+                .map((d) => d.trim().toLowerCase());
             return (
-                workerDiv !== "" &&
-                (workerDiv === targetDiv ||
-                    targetDiv === "general" ||
-                    targetDiv === "internal")
+                targetDivs.includes(workerDiv) ||
+                targetDivs.includes("general") ||
+                targetDivs.includes("internal") ||
+                targetDivs.includes("all")
             );
         }
         return false;
@@ -4402,6 +4410,7 @@ function AddSubtaskModal({
         taskData: Partial<SubSubtask> & {
             smjDbId?: number;
             divisionId?: number;
+            division_ids?: number[];
             depType?: "FS" | "SS" | "FF" | "SF";
             lag?: number;
         },
@@ -4466,17 +4475,27 @@ function AddSubtaskModal({
 
     // Initial state setup
     const [name, setName] = useState(initialData?.name || "");
-    const [divisionId, setDivisionId] = useState<number>(() => {
-        if (initialData?.division) {
-            const match = divisions.find(
-                (d) =>
-                    d.divisi.toLowerCase() ===
-                    initialData.division?.toLowerCase(),
-            );
-            if (match) return match.id;
+    const [selectedDivisionIds, setSelectedDivisionIds] = useState<number[]>(() => {
+        if ((initialData as any)?.division_ids && Array.isArray((initialData as any).division_ids) && (initialData as any).division_ids.length > 0) {
+            return (initialData as any).division_ids.map(Number);
         }
-        return divisions[0]?.id || 1;
+        if (initialData?.division) {
+            const parts = initialData.division.split(',').map((s) => s.trim().toLowerCase());
+            const matched = divisions.filter((d) => parts.includes(d.divisi.toLowerCase())).map((d) => d.id);
+            if (matched.length > 0) return matched;
+        }
+        return divisions[0] ? [divisions[0].id] : [1];
     });
+
+    const toggleDivisionId = (id: number) => {
+        setSelectedDivisionIds((prev) => {
+            if (prev.includes(id)) {
+                if (prev.length === 1) return prev; // Keep at least one division selected
+                return prev.filter((x) => x !== id);
+            }
+            return [...prev, id];
+        });
+    };
 
     const [weight, setWeight] = useState<number>(() => {
         if (initialData?.weight !== undefined) return Number(initialData.weight);
@@ -4645,7 +4664,8 @@ function AddSubtaskModal({
                 duration,
                 startDate: currentStart,
                 finishDate: previewEnd,
-                divisionId,
+                divisionId: selectedDivisionIds[0] || 1,
+                division_ids: selectedDivisionIds,
                 weight: Number(weight) || 0,
                 requires_evidence: requiresEvidence,
                 predecessor: predecessorId || undefined,
@@ -4709,54 +4729,75 @@ function AddSubtaskModal({
                     />
                 </div>
 
-                {/* Division & Structural Task Weight */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
-                            Responsible Division <span className="text-red-500">*</span>
+                {/* Responsible Divisions (Supports Multiple) */}
+                <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-[12px] font-bold text-neutral-700">
+                            Responsible Divisions (Can select 1 or more) <span className="text-red-500">*</span>
                         </label>
-                        <select
-                            value={divisionId}
-                            onChange={(e) => setDivisionId(parseInt(e.target.value))}
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
-                        >
-                            {divisions.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                    {d.divisi}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <label className="block text-[12px] font-bold text-neutral-700">
-                                Task Weight (%)
-                            </label>
-                            <span className="text-[10px] text-slate-500 font-semibold inline-flex items-center gap-0.5">
-                                <Scale size={10} className="text-slate-500" />
-                                WBS Weight
-                            </span>
-                        </div>
-                        <div className="relative">
-                            <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="any"
-                                value={weight}
-                                onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
-                                placeholder="100"
-                                className="w-full pl-3 pr-8 py-2 rounded-lg border border-neutral-200 bg-white text-[13px] outline-none focus:border-brand font-semibold"
-                            />
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 font-bold text-[12px] pointer-events-none">
-                                %
-                            </span>
-                        </div>
-                        <span className="text-[10px] text-neutral-500 mt-1 block">
-                            Structural weight in parent task (distinct from progress %).
+                        <span className="text-[11px] text-blue-600 font-semibold">
+                            {selectedDivisionIds.length} division(s) selected
                         </span>
                     </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-1.5 border border-neutral-200 rounded-lg bg-neutral-50/50">
+                        {divisions.map((d) => {
+                            const isSelected = selectedDivisionIds.includes(d.id);
+                            return (
+                                <button
+                                    key={d.id}
+                                    type="button"
+                                    onClick={() => toggleDivisionId(d.id)}
+                                    className={`px-2.5 py-1.5 rounded-lg border text-left flex items-center justify-between gap-1.5 transition-all text-[12px] ${
+                                        isSelected
+                                            ? "bg-blue-50 border-blue-400 text-blue-900 font-bold shadow-2xs"
+                                            : "bg-white border-neutral-200 text-neutral-700 hover:border-neutral-300 font-medium"
+                                    }`}
+                                >
+                                    <span className="truncate">{d.divisi}</span>
+                                    <div
+                                        className={`w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 border ${
+                                            isSelected
+                                                ? "bg-blue-600 border-blue-600 text-white"
+                                                : "border-neutral-300 bg-white"
+                                        }`}
+                                    >
+                                        {isSelected && <Check size={10} strokeWidth={3} />}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Structural Task Weight */}
+                <div>
+                    <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[12px] font-bold text-neutral-700">
+                            Task Weight (%)
+                        </label>
+                        <span className="text-[10px] text-slate-500 font-semibold inline-flex items-center gap-0.5">
+                            <Scale size={10} className="text-slate-500" />
+                            WBS Weight
+                        </span>
+                    </div>
+                    <div className="relative">
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="any"
+                            value={weight}
+                            onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
+                            placeholder="100"
+                            className="w-full pl-3 pr-8 py-2 rounded-lg border border-neutral-200 bg-white text-[13px] outline-none focus:border-brand font-semibold"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 font-bold text-[12px] pointer-events-none">
+                            %
+                        </span>
+                    </div>
+                    <span className="text-[10px] text-neutral-500 mt-1 block">
+                        Structural weight in parent task (distinct from progress %).
+                    </span>
                 </div>
 
                 {/* Duration and Start Date */}
