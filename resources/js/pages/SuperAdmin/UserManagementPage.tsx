@@ -657,70 +657,119 @@ export default function SuperAdminUserManagementPage({
           </div>
         )}
         {showDivision && (
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-[12px] font-bold text-neutral-700">Division Assignment</label>
-              <a href="/admin/divisions" target="_blank" className="text-[11px] text-violet-600 font-bold hover:underline">Manage Divisions</a>
+          <div className="md:col-span-2 space-y-2.5 pt-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <label className="block text-[12px] font-bold text-neutral-800">Division Assignment</label>
+                
+                {/* Segmented Switch: Single vs Multiple */}
+                <div className="inline-flex p-0.5 bg-neutral-100 rounded-lg border border-neutral-200 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (allowMultiDivision) {
+                        setAllowMultiDivision(false);
+                        setData((prev: any) => {
+                          const singleDivId = (prev.division_ids && prev.division_ids.length > 0)
+                            ? prev.division_ids[0].toString()
+                            : (prev.divisions_id || '');
+                          return {
+                            ...prev,
+                            divisions_id: singleDivId,
+                            division_ids: singleDivId ? [Number(singleDivId)] : [],
+                            multi_division_agreement: false,
+                          };
+                        });
+                      }
+                    }}
+                    className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                      !allowMultiDivision
+                        ? 'bg-white text-violet-700 shadow-2xs font-bold'
+                        : 'text-neutral-500 hover:text-neutral-800'
+                    }`}
+                  >
+                    Single Division
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!allowMultiDivision) {
+                        setAllowMultiDivision(true);
+                        setData((prev: any) => {
+                          const currentIds = (prev.division_ids && prev.division_ids.length > 0)
+                            ? prev.division_ids
+                            : (prev.divisions_id ? [Number(prev.divisions_id)] : []);
+                          return {
+                            ...prev,
+                            division_ids: currentIds,
+                            divisions_id: currentIds[0]?.toString() ?? prev.divisions_id,
+                            multi_division_agreement: currentIds.length > 1,
+                          };
+                        });
+                      }
+                    }}
+                    className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                      allowMultiDivision
+                        ? 'bg-violet-600 text-white shadow-2xs font-bold'
+                        : 'text-neutral-500 hover:text-neutral-800'
+                    }`}
+                  >
+                    Multiple Divisions
+                  </button>
+                </div>
+              </div>
+
+              <a
+                href="/admin/divisions"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-violet-600 font-bold hover:underline self-start sm:self-auto"
+              >
+                Manage Divisions
+              </a>
             </div>
 
-            <label className="flex items-center gap-2 mb-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={allowMultiDivision}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setAllowMultiDivision(checked);
-                  setData((prev: any) => {
-                    let updatedDivIds = prev.division_ids || [];
-                    if (checked) {
-                      if (updatedDivIds.length === 0 && prev.divisions_id) {
-                        updatedDivIds = [Number(prev.divisions_id)];
-                      }
-                    } else {
-                      updatedDivIds = prev.division_ids && prev.division_ids.length > 0 ? [prev.division_ids[0]] : (prev.divisions_id ? [Number(prev.divisions_id)] : []);
-                    }
-                    return {
-                      ...prev,
-                      multi_division_agreement: checked && updatedDivIds.length > 1,
-                      division_ids: updatedDivIds,
-                      divisions_id: updatedDivIds.length > 0 ? updatedDivIds[0].toString() : prev.divisions_id,
-                    };
-                  });
-                }}
-                className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 accent-violet-600 cursor-pointer"
-              />
-              <span className="text-[12px] font-semibold text-neutral-700">Allow Multiple Divisions (SuperAdmin Access)</span>
-            </label>
-
             {!allowMultiDivision ? (
-              <CustomSelect
-                value={data.divisions_id ?? ''}
-                onChange={val => {
-                  setData((prev: any) => ({
-                    ...prev,
-                    divisions_id: val,
-                    division_ids: val ? [Number(val)] : [],
-                    multi_division_agreement: false,
-                  }));
-                }}
-                placeholder="No Division"
-                options={[
-                  { value: '', label: 'No Division' },
-                  ...divisions.map(d => ({
-                    value: d.id.toString(),
-                    label: d.divisi,
-                  })),
-                ]}
-              />
+              <div className="space-y-1.5">
+                <CustomSelect
+                  value={data.divisions_id ?? ''}
+                  onChange={val => {
+                    setData((prev: any) => ({
+                      ...prev,
+                      divisions_id: val,
+                      division_ids: val ? [Number(val)] : [],
+                      multi_division_agreement: false,
+                    }));
+                  }}
+                  searchable={divisions.length > 5}
+                  placeholder="No Division"
+                  options={[
+                    { value: '', label: 'No Division' },
+                    ...divisions.map(d => ({
+                      value: d.id.toString(),
+                      label: d.divisi,
+                    })),
+                  ]}
+                />
+                <p className="text-[11px] text-neutral-500">
+                  User ditugaskan ke 1 divisi operasional. Ubah ke mode <strong className="text-violet-700 font-semibold">Multiple Divisions</strong> untuk tugas lintas departemen.
+                </p>
+              </div>
             ) : (
               <div className="space-y-2">
-                <div className="text-[11px] font-semibold text-neutral-500 mb-1">
-                  Select Divisions ({data.division_ids.length} selected)
+                <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500">
+                  <span>Select Divisions ({data.division_ids.length} selected)</span>
+                  {data.division_ids.length > 1 && (
+                    <span className="text-violet-600 font-medium">
+                      Divisi bertanda <strong>★ Primary</strong> adalah divisi default
+                    </span>
+                  )}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-neutral-50/60 rounded-xl border border-neutral-200">
+
+                <div className="border border-neutral-200 rounded-xl p-3 bg-neutral-50/50 max-h-52 overflow-y-auto space-y-2">
                   {divisions.map((d) => {
                     const isChecked = data.division_ids.includes(d.id);
-                    const isPrimary = data.divisions_id === d.id.toString() || (!data.divisions_id && data.division_ids[0] === d.id);
+                    const isPrimary = Number(data.divisions_id) === d.id || (!data.divisions_id && data.division_ids[0] === d.id);
                     return (
                       <div
                         key={d.id}
@@ -743,14 +792,16 @@ export default function SuperAdminUserManagementPage({
                           }));
                         }}
                         className={`flex items-center justify-between p-2.5 rounded-lg border transition-all cursor-pointer select-none ${
-                          isChecked ? 'bg-violet-50 border-violet-200 text-violet-900 shadow-2xs' : 'bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-700'
+                          isChecked
+                            ? 'bg-violet-50 border-violet-200 text-violet-900 shadow-2xs'
+                            : 'bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-700'
                         }`}
                       >
                         <label className="flex items-center gap-2.5 cursor-pointer flex-1">
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            onChange={() => {}}
+                            onChange={() => {}} // handled by wrapper onClick
                             className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 accent-violet-600 cursor-pointer"
                           />
                           <span className="text-[13px] font-semibold">{d.divisi}</span>
@@ -763,7 +814,9 @@ export default function SuperAdminUserManagementPage({
                             }}
                             title={isPrimary ? 'Primary Division' : 'Click to set as Primary'}
                             className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full cursor-pointer transition-transform active:scale-95 ${
-                              isPrimary ? 'bg-violet-600 text-white shadow-2xs' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+                              isPrimary
+                                ? 'bg-violet-600 text-white shadow-2xs'
+                                : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
                             }`}
                           >
                             {isPrimary ? '★ Primary' : 'Set as Primary'}
