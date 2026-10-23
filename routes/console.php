@@ -55,3 +55,21 @@ Artisan::command('recalculate:weights', function () {
     }
     $this->info("All projects recalculated successfully.");
 })->purpose('Recalculate and balance project weights to 100%');
+
+Artisan::command('provis:reconcile-dates', function () {
+    $this->info("Scanning all projects for date reconciliation...");
+    $projects = \App\Models\Project::all();
+    $scheduler = app(\App\Services\DependencyScheduler::class);
+    $totalRepairs = 0;
+
+    foreach ($projects as $project) {
+        $repairs = $scheduler->reconcileProjectDates($project);
+        if (!empty($repairs)) {
+            $this->warn("Project #{$project->id} ({$project->title}): Repaired " . count($repairs) . " date mismatches.");
+            $totalRepairs += count($repairs);
+        }
+    }
+
+    $this->info("Reconciliation complete! Total repairs made: {$totalRepairs}. All logged under 'Provis Support System'.");
+})->purpose('Scan and reconcile all project dates to match child task bounds, logging changes to audit log');
+
