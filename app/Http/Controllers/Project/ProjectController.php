@@ -49,9 +49,6 @@ class ProjectController extends Controller
             $companyIds = $user->getCompanyIds();
             $projectsQuery = Project::whereIn('companies_id', $companyIds)->whereIn('id', $allowedIds)->with(['manager', 'company']);
             $projects = $projectsQuery->get();
-            if ($projects->count() === 0) {
-                return back()->withErrors(['message' => 'Anda belum diberikan akses ke proyek manapun. Silakan hubungi Administrator.']);
-            }
 
             $mappedProjects = $projects->map(function (Project $p) {
                 return [
@@ -70,9 +67,13 @@ class ProjectController extends Controller
             });
 
             return Inertia::render('ProjectListPage', [
-                'projects'  => $mappedProjects,
-                'canCreate' => false,
-                'userRole'  => $role,
+                'projects'          => $mappedProjects,
+                'canCreate'         => false,
+                'companies'         => [],
+                'userRole'          => $role,
+                'hasPrivateFeature' => false,
+                'availableUsers'    => [],
+                'templates'         => [],
             ]);
         }
 
@@ -323,11 +324,7 @@ class ProjectController extends Controller
 
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
-            if ($role === 'worker') {
-                $project = null; // Let the frontend handle the empty state
-            } else {
-                return redirect()->route('projectlistpage');
-            }
+            return redirect()->route('projectlistpage');
         }
 
         if ($project && ($redirect = $this->guardProjectSetup($project, $role))) {
@@ -1324,17 +1321,18 @@ class ProjectController extends Controller
         if ($mainWbs->start) {
             $mainStart = Carbon::parse($mainWbs->start)->startOfDay();
             if ($start->lt($mainStart)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh lebih awal dari Start Date Main Task ({$mainStart->format('d/m/Y')})."]);
+                $mainWbs->start = $start;
+                $mainWbs->actual_start = $start;
+                $mainWbs->save();
             }
         }
 
         if ($mainWbs->end) {
             $mainEnd = Carbon::parse($mainWbs->end)->startOfDay();
             if ($end->gt($mainEnd)) {
-                return back()->withErrors(['end' => "End date Sub Task ({$end->format('d/m/Y')}) tidak boleh melebihi Target Finish Date Main Task ({$mainEnd->format('d/m/Y')})."]);
-            }
-            if ($start->gt($mainEnd)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh melebihi Target Finish Date Main Task ({$mainEnd->format('d/m/Y')})."]);
+                $mainWbs->end = $end;
+                $mainWbs->actual_end = $end;
+                $mainWbs->save();
             }
         }
 
@@ -1437,6 +1435,7 @@ class ProjectController extends Controller
         }
         $subWbs->save();
 
+        app(\App\Services\DependencyScheduler::class)->syncParentWbsDates($subWbs->id);
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
         $renamedNote = ($oldName !== $subWbs->name) ? " (diubah dari '{$oldName}')" : "";
@@ -1547,13 +1546,18 @@ class ProjectController extends Controller
         }
 
         if ($minLimit && $startDate->lt($minLimit)) {
-            return back()->withErrors(['start' => "Start date Task ({$startDate->format('d/m/Y')}) tidak boleh lebih awal dari jadwal mulai Main Task / Proyek ({$minLimit->format('d/m/Y')})."]);
-        }
-        if ($maxLimit && $startDate->gt($maxLimit)) {
-            return back()->withErrors(['start' => "Start date Task ({$startDate->format('d/m/Y')}) tidak boleh dimulai lebih lama dari waktu selesai Main Task ({$maxLimit->format('d/m/Y')})."]);
+            if ($mainWbs && $startDate->lt(Carbon::parse($mainWbs->start)->startOfDay())) {
+                $mainWbs->start = $startDate;
+                $mainWbs->actual_start = $startDate;
+                $mainWbs->save();
+            }
         }
         if ($maxLimit && $endDate->gt($maxLimit)) {
-            return back()->withErrors(['end' => "End date Task ({$endDate->format('d/m/Y')}) tidak boleh melebihi batas waktu selesai Main Task ({$maxLimit->format('d/m/Y')})."]);
+            if ($mainWbs && $endDate->gt(Carbon::parse($mainWbs->end)->startOfDay())) {
+                $mainWbs->end = $endDate;
+                $mainWbs->actual_end = $endDate;
+                $mainWbs->save();
+            }
         }
 
         $divisionIds = !empty($validated['division_ids']) ? array_values(array_filter(array_map('intval', $validated['division_ids']))) : [];

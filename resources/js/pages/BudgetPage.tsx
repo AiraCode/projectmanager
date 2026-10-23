@@ -3,7 +3,7 @@ import { usePage, router } from '@inertiajs/react';
 import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X, Download, Loader2 } from 'lucide-react';
 import { BudgetEntry } from '@/data/mockData';
 import { exportToCSV } from '@/utils/exportEngine';
-import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState, formatDateDisplay } from '@/components/ui';
+import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState, formatDateDisplay, ConfirmModal } from '@/components/ui';
 
 const KATEGORI = ['Material', 'Jasa', 'Mesin', 'Peralatan', 'Logistik', 'Lainnya'];
 const KATEGORI_LABELS: Record<string, string> = {
@@ -171,8 +171,11 @@ export default function BudgetPage() {
     }
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (!confirm(`Delete transaction "${name}"?`)) return;
+  const [txToDelete, setTxToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  const handleConfirmDelete = () => {
+    if (!txToDelete) return;
+    const { id, name } = txToDelete;
 
     if (currentProject?.id && !id.startsWith('b-')) {
       setDeletingId(id);
@@ -181,6 +184,7 @@ export default function BudgetPage() {
         onSuccess: () => {
           setToastMsg(`Transaction "${name}" successfully deleted.`);
           setDeletingId(null);
+          setTxToDelete(null);
         },
         onError: () => {
           setToastMsg(`Failed to delete transaction from server.`);
@@ -191,6 +195,7 @@ export default function BudgetPage() {
     } else {
       setEntries(p => p.filter(e => e.id !== id));
       setToastMsg(`Transaction "${name}" deleted.`);
+      setTxToDelete(null);
     }
   };
 
@@ -392,7 +397,7 @@ export default function BudgetPage() {
                   </td>
                   <td className="px-3.5 py-2.5 text-center">
                     <button
-                      onClick={() => handleDelete(e.id, e.namaItem)}
+                      onClick={() => setTxToDelete({ id: e.id, name: e.namaItem })}
                       disabled={deletingId === e.id}
                       className={`p-1.5 rounded-md hover:bg-danger-light text-neutral-400 hover:text-danger transition-colors ${
                         deletingId === e.id ? 'opacity-50 cursor-not-allowed' : ''
@@ -650,6 +655,24 @@ export default function BudgetPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmModal
+        isOpen={!!txToDelete}
+        onClose={() => !deletingId && setTxToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        loading={!!deletingId}
+        title="Delete Transaction"
+        message={
+          txToDelete ? (
+            <>
+              Delete transaction <span className="font-semibold text-neutral-900">"{txToDelete.name}"</span>? This action cannot be undone.
+            </>
+          ) : null
+        }
+        confirmText="Delete Transaction"
+        cancelText="Cancel"
+        variant="danger"
+      />
 
       {toastMsg && (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />

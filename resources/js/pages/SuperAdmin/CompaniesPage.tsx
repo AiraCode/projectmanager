@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Head, useForm } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
+import { ConfirmModal } from '@/components/ui';
 import { Plus, Edit2, Trash2, Search, X } from 'lucide-react';
 
 interface Company {
@@ -15,6 +16,7 @@ export default function CompaniesPage({ companies }: { companies: Company[] }) {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editCompany, setEditCompany] = useState<Company | null>(null);
+  const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
   const { data, setData, post, put, delete: destroy, processing, reset, errors } = useForm({ name: '' });
 
   const filtered = companies.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
@@ -30,10 +32,11 @@ export default function CompaniesPage({ companies }: { companies: Company[] }) {
     }
   };
 
-  const handleDelete = (c: Company) => {
-    if (confirm(`Delete company "${c.name}"? This will affect all related data.`)) {
-      destroy(`/admin/companies/${c.id}`);
-    }
+  const handleConfirmDelete = () => {
+    if (!companyToDelete) return;
+    destroy(`/admin/companies/${companyToDelete.id}`, {
+      onFinish: () => setCompanyToDelete(null),
+    });
   };
 
   return (
@@ -94,7 +97,7 @@ export default function CompaniesPage({ companies }: { companies: Company[] }) {
                   <td className="px-5 py-3.5">
                     <div className="flex items-center justify-center gap-1.5">
                       <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg text-neutral-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"><Edit2 size={14} /></button>
-                      <button onClick={() => handleDelete(c)} className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
+                      <button onClick={() => setCompanyToDelete(c)} className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -103,6 +106,24 @@ export default function CompaniesPage({ companies }: { companies: Company[] }) {
           </table>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={!!companyToDelete}
+        onClose={() => setCompanyToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        loading={processing}
+        title="Delete Company"
+        message={
+          companyToDelete ? (
+            <>
+              Delete company <span className="font-semibold text-neutral-900">"{companyToDelete.name}"</span>? This will affect all related data and cannot be undone.
+            </>
+          ) : null
+        }
+        confirmText="Delete Company"
+        cancelText="Cancel"
+        variant="danger"
+      />
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

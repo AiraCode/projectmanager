@@ -1621,41 +1621,41 @@ export default function TemplateManagementPage({
                                 <label className="block text-[12.5px] font-bold text-neutral-700 mb-1">
                                     Default PIC Division
                                 </label>
-                                <div className="space-y-2">
-                                    <select
-                                        value={subForm.default_pic_division}
-                                        onChange={(e) =>
-                                            setSubForm({
-                                                ...subForm,
-                                                default_pic_division:
-                                                    e.target.value,
-                                            })
-                                        }
-                                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-[13px] outline-none focus:border-violet-600 bg-white"
-                                    >
-                                        <option value="General">
-                                            General / All Divisions
+                                <select
+                                    value={subForm.default_pic_division}
+                                    onChange={(e) =>
+                                        setSubForm({
+                                            ...subForm,
+                                            default_pic_division:
+                                                e.target.value,
+                                        })
+                                    }
+                                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-[13px] outline-none focus:border-violet-600 bg-white"
+                                >
+                                    <option value="General">
+                                        General / All Divisions
+                                    </option>
+                                    {divisions.map((d) => (
+                                        <option key={d.id} value={d.divisi}>
+                                            {d.divisi}
                                         </option>
-                                        {divisions.map((d) => (
-                                            <option key={d.id} value={d.divisi}>
-                                                {d.divisi}
+                                    ))}
+                                    {subForm.default_pic_division &&
+                                        subForm.default_pic_division !== "General" &&
+                                        !divisions.some(
+                                            (d) =>
+                                                d.divisi ===
+                                                subForm.default_pic_division,
+                                        ) && (
+                                            <option
+                                                value={
+                                                    subForm.default_pic_division
+                                                }
+                                            >
+                                                {subForm.default_pic_division}
                                             </option>
-                                        ))}
-                                    </select>
-                                    <input
-                                        type="text"
-                                        value={subForm.default_pic_division}
-                                        onChange={(e) =>
-                                            setSubForm({
-                                                ...subForm,
-                                                default_pic_division:
-                                                    e.target.value,
-                                            })
-                                        }
-                                        placeholder="Or type custom division name..."
-                                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-[12.5px] outline-none focus:border-violet-600"
-                                    />
-                                </div>
+                                        )}
+                                </select>
                             </div>
 
                             <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">

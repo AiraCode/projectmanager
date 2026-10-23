@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Head, useForm } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
+import { ConfirmModal } from '@/components/ui';
 import { Plus, Edit2, Trash2, Search, X } from 'lucide-react';
 
 interface Division {
@@ -14,6 +15,7 @@ export default function DivisionsPage({ divisions }: { divisions: Division[] }) 
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editDivision, setEditDivision] = useState<Division | null>(null);
+  const [divisionToDelete, setDivisionToDelete] = useState<Division | null>(null);
   const { data, setData, post, put, delete: destroy, processing, reset, errors } = useForm({ divisi: '' });
 
   const filtered = divisions.filter(d => d.divisi.toLowerCase().includes(search.toLowerCase()));
@@ -30,10 +32,11 @@ export default function DivisionsPage({ divisions }: { divisions: Division[] }) 
     }
   };
 
-  const handleDelete = (d: Division) => {
-    if (confirm(`Delete division "${d.divisi}"? This will affect all related data.`)) {
-      destroy(`/admin/divisions/${d.id}`);
-    }
+  const handleConfirmDelete = () => {
+    if (!divisionToDelete) return;
+    destroy(`/admin/divisions/${divisionToDelete.id}`, {
+      onFinish: () => setDivisionToDelete(null),
+    });
   };
 
   return (
@@ -90,7 +93,7 @@ export default function DivisionsPage({ divisions }: { divisions: Division[] }) 
                   <td className="px-5 py-3.5">
                     <div className="flex items-center justify-center gap-1.5">
                       <button onClick={() => openEdit(d)} className="p-1.5 rounded-lg text-neutral-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"><Edit2 size={14} /></button>
-                      <button onClick={() => handleDelete(d)} className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
+                      <button onClick={() => setDivisionToDelete(d)} className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -99,6 +102,24 @@ export default function DivisionsPage({ divisions }: { divisions: Division[] }) 
           </table>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={!!divisionToDelete}
+        onClose={() => setDivisionToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        loading={processing}
+        title="Delete Division"
+        message={
+          divisionToDelete ? (
+            <>
+              Delete division <span className="font-semibold text-neutral-900">"{divisionToDelete.divisi}"</span>? This will affect all related data and cannot be undone.
+            </>
+          ) : null
+        }
+        confirmText="Delete Division"
+        cancelText="Cancel"
+        variant="danger"
+      />
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

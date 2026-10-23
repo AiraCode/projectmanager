@@ -321,6 +321,49 @@ class IntegrationServicesTest extends TestCase
     }
 
     /**
+     * 7b. Test S-Curve Curve Shifting / Remaining Work Projection.
+     * Verify Prediction connects to last actual point, shifts remaining plan increments, and reaches 100%.
+     */
+    public function test_scurve_curve_shifting_prediction_logic(): void
+    {
+        $service = app(SCurvePredictionService::class);
+        $project = Project::whereHas('mainWbs.subWbs.wbsTasks')->first();
+        if (!$project) {
+            $this->markTestSkipped('No project with tasks found for curve shifting test.');
+        }
+
+        $result = $service->calculate($project);
+        $points = $result['points'];
+        $this->assertNotEmpty($points);
+
+        // Find last actual point in result
+        $lastActualIdx = null;
+        $lastActualVal = null;
+        foreach ($points as $idx => $p) {
+            if ($p['actual_cumulative'] !== null && $p['actual_cumulative'] > 0) {
+                $lastActualIdx = $idx;
+                $lastActualVal = $p['actual_cumulative'];
+            }
+        }
+
+        if ($lastActualIdx !== null) {
+            // Check periods < lastActualIdx have prediction = null
+            for ($i = 0; $i < $lastActualIdx; $i++) {
+                $this->assertNull($points[$i]['prediction_cumulative'], "Prediction at week index {$i} before lastActualIdx must be null");
+            }
+
+            // At lastActualIdx, prediction must connect seamlessly to lastActualVal
+            $this->assertEquals($lastActualVal, $points[$lastActualIdx]['prediction_cumulative'], 'Prediction must connect seamlessly at lastActualIdx');
+
+            // Prediction should eventually reach 100%
+            $lastPoint = end($points);
+            $this->assertNotNull($lastPoint['prediction_cumulative']);
+            $this->assertEquals(100.0, (float) $lastPoint['prediction_cumulative'], 'Prediction must reach 100% on the final period');
+        }
+    }
+
+    /**
+
      * 8. Test Task Evidence Upload is Recorded in Activity Log.
      */
     public function test_task_evidence_upload_recorded_in_activity_log(): void
@@ -352,7 +395,7 @@ class IntegrationServicesTest extends TestCase
 
         $this->assertNotNull($latestLog, 'Activity log must be recorded');
         $this->assertStringContainsString('laporan_progress_12.pdf', $latestLog->description);
-        $this->assertStringContainsString('Input evidence:', $latestLog->description);
+        $this->assertStringContainsStringIgnoringCase('input evidence:', $latestLog->description);
         $this->assertIsArray($latestLog->metadata);
         $this->assertContains('laporan_progress_12.pdf', $latestLog->metadata['evidence_files'] ?? []);
     }

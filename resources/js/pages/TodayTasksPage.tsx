@@ -162,7 +162,7 @@ export default function TodayTasksPage() {
         forceFormData: !!rawFile,
         onError: (errs) => {
           const errText = Object.values(errs)[0] as string;
-          if (errText) alert(errText);
+          if (errText) setToastMsg(errText);
         }
       });
     }

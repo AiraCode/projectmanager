@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
-import { PageHeader, Card, Button, Modal, Toast } from '@/components/ui';
+import { PageHeader, Card, Button, Modal, Toast, ConfirmModal } from '@/components/ui';
 import { Plus, Edit2, Trash2, Shield, FolderOpen, ChevronDown, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const CustomDropdown = ({ value, onChange, options, placeholder, error }: any) => {
@@ -206,13 +206,20 @@ export default function UserManagementPage({
     }
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm('Are you sure you want to delete this user?')) {
-      destroy(`/users/${id}`, {
-        onSuccess: () => setToast({ msg: 'User deleted successfully', type: 'success' }),
-        onError: () => setToast({ msg: 'Error deleting user', type: 'danger' })
-      });
-    }
+  const [userToDelete, setUserToDelete] = useState<{ id: number; name: string } | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  const handleConfirmDelete = () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    destroy(`/users/${userToDelete.id}`, {
+      onSuccess: () => {
+        setToast({ msg: 'User deleted successfully', type: 'success' });
+        setUserToDelete(null);
+      },
+      onError: () => setToast({ msg: 'Error deleting user', type: 'danger' }),
+      onFinish: () => setIsDeletingUser(false),
+    });
   };
 
   const handleUnifiedViewToggle = (mod: typeof MODULE_PERMISSIONS[0]) => {
@@ -985,7 +992,7 @@ export default function UserManagementPage({
                             </button>
                           )}
                           {isSuperAdmin && (
-                            <button type="button" onClick={() => handleDelete(u.id)} className="p-1.5 text-neutral-400 hover:text-danger hover:bg-danger-light rounded transition-colors"><Trash2 size={15} /></button>
+                            <button type="button" onClick={() => setUserToDelete({ id: u.id, name: u.username })} className="p-1.5 text-neutral-400 hover:text-danger hover:bg-danger-light rounded transition-colors" title="Delete"><Trash2 size={15} /></button>
                           )}
                         </div>
                       </td>
@@ -1013,6 +1020,24 @@ export default function UserManagementPage({
       <Modal isOpen={modalOpen} onClose={closeModal} title={isPIC ? `Manage Project Access: ${editingUser?.username}` : "Edit User"} size="lg">
         {renderForm()}
       </Modal>
+
+      <ConfirmModal
+        isOpen={!!userToDelete}
+        onClose={() => !isDeletingUser && setUserToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        loading={isDeletingUser}
+        title="Delete User"
+        message={
+          userToDelete ? (
+            <>
+              Are you sure you want to delete user <span className="font-semibold text-neutral-900">"{userToDelete.name}"</span>? This action cannot be undone.
+            </>
+          ) : null
+        }
+        confirmText="Delete User"
+        cancelText="Cancel"
+        variant="danger"
+      />
 
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </>

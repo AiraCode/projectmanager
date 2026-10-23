@@ -29,6 +29,17 @@ Route::middleware('auth')->group(function () {
         $role = $user?->role?->name ?? '';
         if ($role === 'SuperAdmin') return redirect('/admin');
         
+        if ($role === 'worker') {
+            $projectAccess = $user->permission_matrix['project_access'] ?? [];
+            $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
+            $companyIds = $user->getCompanyIds();
+            $hasProject = !empty($allowedIds) && \App\Models\Project::whereIn('companies_id', $companyIds)->whereIn('id', $allowedIds)->exists();
+
+            if (!$hasProject) {
+                return redirect('/projectlistpage');
+            }
+        }
+
         if ($user && is_array($user->permission_matrix) && !empty($user->permission_matrix['sidebar'])) {
             $firstAllowed = $user->permission_matrix['sidebar'][0];
             $map = [

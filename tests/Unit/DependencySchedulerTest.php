@@ -35,7 +35,14 @@ class DependencySchedulerTest extends BaseTestCase
             'database.connections.sqlite.database' => ':memory:',
             'database.connections.sqlite.foreign_key_constraints' => false,
         ]);
-        DB::purge('sqlite');
+        Schema::create('projects', function (Blueprint $table) {
+            $table->id();
+            $table->string('title')->nullable();
+            $table->dateTime('start')->nullable();
+            $table->dateTime('end')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
 
         Schema::create('main_wbs', function (Blueprint $table) {
             $table->id();

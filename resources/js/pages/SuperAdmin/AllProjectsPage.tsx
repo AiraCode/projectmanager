@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
+import { ConfirmModal } from '@/components/ui';
 import { Search, Lock, Globe, Trash2, ExternalLink, Building2, Calendar } from 'lucide-react';
 
 interface Project {
@@ -19,6 +20,8 @@ interface Project {
 export default function AllProjectsPage({ projects }: { projects: Project[] }) {
   const [search, setSearch] = useState('');
   const [filterPrivate, setFilterPrivate] = useState<'all' | 'public' | 'private'>('all');
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filtered = projects.filter(p => {
     const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -28,10 +31,15 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
     return matchSearch && matchPrivate;
   });
 
-  const handleDelete = (p: Project) => {
-    if (confirm(`Delete project "${p.title}"? This action cannot be undone and will delete all related tasks and data.`)) {
-      router.delete(`/admin/projects/${p.id}`);
-    }
+  const handleConfirmDelete = () => {
+    if (!projectToDelete) return;
+    setIsDeleting(true);
+    router.delete(`/admin/projects/${projectToDelete.id}`, {
+      onFinish: () => {
+        setIsDeleting(false);
+        setProjectToDelete(null);
+      },
+    });
   };
 
   const statusColor = (s: string) => {
@@ -140,7 +148,7 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                       <a href={`/projects/${p.id}`} target="_blank" className="p-1.5 rounded-lg text-neutral-400 hover:text-violet-600 hover:bg-violet-50 transition-colors" title="Open project">
                         <ExternalLink size={14} />
                       </a>
-                      <button onClick={() => handleDelete(p)} className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete project">
+                      <button onClick={() => setProjectToDelete(p)} className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete project">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -150,7 +158,26 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
             </tbody>
           </table>
         </div>
+
+        <ConfirmModal
+          isOpen={!!projectToDelete}
+          onClose={() => !isDeleting && setProjectToDelete(null)}
+          onConfirm={handleConfirmDelete}
+          loading={isDeleting}
+          title="Delete Project"
+          message={
+            projectToDelete ? (
+              <>
+                Delete project <span className="font-semibold text-neutral-900">"{projectToDelete.title}"</span>? This action cannot be undone and will delete all related tasks and data.
+              </>
+            ) : null
+          }
+          confirmText="Delete Project"
+          cancelText="Cancel"
+          variant="danger"
+        />
       </div>
     </SuperAdminLayout>
   );
 }
+

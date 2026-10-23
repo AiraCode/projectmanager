@@ -260,6 +260,18 @@ export default function TasksPage() {
         parentWeight?: number;
         currentSubCount?: number;
     } | null>(null);
+    const [showEditSubMainJobModal, setShowEditSubMainJobModal] = useState<{
+        smj: SubMainJob;
+        parentMj?: MainJob;
+    } | null>(null);
+    const [draggedMainJobId, setDraggedMainJobId] = useState<string | null>(null);
+    const [dropTargetMainJobId, setDropTargetMainJobId] = useState<string | null>(null);
+    const [draggedSubJob, setDraggedSubJob] = useState<{
+        parentMjId: string;
+        parentMjDbId?: number;
+        smjId: string;
+    } | null>(null);
+    const [dropTargetSubJobId, setDropTargetSubJobId] = useState<string | null>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<{
         title: string;
         message: string;
@@ -666,6 +678,66 @@ export default function TasksPage() {
         );
     };
 
+    // Edit Sub Task (Sub Main Job)
+    const handleUpdateSubMainJob = (
+        smjId: string,
+        smjDbId: number | undefined,
+        name: string,
+        weight?: number,
+        start?: string,
+        end?: string,
+        onComplete?: (error?: string) => void,
+    ) => {
+        if (!projectData.id || !name) return;
+
+        const cleanDbId =
+            smjDbId ||
+            (smjId.startsWith("smj-")
+                ? parseInt(smjId.replace("smj-", ""))
+                : parseInt(smjId));
+
+        if (!cleanDbId) {
+            onComplete?.("Invalid Sub Task ID");
+            return;
+        }
+
+        router.put(
+            `/projects/${projectData.id}/sub-wbs/${cleanDbId}`,
+            {
+                name,
+                weight: weight !== undefined ? weight : null,
+                start: start || null,
+                end: end || null,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: (page: any) => {
+                    const flashError = page?.props?.flash?.error;
+                    const pageErrors = page?.props?.errors;
+                    const err =
+                        flashError || (pageErrors && Object.values(pageErrors)[0]);
+                    if (err) {
+                        const msg =
+                            typeof err === "string" ? err : JSON.stringify(err);
+                        onComplete?.(msg);
+                        setToastMsg(msg);
+                        return;
+                    }
+                    setToastMsg(`Sub Task "${name}" updated successfully.`);
+                    setShowEditSubMainJobModal(null);
+                    onComplete?.();
+                },
+                onError: (errors) => {
+                    console.error("Error updating Sub Task:", errors);
+                    const errText = Object.values(errors).flat().join(", ");
+                    const msg = `Failed to update Sub Task: ${errText || "Please check your input"}`;
+                    onComplete?.(msg);
+                    setToastMsg(msg);
+                },
+            },
+        );
+    };
+
     // Delete Sub Task (Sub Main Job)
     const handleDeleteSubMainJob = (
         mjId: string,
@@ -903,6 +975,189 @@ export default function TasksPage() {
                         setToastMsg(typeof err === "string" ? err : JSON.stringify(err));
                     },
                 }
+            );
+        }
+    };
+
+    // Persistent Main Task (Main Job) Reordering
+    const handleReorderMainJobs = (
+        sourceMjId: string,
+        targetMjId: string,
+    ) => {
+        if (sourceMjId === targetMjId) return;
+
+        let moved = false;
+        let newOrderedDbIds: number[] = [];
+        const previousData = projectData;
+
+        setProjectData((prev) => {
+            const items = [...prev.mainJobs];
+            const sourceIdx = items.findIndex((m) => m.id === sourceMjId);
+            const targetIdx = items.findIndex((m) => m.id === targetMjId);
+            if (sourceIdx === -1 || targetIdx === -1) return prev;
+
+            const [removed] = items.splice(sourceIdx, 1);
+            items.splice(targetIdx, 0, removed);
+            moved = true;
+
+            newOrderedDbIds = items
+                .map((m, mIdx) => {
+                    m.code = String(mIdx + 1);
+                    m.subMainJobs = m.subMainJobs.map((s, sIdx) => {
+                        s.code = `${mIdx + 1}.${sIdx + 1}`;
+                        s.subtasks = s.subtasks.map((t, tIdx) => {
+                            t.code = `${mIdx + 1}.${sIdx + 1}.${tIdx + 1}`;
+                            return t;
+                        });
+                        return s;
+                    });
+                    if (m.dbId) return m.dbId;
+                    const clean = String(m.id).replace(/^mj-/, "");
+                    const parsed = parseInt(clean, 10);
+                    return isNaN(parsed) ? 0 : parsed;
+                })
+                .filter((id) => id > 0);
+
+            return { ...prev, mainJobs: items };
+        });
+
+        if (moved && projectData?.id && newOrderedDbIds.length > 0) {
+            router.post(
+                `/projects/${projectData.id}/reorder-main-wbs`,
+                {
+                    ordered_ids: newOrderedDbIds,
+                },
+                {
+                    preserveScroll: true,
+                    onSuccess: (page: any) => {
+                        const flashError = page?.props?.flash?.error;
+                        const pageErrors = page?.props?.errors;
+                        const err =
+                            flashError || (pageErrors && Object.values(pageErrors)[0]);
+                        if (err) {
+                            setProjectData(previousData);
+                            setToastMsg(
+                                typeof err === "string" ? err : JSON.stringify(err),
+                            );
+                            return;
+                        }
+                        setToastMsg(
+                            page?.props?.flash?.success ||
+                                "Main Task order successfully saved.",
+                        );
+                    },
+                    onError: (errors) => {
+                        setProjectData(previousData);
+                        const err =
+                            errors?.message ||
+                            Object.values(errors)[0] ||
+                            "Failed to persist Main Task order.";
+                        setToastMsg(
+                            typeof err === "string" ? err : JSON.stringify(err),
+                        );
+                    },
+                },
+            );
+        }
+    };
+
+    // Persistent Sub Task (Sub Main Job) Reordering within same Main Task
+    const handleReorderSubMainJobs = (
+        parentMjId: string,
+        parentMjDbId: number | undefined,
+        sourceSmjId: string,
+        targetSmjId: string,
+    ) => {
+        if (sourceSmjId === targetSmjId) return;
+
+        let moved = false;
+        let newOrderedDbIds: number[] = [];
+        let cleanMainWbsId =
+            parentMjDbId ||
+            parseInt(String(parentMjId).replace(/^mj-/, ""), 10);
+        const previousData = projectData;
+
+        setProjectData((prev) => {
+            const next = { ...prev };
+            next.mainJobs = next.mainJobs.map((mj) => {
+                if (mj.id !== parentMjId && mj.dbId !== parentMjDbId) return mj;
+                const items = [...mj.subMainJobs];
+                const sourceIdx = items.findIndex((s) => s.id === sourceSmjId);
+                const targetIdx = items.findIndex((s) => s.id === targetSmjId);
+                if (sourceIdx === -1 || targetIdx === -1) return mj;
+
+                const [removed] = items.splice(sourceIdx, 1);
+                items.splice(targetIdx, 0, removed);
+                moved = true;
+
+                if (!cleanMainWbsId) {
+                    cleanMainWbsId =
+                        mj.dbId ||
+                        parseInt(String(mj.id).replace(/^mj-/, ""), 10);
+                }
+
+                newOrderedDbIds = items
+                    .map((s, sIdx) => {
+                        const parentCode = mj.code || "1";
+                        s.code = `${parentCode}.${sIdx + 1}`;
+                        s.subtasks = s.subtasks.map((t, tIdx) => {
+                            t.code = `${parentCode}.${sIdx + 1}.${tIdx + 1}`;
+                            return t;
+                        });
+                        if (s.dbId) return s.dbId;
+                        const clean = String(s.id).replace(/^smj-/, "");
+                        const parsed = parseInt(clean, 10);
+                        return isNaN(parsed) ? 0 : parsed;
+                    })
+                    .filter((id) => id > 0);
+
+                return { ...mj, subMainJobs: items };
+            });
+            return next;
+        });
+
+        if (
+            moved &&
+            projectData?.id &&
+            cleanMainWbsId &&
+            newOrderedDbIds.length > 0
+        ) {
+            router.post(
+                `/projects/${projectData.id}/reorder-sub-wbs`,
+                {
+                    main_wbs_id: cleanMainWbsId,
+                    ordered_ids: newOrderedDbIds,
+                },
+                {
+                    preserveScroll: true,
+                    onSuccess: (page: any) => {
+                        const flashError = page?.props?.flash?.error;
+                        const pageErrors = page?.props?.errors;
+                        const err =
+                            flashError || (pageErrors && Object.values(pageErrors)[0]);
+                        if (err) {
+                            setProjectData(previousData);
+                            setToastMsg(
+                                typeof err === "string" ? err : JSON.stringify(err),
+                            );
+                            return;
+                        }
+                        setToastMsg(
+                            page?.props?.flash?.success ||
+                                "Sub Task order successfully saved.",
+                        );
+                    },
+                    onError: (errors) => {
+                        setProjectData(previousData);
+                        const err =
+                            errors?.message ||
+                            Object.values(errors)[0] ||
+                            "Failed to persist Sub Task order.";
+                        setToastMsg(
+                            typeof err === "string" ? err : JSON.stringify(err),
+                        );
+                    },
+                },
             );
         }
     };
@@ -1540,270 +1795,370 @@ export default function TasksPage() {
             {/* Content Rendering based on View Mode */}
             {viewMode === "checklist" ? (
                 <div className="space-y-3">
-                    {filteredMJs.map((mj) => (
-                        <Card key={mj.id} className="overflow-hidden">
-                            {/* Level 1: Main Job Header */}
-                            <div
-                                onClick={() => toggleMJ(mj.id)}
-                                className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 py-3.5 hover:bg-neutral-50/70 transition-colors text-left cursor-pointer"
+                    {filteredMJs.map((mj) => {
+                        const isDraggingMj = draggedMainJobId === mj.id;
+                        const isDropTargetMj = dropTargetMainJobId === mj.id;
+                        return (
+                            <Card
+                                key={mj.id}
+                                className={`overflow-hidden transition-all duration-200 ${
+                                    isDraggingMj
+                                        ? "opacity-40 border-dashed border-brand bg-brand/5 scale-[0.99]"
+                                        : isDropTargetMj
+                                        ? "border-2 border-brand ring-2 ring-brand/30 bg-purple-50/30"
+                                        : ""
+                                }`}
+                                onDragOver={(e) => {
+                                    if (draggedMainJobId && draggedMainJobId !== mj.id) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setDropTargetMainJobId(mj.id);
+                                    }
+                                }}
+                                onDragLeave={(e) => {
+                                    e.stopPropagation();
+                                    if (dropTargetMainJobId === mj.id) {
+                                        setDropTargetMainJobId(null);
+                                    }
+                                }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (draggedMainJobId && draggedMainJobId !== mj.id) {
+                                        handleReorderMainJobs(draggedMainJobId, mj.id);
+                                    }
+                                    setDraggedMainJobId(null);
+                                    setDropTargetMainJobId(null);
+                                }}
                             >
-                                <div className="flex items-start gap-3 flex-1 min-w-0">
-                                    <div className="text-neutral-400 flex-shrink-0 mt-1">
-                                        {expandedMJ[mj.id] ? (
-                                            <ChevronDown size={16} />
-                                        ) : (
-                                            <ChevronRight size={16} />
+                                {/* Level 1: Main Job Header */}
+                                <div
+                                    onClick={() => toggleMJ(mj.id)}
+                                    className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 py-3.5 hover:bg-neutral-50/70 transition-colors text-left cursor-pointer"
+                                >
+                                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                                        {/* Drag Handle (PIC only) */}
+                                        {isPIC && (
+                                            <div
+                                                draggable
+                                                onDragStart={(e) => {
+                                                    e.stopPropagation();
+                                                    setDraggedMainJobId(mj.id);
+                                                }}
+                                                onDragEnd={() => {
+                                                    setDraggedMainJobId(null);
+                                                    setDropTargetMainJobId(null);
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="cursor-grab active:cursor-grabbing text-neutral-300 hover:text-neutral-600 p-1 -ml-1 rounded transition-colors flex-shrink-0 mt-0.5"
+                                                title="Drag to reorder Main Task"
+                                            >
+                                                <GripVertical size={16} />
+                                            </div>
+                                        )}
+                                        <div className="text-neutral-400 flex-shrink-0 mt-1">
+                                            {expandedMJ[mj.id] ? (
+                                                <ChevronDown size={16} />
+                                            ) : (
+                                                <ChevronRight size={16} />
+                                            )}
+                                        </div>
+                                        <div className="w-6 h-6 rounded bg-brand text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
+                                            <span className="text-[10px] font-bold">
+                                                {mj.code}
+                                            </span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-[15px] sm:text-[16px] font-black text-neutral-900 leading-snug break-words">
+                                                {mj.name}
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-1 text-[12px] text-neutral-600 font-semibold flex-wrap">
+                                                <span>
+                                                    Main Job Weight:{" "}
+                                                    <strong className="text-neutral-800 font-bold">
+                                                        {mj.weight}%
+                                                    </strong>
+                                                </span>
+                                                <span className="text-neutral-300">
+                                                    •
+                                                </span>
+                                                <span>
+                                                    {mj.subMainJobs.length} Sub
+                                                    Tasks
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center flex-wrap gap-2.5 sm:gap-3 flex-shrink-0 self-start md:self-center pl-9 md:pl-0">
+                                        <StatusBadge status={mj.status} size="sm" />
+                                        <div className="w-16 hidden sm:block">
+                                            <ProgressBar
+                                                value={mj.progress}
+                                                size="xs"
+                                                showLabel={false}
+                                            />
+                                        </div>
+                                        <span className="text-[14px] sm:text-[16px] font-black text-neutral-900 w-11 text-right tabular-nums">
+                                            {mj.progress}%
+                                        </span>
+
+                                        {/* PIC can add Sub Task, edit Main Task & delete Main Task */}
+                                        {isPIC && (
+                                            <div
+                                                className="flex items-center gap-1.5 ml-1 flex-wrap"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setShowAddSubMainJobModal({
+                                                            mjId: mj.id,
+                                                            mjDbId: (mj as any)
+                                                                .dbId,
+                                                            mjName: mj.name,
+                                                            parentWeight: mj.weight,
+                                                            currentSubCount:
+                                                                mj.subMainJobs
+                                                                    .length,
+                                                        });
+                                                    }}
+                                                    className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300 flex-shrink-0"
+                                                    icon={Plus}
+                                                >
+                                                    Add Sub Task
+                                                </Button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setShowMainJobModal({
+                                                            mode: "edit",
+                                                            id: mj.id,
+                                                            dbId: (mj as any).dbId,
+                                                            name: mj.name,
+                                                            weight: mj.weight,
+                                                            startDate: mj.startDate,
+                                                            finishDate:
+                                                                mj.finishDate,
+                                                        })
+                                                    }
+                                                    className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
+                                                    title="Edit Main Task (Name & Weight)"
+                                                >
+                                                    <Edit2 size={13} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleDeleteMainJob(
+                                                            mj.id,
+                                                            (mj as any).dbId,
+                                                            mj.name,
+                                                        )
+                                                    }
+                                                    className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
+                                                    title="Delete Main Task"
+                                                >
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
-                                    <div className="w-6 h-6 rounded bg-brand text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
-                                        <span className="text-[10px] font-bold">
-                                            {mj.code}
-                                        </span>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-[15px] sm:text-[16px] font-black text-neutral-900 leading-snug break-words">
-                                            {mj.name}
-                                        </div>
-                                        <div className="flex items-center gap-2 mt-1 text-[12px] text-neutral-600 font-semibold flex-wrap">
-                                            <span>
-                                                Main Job Weight:{" "}
-                                                <strong className="text-neutral-800 font-bold">
-                                                    {mj.weight}%
-                                                </strong>
-                                            </span>
-                                            <span className="text-neutral-300">
-                                                •
-                                            </span>
-                                            <span>
-                                                {mj.subMainJobs.length} Sub
-                                                Tasks
-                                            </span>
-                                        </div>
-                                    </div>
                                 </div>
-                                <div className="flex items-center flex-wrap gap-2.5 sm:gap-3 flex-shrink-0 self-start md:self-center pl-9 md:pl-0">
-                                    <StatusBadge status={mj.status} size="sm" />
-                                    <div className="w-16 hidden sm:block">
-                                        <ProgressBar
-                                            value={mj.progress}
-                                            size="xs"
-                                            showLabel={false}
-                                        />
-                                    </div>
-                                    <span className="text-[14px] sm:text-[16px] font-black text-neutral-900 w-11 text-right tabular-nums">
-                                        {mj.progress}%
-                                    </span>
 
-                                    {/* PIC can add Sub Task, edit Main Task & delete Main Task */}
-                                    {isPIC && (
-                                        <div
-                                            className="flex items-center gap-1.5 ml-1 flex-wrap"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => {
-                                                    setShowAddSubMainJobModal({
-                                                        mjId: mj.id,
-                                                        mjDbId: (mj as any)
-                                                            .dbId,
-                                                        mjName: mj.name,
-                                                        parentWeight: mj.weight,
-                                                        currentSubCount:
-                                                            mj.subMainJobs
-                                                                .length,
+                                {/* Level 2: Sub Tasks (Sub Main Jobs) */}
+                                {expandedMJ[mj.id] && (
+                                    <div className="border-t border-neutral-100 divide-y divide-neutral-100 bg-neutral-50/30">
+                                        {mj.subMainJobs.map((smj) => (
+                                            <SubMainJobSection
+                                                key={smj.id}
+                                                mainJobs={projectData.mainJobs}
+                                                smj={smj}
+                                                expanded={!!expandedSMJ[smj.id]}
+                                                onToggle={() => toggleSMJ(smj.id)}
+                                                isAuthorizedToCheck={
+                                                    isAuthorizedToCheck
+                                                }
+                                                isPIC={isPIC}
+                                                isAdmin={isAdmin}
+                                                onOpenAddModal={() => {
+                                                    setExpandedSMJ((p) => ({
+                                                        ...p,
+                                                        [smj.id]: true,
+                                                    }));
+                                                    setShowAddTaskModal({
+                                                        smjId: smj.id,
+                                                        smjDbId: (smj as any).dbId,
+                                                        parentSmj: smj,
                                                     });
                                                 }}
-                                                className="py-1 px-2.5 text-[11px] h-7 bg-white hover:bg-neutral-50 border-neutral-300 flex-shrink-0"
-                                                icon={Plus}
-                                            >
-                                                Add Sub Task
-                                            </Button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setShowMainJobModal({
-                                                        mode: "edit",
-                                                        id: mj.id,
-                                                        dbId: (mj as any).dbId,
-                                                        name: mj.name,
-                                                        weight: mj.weight,
-                                                        startDate: mj.startDate,
-                                                        finishDate:
-                                                            mj.finishDate,
+                                                onOpenEditSubModal={() =>
+                                                    setShowEditSubMainJobModal({
+                                                        smj,
+                                                        parentMj: mj,
                                                     })
                                                 }
-                                                className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
-                                                title="Edit Main Task (Name & Weight)"
-                                            >
-                                                <Edit2 size={13} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    handleDeleteMainJob(
+                                                draggedSubJob={draggedSubJob}
+                                                dropTargetSubJobId={dropTargetSubJobId}
+                                                onDragStartSub={(smjId) =>
+                                                    setDraggedSubJob({
+                                                        parentMjId: mj.id,
+                                                        parentMjDbId: (mj as any).dbId,
+                                                        smjId,
+                                                    })
+                                                }
+                                                onDragOverSub={(smjId) => {
+                                                    if (
+                                                        draggedSubJob &&
+                                                        draggedSubJob.parentMjId === mj.id &&
+                                                        draggedSubJob.smjId !== smjId
+                                                    ) {
+                                                        setDropTargetSubJobId(smjId);
+                                                    }
+                                                }}
+                                                onDragLeaveSub={() =>
+                                                    setDropTargetSubJobId(null)
+                                                }
+                                                onDropSub={(targetSmjId) => {
+                                                    if (
+                                                        draggedSubJob &&
+                                                        draggedSubJob.parentMjId === mj.id
+                                                    ) {
+                                                        handleReorderSubMainJobs(
+                                                            mj.id,
+                                                            (mj as any).dbId,
+                                                            draggedSubJob.smjId,
+                                                            targetSmjId,
+                                                        );
+                                                    }
+                                                    setDraggedSubJob(null);
+                                                    setDropTargetSubJobId(null);
+                                                }}
+                                                onDragEndSub={() => {
+                                                    setDraggedSubJob(null);
+                                                    setDropTargetSubJobId(null);
+                                                }}
+                                                onOpenEditModal={(task) =>
+                                                    setShowAddTaskModal({
+                                                        smjId: smj.id,
+                                                        smjDbId: (smj as any).dbId,
+                                                        parentSmj: smj,
+                                                        task,
+                                                    })
+                                                }
+                                                onDeleteSubMainJob={() =>
+                                                    handleDeleteSubMainJob(
                                                         mj.id,
-                                                        (mj as any).dbId,
-                                                        mj.name,
+                                                        smj.id,
+                                                        (smj as any).dbId,
+                                                        smj.name,
                                                     )
                                                 }
-                                                className="p-1.5 text-neutral-400 hover:text-danger bg-white hover:bg-red-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
-                                                title="Delete Main Task"
-                                            >
-                                                <Trash2 size={13} />
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Level 2: Sub Tasks (Sub Main Jobs) */}
-                            {expandedMJ[mj.id] && (
-                                <div className="border-t border-neutral-100 divide-y divide-neutral-100 bg-neutral-50/30">
-                                    {mj.subMainJobs.map((smj) => (
-                                        <SubMainJobSection
-                                            key={smj.id}
-                                            mainJobs={projectData.mainJobs}
-                                            smj={smj}
-                                            expanded={!!expandedSMJ[smj.id]}
-                                            onToggle={() => toggleSMJ(smj.id)}
-                                            isAuthorizedToCheck={
-                                                isAuthorizedToCheck
-                                            }
-                                            isPIC={isPIC}
-                                            isAdmin={isAdmin}
-                                            onOpenAddModal={() => {
-                                                setExpandedSMJ((p) => ({
-                                                    ...p,
-                                                    [smj.id]: true,
-                                                }));
-                                                setShowAddTaskModal({
-                                                    smjId: smj.id,
-                                                    smjDbId: (smj as any).dbId,
-                                                    parentSmj: smj,
-                                                });
-                                            }}
-                                            onOpenEditModal={(task) =>
-                                                setShowAddTaskModal({
-                                                    smjId: smj.id,
-                                                    smjDbId: (smj as any).dbId,
-                                                    parentSmj: smj,
-                                                    task,
-                                                })
-                                            }
-                                            onDeleteSubMainJob={() =>
-                                                handleDeleteSubMainJob(
-                                                    mj.id,
-                                                    smj.id,
-                                                    (smj as any).dbId,
-                                                    smj.name,
-                                                )
-                                            }
-                                            onDeleteTask={(taskId, taskName) =>
-                                                handleDeleteSubtask(
-                                                    smj.id,
-                                                    taskId,
-                                                    taskName,
-                                                )
-                                            }
-                                            onManageDependencies={
-                                                handleOpenDepModal
-                                            }
-                                            onCheck={handleCheck}
-                                            onProgressChange={
-                                                handleProgressChange
-                                            }
-                                            onOpenEvidence={(ev) =>
-                                                setEvidencePreview(ev)
-                                            }
-                                            onOpenUploadEvidence={(task) =>
-                                                setUploadEvidenceTask({ task })
-                                            }
-                                            onOpenHistory={(task) =>
-                                                setHistoryModalTask({
-                                                    task,
-                                                    parentSmj: smj,
-                                                })
-                                            }
-                                            inlineEditingTaskId={
-                                                inlineEditingTaskId
-                                            }
-                                            inlineEditingTaskName={
-                                                inlineEditingTaskName
-                                            }
-                                            setInlineEditingTaskName={
-                                                setInlineEditingTaskName
-                                            }
-                                            onStartInlineEdit={
-                                                handleStartInlineEdit
-                                            }
-                                            onCancelInlineEdit={
-                                                handleCancelInlineEdit
-                                            }
-                                            onSaveInlineEdit={(task, name) =>
-                                                handleSaveInlineEdit(
-                                                    smj.id,
-                                                    task,
-                                                    name,
-                                                )
-                                            }
-                                            inlineSavingTaskId={
-                                                inlineSavingTaskId
-                                            }
-                                            draggedItem={draggedItem}
-                                            dropTargetTaskId={dropTargetTaskId}
-                                            onDragStartTask={(taskId) =>
-                                                setDraggedItem({
-                                                    smjId: smj.id,
-                                                    taskId,
-                                                })
-                                            }
-                                            onDragOverTask={(taskId) => {
-                                                if (
-                                                    draggedItem &&
-                                                    draggedItem.smjId ===
-                                                        smj.id &&
-                                                    draggedItem.taskId !==
-                                                        taskId
-                                                ) {
-                                                    setDropTargetTaskId(taskId);
-                                                }
-                                            }}
-                                            onDragLeaveTask={() =>
-                                                setDropTargetTaskId(null)
-                                            }
-                                            onDropTask={(targetTaskId) => {
-                                                if (
-                                                    draggedItem &&
-                                                    draggedItem.smjId === smj.id
-                                                ) {
-                                                    handleReorderTasks(
+                                                onDeleteTask={(taskId, taskName) =>
+                                                    handleDeleteSubtask(
                                                         smj.id,
-                                                        draggedItem.taskId,
-                                                        targetTaskId,
-                                                    );
+                                                        taskId,
+                                                        taskName,
+                                                    )
                                                 }
-                                                setDraggedItem(null);
-                                                setDropTargetTaskId(null);
-                                            }}
-                                            onDragEndTask={() => {
-                                                setDraggedItem(null);
-                                                setDropTargetTaskId(null);
-                                            }}
-                                        />
-                                    ))}
-                                    {mj.subMainJobs.length === 0 && (
-                                        <div className="px-10 py-3 text-[12px] text-neutral-400 italic">
-                                            No Sub Tasks yet.{" "}
-                                            {isPIC &&
-                                                "Click 'Add Sub Task' to create one."}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </Card>
-                    ))}
+                                                onManageDependencies={
+                                                    handleOpenDepModal
+                                                }
+                                                onCheck={handleCheck}
+                                                onProgressChange={
+                                                    handleProgressChange
+                                                }
+                                                onOpenEvidence={(ev) =>
+                                                    setEvidencePreview(ev)
+                                                }
+                                                onOpenUploadEvidence={(task) =>
+                                                    setUploadEvidenceTask({ task })
+                                                }
+                                                onOpenHistory={(task) =>
+                                                    setHistoryModalTask({
+                                                        task,
+                                                        parentSmj: smj,
+                                                    })
+                                                }
+                                                inlineEditingTaskId={
+                                                    inlineEditingTaskId
+                                                }
+                                                inlineEditingTaskName={
+                                                    inlineEditingTaskName
+                                                }
+                                                setInlineEditingTaskName={
+                                                    setInlineEditingTaskName
+                                                }
+                                                onStartInlineEdit={
+                                                    handleStartInlineEdit
+                                                }
+                                                onCancelInlineEdit={
+                                                    handleCancelInlineEdit
+                                                }
+                                                onSaveInlineEdit={(task, name) =>
+                                                    handleSaveInlineEdit(
+                                                        smj.id,
+                                                        task,
+                                                        name,
+                                                    )
+                                                }
+                                                inlineSavingTaskId={
+                                                    inlineSavingTaskId
+                                                }
+                                                draggedItem={draggedItem}
+                                                dropTargetTaskId={dropTargetTaskId}
+                                                onDragStartTask={(taskId) =>
+                                                    setDraggedItem({
+                                                        smjId: smj.id,
+                                                        taskId,
+                                                    })
+                                                }
+                                                onDragOverTask={(taskId) => {
+                                                    if (
+                                                        draggedItem &&
+                                                        draggedItem.smjId ===
+                                                            smj.id &&
+                                                        draggedItem.taskId !==
+                                                            taskId
+                                                        ) {
+                                                        setDropTargetTaskId(taskId);
+                                                    }
+                                                }}
+                                                onDragLeaveTask={() =>
+                                                    setDropTargetTaskId(null)
+                                                }
+                                                onDropTask={(targetTaskId) => {
+                                                    if (
+                                                        draggedItem &&
+                                                        draggedItem.smjId === smj.id
+                                                    ) {
+                                                        handleReorderTasks(
+                                                            smj.id,
+                                                            draggedItem.taskId,
+                                                            targetTaskId,
+                                                        );
+                                                    }
+                                                    setDraggedItem(null);
+                                                    setDropTargetTaskId(null);
+                                                }}
+                                                onDragEndTask={() => {
+                                                    setDraggedItem(null);
+                                                    setDropTargetTaskId(null);
+                                                }}
+                                            />
+                                        ))}
+                                        {mj.subMainJobs.length === 0 && (
+                                            <div className="px-10 py-3 text-[12px] text-neutral-400 italic">
+                                                No Sub Tasks yet.{" "}
+                                                {isPIC &&
+                                                    "Click 'Add Sub Task' to create one."}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </Card>
+                        );
+                    })}
                 </div>
             ) : (
                 <Card className="overflow-hidden">
@@ -2399,6 +2754,32 @@ export default function TasksPage() {
                 );
             })()}
 
+            {/* Modal Edit Sub Task (Sub Main Job under Main Job) */}
+            {showEditSubMainJobModal && (
+                <EditSubMainJobModal
+                    smj={showEditSubMainJobModal.smj}
+                    parentMj={showEditSubMainJobModal.parentMj}
+                    projectStartDate={
+                        projectData.startDate || projectData.start
+                    }
+                    projectEndDate={
+                        projectData.endDate || projectData.end
+                    }
+                    onClose={() => setShowEditSubMainJobModal(null)}
+                    onSave={(name, weight, start, end, callback) =>
+                        handleUpdateSubMainJob(
+                            showEditSubMainJobModal.smj.id,
+                            (showEditSubMainJobModal.smj as any).dbId,
+                            name,
+                            weight,
+                            start,
+                            end,
+                            callback,
+                        )
+                    }
+                />
+            )}
+
             {/* Modal Add / Edit Task (Sub-Subtask) */}
             {showAddTaskModal && (
                 <AddSubtaskModal
@@ -2704,6 +3085,7 @@ function SubMainJobSection({
     isPIC,
     isAdmin,
     onOpenAddModal,
+    onOpenEditSubModal,
     onOpenEditModal,
     onDeleteSubMainJob,
     onDeleteTask,
@@ -2720,6 +3102,13 @@ function SubMainJobSection({
     onCancelInlineEdit,
     onSaveInlineEdit,
     inlineSavingTaskId,
+    draggedSubJob,
+    dropTargetSubJobId,
+    onDragStartSub,
+    onDragOverSub,
+    onDragLeaveSub,
+    onDropSub,
+    onDragEndSub,
     draggedItem,
     dropTargetTaskId,
     onDragStartTask,
@@ -2736,6 +3125,7 @@ function SubMainJobSection({
     isPIC: boolean;
     isAdmin: boolean;
     onOpenAddModal: () => void;
+    onOpenEditSubModal: () => void;
     onOpenEditModal: (task: SubSubtask) => void;
     onDeleteSubMainJob: () => void;
     onDeleteTask: (taskId: string, taskName: string) => void;
@@ -2758,6 +3148,17 @@ function SubMainJobSection({
     onCancelInlineEdit: () => void;
     onSaveInlineEdit: (task: SubSubtask, newName: string) => void;
     inlineSavingTaskId: string | null;
+    draggedSubJob: {
+        parentMjId: string;
+        parentMjDbId?: number;
+        smjId: string;
+    } | null;
+    dropTargetSubJobId: string | null;
+    onDragStartSub: (smjId: string) => void;
+    onDragOverSub: (smjId: string) => void;
+    onDragLeaveSub: () => void;
+    onDropSub: (targetSmjId: string) => void;
+    onDragEndSub: () => void;
     draggedItem: { smjId: string; taskId: string } | null;
     dropTargetTaskId: string | null;
     onDragStartTask: (taskId: string) => void;
@@ -2766,10 +3167,58 @@ function SubMainJobSection({
     onDropTask: (targetTaskId: string) => void;
     onDragEndTask: () => void;
 }) {
+    const isDraggingSub = draggedSubJob?.smjId === smj.id;
+    const isDropTargetSub = dropTargetSubJobId === smj.id;
+
     return (
-        <div className="transition-colors">
+        <div
+            className={`transition-all duration-150 ${
+                isDraggingSub
+                    ? "opacity-40 border-dashed border-brand bg-brand/5"
+                    : isDropTargetSub
+                    ? "border-t-2 border-t-brand ring-2 ring-brand/30 bg-purple-50/40"
+                    : "transition-colors"
+            }`}
+            onDragOver={(e) => {
+                if (draggedSubJob && draggedSubJob.smjId !== smj.id) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDragOverSub(smj.id);
+                }
+            }}
+            onDragLeave={(e) => {
+                e.stopPropagation();
+                onDragLeaveSub();
+            }}
+            onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (draggedSubJob && draggedSubJob.smjId !== smj.id) {
+                    onDropSub(smj.id);
+                }
+            }}
+        >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pl-6 sm:pl-9 pr-4 py-3 hover:bg-neutral-50/80 transition-colors">
                 <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+                    {/* Drag Handle (PIC only) */}
+                    {isPIC && (
+                        <div
+                            draggable
+                            onDragStart={(e) => {
+                                e.stopPropagation();
+                                onDragStartSub(smj.id);
+                            }}
+                            onDragEnd={(e) => {
+                                e.stopPropagation();
+                                onDragEndSub();
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="cursor-grab active:cursor-grabbing text-neutral-300 hover:text-neutral-600 p-0.5 -ml-1 rounded transition-colors flex-shrink-0 mt-0.5 sm:mt-0"
+                            title="Drag to reorder Sub Task within this Main Task"
+                        >
+                            <GripVertical size={14} />
+                        </div>
+                    )}
                     <button
                         onClick={onToggle}
                         className="text-neutral-400 hover:text-neutral-600 flex-shrink-0 mt-0.5 sm:mt-0"
@@ -2805,7 +3254,7 @@ function SubMainJobSection({
                         {smj.progress}%
                     </span>
 
-                    {/* Only PIC can add tasks / delete sub tasks */}
+                    {/* Only PIC can add tasks / edit / delete sub tasks */}
                     {isPIC && (
                         <div className="flex items-center gap-1.5 ml-1 flex-wrap">
                             <Button
@@ -2817,6 +3266,14 @@ function SubMainJobSection({
                             >
                                 Add Task
                             </Button>
+                            <button
+                                type="button"
+                                onClick={onOpenEditSubModal}
+                                className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
+                                title="Edit Sub Task (Name & Weight)"
+                            >
+                                <Edit2 size={13} />
+                            </button>
                             <button
                                 type="button"
                                 onClick={onDeleteSubMainJob}
@@ -3970,13 +4427,205 @@ const calcStartFromPredecessor = (
         calculatedStart = minBound;
     }
 
-    // Clamping: Tanggal mulai tidak boleh melebihi batas selesai Main Task
-    if (maxBound && calculatedStart > maxBound) {
-        calculatedStart = maxBound;
-    }
-
     return calculatedStart;
 };
+
+function EditSubMainJobModal({
+    smj,
+    parentMj,
+    projectStartDate,
+    projectEndDate,
+    onClose,
+    onSave,
+}: {
+    smj: SubMainJob;
+    parentMj?: MainJob;
+    projectStartDate?: string;
+    projectEndDate?: string;
+    onClose: () => void;
+    onSave: (
+        name: string,
+        weight: number,
+        start?: string,
+        end?: string,
+        callback?: (err?: string | null) => void,
+    ) => void;
+}) {
+    const [name, setName] = useState(smj.name || "");
+    const [weight, setWeight] = useState(
+        smj.weight !== undefined ? smj.weight.toString() : "0",
+    );
+    const [startDate, setStartDate] = useState(
+        smj.startDate || smj.start || parentMj?.startDate || projectStartDate || "",
+    );
+    const [endDate, setEndDate] = useState(
+        smj.finishDate || smj.end || smj.endDate || parentMj?.finishDate || projectEndDate || "",
+    );
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+
+        if (projectStartDate && startDate && startDate < projectStartDate) {
+            setActionError(
+                `Start date cannot be earlier than project start date (${formatDateDisplay(projectStartDate)}).`,
+            );
+            return;
+        }
+        if (projectEndDate && endDate && endDate > projectEndDate) {
+            setActionError(
+                `Finish date cannot exceed project target finish date (${formatDateDisplay(projectEndDate)}).`,
+            );
+            return;
+        }
+        if (startDate && endDate && endDate <= startDate) {
+            setActionError(
+                "Finish date must be after start date (at least +1 day later).",
+            );
+            return;
+        }
+
+        setSubmitting(true);
+        setActionError(null);
+        onSave(
+            name.trim(),
+            parseFloat(weight) || 0,
+            startDate || undefined,
+            endDate || undefined,
+            (err) => {
+                setSubmitting(false);
+                if (err) {
+                    setActionError(err);
+                }
+            },
+        );
+    };
+
+    return (
+        <Modal
+            title="Edit Sub Task"
+            subtitle={`Code: ${smj.code}${parentMj?.name ? ` • Under: ${parentMj.name}` : ""}`}
+            onClose={onClose}
+            size="md"
+        >
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {actionError && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+                        <AlertTriangle size={14} className="flex-shrink-0" />
+                        <span>{actionError}</span>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-3">
+                    <div>
+                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                            Code
+                        </label>
+                        <input
+                            type="text"
+                            value={smj.code}
+                            disabled
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] font-bold bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                        />
+                    </div>
+                    <div className="col-span-2">
+                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                            Weight (%)
+                        </label>
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={weight}
+                            onChange={(e) => {
+                                setWeight(e.target.value);
+                                setActionError(null);
+                            }}
+                            placeholder="0"
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-medium"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                        Sub Task Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        required
+                        value={name}
+                        onChange={(e) => {
+                            setName(e.target.value);
+                            setActionError(null);
+                        }}
+                        placeholder="Sub Task Name..."
+                        className="w-full px-3.5 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/15 bg-white font-medium"
+                        autoFocus
+                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                            Start Date
+                        </label>
+                        <input
+                            type="date"
+                            value={startDate}
+                            min={projectStartDate || undefined}
+                            max={endDate || projectEndDate || undefined}
+                            onChange={(e) => {
+                                setStartDate(e.target.value);
+                                setActionError(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                            End Date
+                        </label>
+                        <input
+                            type="date"
+                            value={endDate}
+                            min={startDate || projectStartDate || undefined}
+                            max={projectEndDate || undefined}
+                            onChange={(e) => {
+                                setEndDate(e.target.value);
+                                setActionError(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={onClose}
+                        disabled={submitting}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        type="submit"
+                        variant="primary"
+                        size="sm"
+                        disabled={submitting || !name.trim()}
+                    >
+                        {submitting ? "Saving..." : "Save Changes"}
+                    </Button>
+                </div>
+            </form>
+        </Modal>
+    );
+}
 
 function AddSubMainJobModal({
     mjName,
@@ -4581,20 +5230,6 @@ function AddSubtaskModal({
         return manualStart;
     }, [selectedPred, depType, lag, duration, minStart, maxEnd, manualStart]);
 
-    // Maximum allowed duration clamped strictly by Main Task finish deadline (maxEnd)
-    const maxAllowedDuration = useMemo(() => {
-        if (!maxEnd || !currentStart) return undefined;
-        const diff = diffDaysSafe(currentStart, maxEnd);
-        return Math.max(1, diff + 1);
-    }, [currentStart, maxEnd]);
-
-    // Ensure duration is clamped if currentStart pushes beyond maxEnd
-    useEffect(() => {
-        if (maxAllowedDuration !== undefined && duration > maxAllowedDuration) {
-            setDuration(maxAllowedDuration);
-        }
-    }, [maxAllowedDuration, duration]);
-
     // Calculated finish date for preview
     const previewEnd = useMemo(() => {
         return calcEndDate(currentStart, duration);
@@ -4639,13 +5274,6 @@ function AddSubtaskModal({
 
         if (!isFirstTask && !predecessorId) {
             setActionError("Predecessor is required for tasks other than the first task.");
-            return;
-        }
-
-        if (maxEnd && previewEnd && previewEnd > maxEnd) {
-            setActionError(
-                `Calculated task finish date (${formatDateDisplay(previewEnd)}) cannot exceed Main Task finish deadline (${formatDateDisplay(maxEnd)}).`,
-            );
             return;
         }
 
@@ -4807,37 +5435,19 @@ function AddSubtaskModal({
                             <label className="block text-[12px] font-bold text-neutral-700">
                                 Duration (Days) <span className="text-red-500">*</span>
                             </label>
-                            {maxAllowedDuration !== undefined && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                                    <Lock size={10} /> Max: {maxAllowedDuration}d
-                                </span>
-                            )}
                         </div>
                         <input
                             type="number"
                             min="1"
-                            max={maxAllowedDuration}
                             value={duration}
                             onChange={(e) => {
                                 const rawVal = parseInt(e.target.value) || 0;
-                                let clamped = Math.max(1, rawVal);
-                                if (
-                                    maxAllowedDuration !== undefined &&
-                                    clamped > maxAllowedDuration
-                                ) {
-                                    clamped = maxAllowedDuration;
-                                }
-                                setDuration(clamped);
+                                setDuration(Math.max(1, rawVal));
                                 setActionError(null);
                             }}
                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-[13px] outline-none focus:border-brand font-semibold"
                             required
                         />
-                        {maxAllowedDuration !== undefined && (
-                            <span className="text-[10px] text-neutral-500 mt-1 block">
-                                Locked by Main Task limit (Max {maxAllowedDuration} days).
-                            </span>
-                        )}
                     </div>
 
                     <div>
@@ -4859,14 +5469,12 @@ function AddSubtaskModal({
                             type="date"
                             value={currentStart}
                             min={minStart || undefined}
-                            max={maxEnd || undefined}
                             readOnly={!isFirstTask}
                             tabIndex={!isFirstTask ? -1 : 0}
                             onChange={(e) => {
                                 if (isFirstTask) {
                                     let val = e.target.value;
                                     if (minStart && val < minStart) val = minStart;
-                                    if (maxEnd && val > maxEnd) val = maxEnd;
                                     setManualStart(val);
                                     setActionError(null);
                                 }

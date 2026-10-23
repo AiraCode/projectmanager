@@ -87,18 +87,7 @@ class CheckSidebarAccess
         }
 
         if ($menuName === 'Project List') {
-            $hasMultiple = in_array('Multiple Projects', $user->permission_matrix['features']['projects'] ?? []);
-            
-            $projectAccess = $user->permission_matrix['project_access'] ?? [];
-            $visibleProjects = 0;
-            foreach ($projectAccess as $pid => $access) {
-                if (!empty($access['view_project'])) $visibleProjects++;
-            }
-            $hasMultipleProjectAccess = $visibleProjects > 1;
-
-            if ($hasMultiple || $hasMultipleProjectAccess || in_array($user->role?->name, ['admin_utama', 'admin_progres', 'pic'])) {
-                return $next($request);
-            }
+            return $next($request);
         }
 
         if (!in_array($menuName, $sidebar)) {

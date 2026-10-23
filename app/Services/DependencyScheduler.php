@@ -378,9 +378,9 @@ class DependencyScheduler
                         'actual_end'   => $mainActualEnd->format('Y-m-d'),
                     ]);
 
-                    if (\Illuminate\Support\Facades\Schema::hasTable('projects')) {
+                    if ($mainWbs->projects_id && \Illuminate\Support\Facades\Schema::hasTable('projects')) {
                         $project = $mainWbs->project;
-                        if ($project && $project->end && Carbon::parse($project->end)->startOfDay()->lt($mainEnd)) {
+                        if ($project && $project->end && $mainEnd->gt(Carbon::parse($project->end)->startOfDay())) {
                             $project->update(['end' => $mainEnd->format('Y-m-d')]);
                         }
                     }

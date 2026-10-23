@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Status } from '@/data/mockData';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, AlertTriangle, Trash2, AlertCircle, Info } from 'lucide-react';
 
 export const STATUS_CONFIG: Record<Status, { label: string; bg: string; text: string; dot: string }> = {
   'Open':      { label: 'Open',      bg: 'bg-success-light',   text: 'text-success',       dot: 'bg-success' },
@@ -310,3 +310,210 @@ export function Toast({
     </div>
   );
 }
+
+export function ConfirmModal({
+  isOpen = true,
+  onClose,
+  onConfirm,
+  title = 'Are you sure?',
+  message,
+  confirmText = 'Delete',
+  cancelText = 'Cancel',
+  variant = 'danger',
+  loading = false,
+}: {
+  isOpen?: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title?: string;
+  message: React.ReactNode;
+  confirmText?: string;
+  cancelText?: string;
+  variant?: 'danger' | 'warning' | 'primary';
+  loading?: boolean;
+}) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) onClose();
+    };
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose, loading]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-neutral-900/50 backdrop-blur-xs transition-opacity"
+        onClick={() => { if (!loading) onClose(); }}
+      />
+
+      {/* Modal Dialog */}
+      <div className="relative bg-white rounded-2xl shadow-2xl border border-neutral-200 w-full max-w-md z-10 modal-enter overflow-hidden p-6">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={loading}
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors disabled:opacity-50"
+          title="Close"
+        >
+          <X size={16} />
+        </button>
+
+        <div className="flex items-start gap-4">
+          <div
+            className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+              variant === 'danger'
+                ? 'bg-red-50 text-red-600 border border-red-100 ring-4 ring-red-50/50'
+                : variant === 'warning'
+                ? 'bg-amber-50 text-amber-600 border border-amber-100 ring-4 ring-amber-50/50'
+                : 'bg-violet-50 text-violet-600 border border-violet-100 ring-4 ring-violet-50/50'
+            }`}
+          >
+            {variant === 'danger' ? (
+              <Trash2 size={20} />
+            ) : variant === 'warning' ? (
+              <AlertTriangle size={20} />
+            ) : (
+              <Info size={20} />
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0 pr-4">
+            <h3 className="text-[16px] font-bold text-neutral-900 tracking-tight leading-snug">
+              {title}
+            </h3>
+            <div className="text-[13px] text-neutral-600 mt-1.5 leading-relaxed">
+              {message}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-2.5">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-[13px] font-semibold text-neutral-700 bg-neutral-100 hover:bg-neutral-200 active:bg-neutral-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {cancelText}
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onConfirm}
+            className={`px-4 py-2 rounded-xl text-[13px] font-semibold text-white transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${
+              variant === 'danger'
+                ? 'bg-red-600 hover:bg-red-700 active:bg-red-800'
+                : variant === 'warning'
+                ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800'
+                : 'bg-brand hover:bg-brand-dark active:bg-brand-dark'
+            }`}
+          >
+            {loading && <Loader2 size={14} className="animate-spin" />}
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AlertModal({
+  isOpen = true,
+  onClose,
+  title = 'Notification',
+  message,
+  buttonText = 'Understood',
+  variant = 'info',
+}: {
+  isOpen?: boolean;
+  onClose: () => void;
+  title?: string;
+  message: React.ReactNode;
+  buttonText?: string;
+  variant?: 'info' | 'warning' | 'danger';
+}) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="fixed inset-0 bg-neutral-900/50 backdrop-blur-xs transition-opacity"
+        onClick={onClose}
+      />
+      <div className="relative bg-white rounded-2xl shadow-2xl border border-neutral-200 w-full max-w-md z-10 modal-enter overflow-hidden p-6">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+          title="Close"
+        >
+          <X size={16} />
+        </button>
+
+        <div className="flex items-start gap-4">
+          <div
+            className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+              variant === 'danger'
+                ? 'bg-red-50 text-red-600 border border-red-100 ring-4 ring-red-50/50'
+                : variant === 'warning'
+                ? 'bg-amber-50 text-amber-600 border border-amber-100 ring-4 ring-amber-50/50'
+                : 'bg-blue-50 text-blue-600 border border-blue-100 ring-4 ring-blue-50/50'
+            }`}
+          >
+            {variant === 'danger' ? (
+              <AlertCircle size={20} />
+            ) : variant === 'warning' ? (
+              <AlertTriangle size={20} />
+            ) : (
+              <Info size={20} />
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0 pr-4">
+            <h3 className="text-[16px] font-bold text-neutral-900 tracking-tight leading-snug">
+              {title}
+            </h3>
+            <div className="text-[13px] text-neutral-600 mt-1.5 leading-relaxed">
+              {message}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-neutral-900 hover:bg-neutral-800 active:bg-black transition-colors shadow-xs"
+          >
+            {buttonText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
