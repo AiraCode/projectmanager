@@ -316,76 +316,211 @@ class DependencyScheduler
 
     /**
      * Synchronize parent SubWbs and MainWbs start/end dates based on children.
+     * Can accept a Wbs, SubWbs, MainWbs, or an ID.
      */
-    public function syncParentWbsDates(Wbs $task): void
+    public function syncParentWbsDates(Wbs|SubWbs|MainWbs|int|string $target): void
     {
-        $subWbs = $task->parentSubWbs;
-        if (!$subWbs) return;
+        $subWbs = null;
+        $mainWbs = null;
 
-        $childWbs = Wbs::where('sub_wbs_id', $subWbs->id)
-            ->whereNotNull('start')
-            ->whereNotNull('end')
-            ->get();
+        if ($target instanceof Wbs) {
+            $subWbs = $target->parentSubWbs;
+        } elseif ($target instanceof SubWbs) {
+            $subWbs = $target;
+        } elseif ($target instanceof MainWbs) {
+            $mainWbs = $target;
+        } elseif (is_numeric($target)) {
+            $subWbs = SubWbs::find($target);
+            if (!$subWbs) {
+                $mainWbs = MainWbs::find($target);
+            }
+        } elseif (is_string($target)) {
+            $wbs = Wbs::find($target);
+            if ($wbs) {
+                $subWbs = $wbs->parentSubWbs;
+            } else {
+                $subWbs = SubWbs::find($target);
+            }
+        }
 
-        if ($childWbs->isNotEmpty()) {
-            $minStart = Carbon::parse($childWbs->min('start'))->startOfDay();
-            $maxEnd   = Carbon::parse($childWbs->max('end'))->startOfDay();
+        if ($subWbs) {
+            $childWbs = Wbs::where('sub_wbs_id', $subWbs->id)
+                ->whereNotNull('start')
+                ->whereNotNull('end')
+                ->get();
 
-            $subEnd = $subWbs->end ? Carbon::parse($subWbs->end)->startOfDay() : null;
-            $newSubEnd = $subEnd && $subEnd->gt($maxEnd) ? $subEnd : $maxEnd;
+            if ($childWbs->isNotEmpty()) {
+                $minStart = Carbon::parse($childWbs->min('start'))->startOfDay();
+                $maxEnd   = Carbon::parse($childWbs->max('end'))->startOfDay();
 
-            $subStart = $subWbs->start ? Carbon::parse($subWbs->start)->startOfDay() : null;
-            $newSubStart = $subStart && $subStart->lt($minStart) ? $subStart : $minStart;
-
-            $subWbs->update([
-                'start'        => $newSubStart->format('Y-m-d'),
-                'end'          => $newSubEnd->format('Y-m-d'),
-                'actual_start' => $minStart->format('Y-m-d'),
-                'actual_end'   => $maxEnd->format('Y-m-d'),
-            ]);
+                $subWbs->update([
+                    'start'        => $minStart->format('Y-m-d'),
+                    'end'          => $maxEnd->format('Y-m-d'),
+                    'actual_start' => $minStart->format('Y-m-d'),
+                    'actual_end'   => $maxEnd->format('Y-m-d'),
+                ]);
+            }
 
             $mainWbs = $subWbs->mainWbs;
-            if ($mainWbs) {
-                $siblingSubs = SubWbs::where('sub_wbs_id', $mainWbs->id)
-                    ->whereNotNull('start')
-                    ->whereNotNull('end')
-                    ->get();
+        }
 
-                if ($siblingSubs->isNotEmpty()) {
-                    $mainStart = Carbon::parse($siblingSubs->min('start'))->startOfDay();
-                    $mainEnd   = Carbon::parse($siblingSubs->max('end'))->startOfDay();
+        if ($mainWbs) {
+            $siblingSubs = SubWbs::where('sub_wbs_id', $mainWbs->id)
+                ->whereNotNull('start')
+                ->whereNotNull('end')
+                ->get();
 
-                    $existingMainEnd = $mainWbs->end ? Carbon::parse($mainWbs->end)->startOfDay() : null;
-                    $newMainEnd = $existingMainEnd && $existingMainEnd->gt($mainEnd) ? $existingMainEnd : $mainEnd;
+            if ($siblingSubs->isNotEmpty()) {
+                $mainStart = Carbon::parse($siblingSubs->min('start'))->startOfDay();
+                $mainEnd   = Carbon::parse($siblingSubs->max('end'))->startOfDay();
 
-                    $existingMainStart = $mainWbs->start ? Carbon::parse($mainWbs->start)->startOfDay() : null;
-                    $newMainStart = $existingMainStart && $existingMainStart->lt($mainStart) ? $existingMainStart : $mainStart;
+                $mainWbs->update([
+                    'start'        => $mainStart->format('Y-m-d'),
+                    'end'          => $mainEnd->format('Y-m-d'),
+                    'actual_start' => $mainStart->format('Y-m-d'),
+                    'actual_end'   => $mainEnd->format('Y-m-d'),
+                ]);
 
-                    $siblingActualStarts = $siblingSubs->whereNotNull('actual_start');
-                    $siblingActualEnds   = $siblingSubs->whereNotNull('actual_end');
-
-                    $mainActualStart = $siblingActualStarts->isNotEmpty()
-                        ? Carbon::parse($siblingActualStarts->min('actual_start'))->startOfDay()
-                        : $minStart;
-                    $mainActualEnd   = $siblingActualEnds->isNotEmpty()
-                        ? Carbon::parse($siblingActualEnds->max('actual_end'))->startOfDay()
-                        : $maxEnd;
-
-                    $mainWbs->update([
-                        'start'        => $newMainStart->format('Y-m-d'),
-                        'end'          => $newMainEnd->format('Y-m-d'),
-                        'actual_start' => $mainActualStart->format('Y-m-d'),
-                        'actual_end'   => $mainActualEnd->format('Y-m-d'),
-                    ]);
-
-                    if ($mainWbs->projects_id && \Illuminate\Support\Facades\Schema::hasTable('projects')) {
-                        $project = $mainWbs->project;
-                        if ($project && $project->end && $mainEnd->gt(Carbon::parse($project->end)->startOfDay())) {
-                            $project->update(['end' => $mainEnd->format('Y-m-d')]);
-                        }
+                if ($mainWbs->projects_id && \Illuminate\Support\Facades\Schema::hasTable('projects')) {
+                    $project = $mainWbs->project;
+                    if ($project && $project->end && $mainEnd->gt(Carbon::parse($project->end)->startOfDay())) {
+                        $project->update(['end' => $mainEnd->format('Y-m-d')]);
                     }
                 }
             }
         }
     }
+
+    /**
+     * Self-healing date reconciler:
+     * Scans project WBS tree and automatically repairs parent Sub Task and Main Task dates
+     * so they strictly adhere to their children's earliest start and latest finish dates.
+     * Records all changes to AuditLog under the actor "Provis Support System".
+     *
+     * @return array List of repaired entries
+     */
+    public function reconcileProjectDates(Project|int|string $projectOrId, string $actorName = 'Provis Support System'): array
+    {
+        $project = $projectOrId instanceof Project ? $projectOrId : Project::find($projectOrId);
+        if (!$project) return [];
+
+        $repairs = [];
+        $mainTasks = MainWbs::where('projects_id', $project->id)->get();
+
+        foreach ($mainTasks as $mainWbs) {
+            $subs = SubWbs::where('sub_wbs_id', $mainWbs->id)->get();
+
+            foreach ($subs as $subWbs) {
+                $childTasks = Wbs::where('sub_wbs_id', $subWbs->id)
+                    ->whereNotNull('start')
+                    ->whereNotNull('end')
+                    ->get();
+
+                if ($childTasks->isNotEmpty()) {
+                    $expectedStart = Carbon::parse($childTasks->min('start'))->startOfDay()->format('Y-m-d');
+                    $expectedEnd   = Carbon::parse($childTasks->max('end'))->startOfDay()->format('Y-m-d');
+
+                    $currentStart = $subWbs->start ? Carbon::parse($subWbs->start)->format('Y-m-d') : null;
+                    $currentEnd   = $subWbs->end ? Carbon::parse($subWbs->end)->format('Y-m-d') : null;
+
+                    if ($currentStart !== $expectedStart || $currentEnd !== $expectedEnd) {
+                        $oldDatesStr = "{$currentStart} s/d {$currentEnd}";
+                        $newDatesStr = "{$expectedStart} s/d {$expectedEnd}";
+
+                        $subWbs->update([
+                            'start'        => $expectedStart,
+                            'end'          => $expectedEnd,
+                            'actual_start' => $expectedStart,
+                            'actual_end'   => $expectedEnd,
+                        ]);
+
+                        if (\Illuminate\Support\Facades\Schema::hasTable('audit_logs')) {
+                            \App\Models\AuditLog::record(
+                                'SYSTEM_SYNC_DATES',
+                                "{$actorName} otomatis menyesuaikan tanggal Sub Task '{$subWbs->name}' dari {$oldDatesStr} menjadi {$newDatesStr} mengikuti task terlama pada proyek '{$project->title}'.",
+                                null,
+                                request()?->ip(),
+                                [
+                                    'actor'      => $actorName,
+                                    'project_id' => $project->id,
+                                    'sub_wbs_id' => $subWbs->id,
+                                    'old_start'  => $currentStart,
+                                    'old_end'    => $currentEnd,
+                                    'new_start'  => $expectedStart,
+                                    'new_end'    => $expectedEnd,
+                                ]
+                            );
+                        }
+
+                        $repairs[] = [
+                            'type' => 'sub_wbs',
+                            'id'   => $subWbs->id,
+                            'name' => $subWbs->name,
+                            'old'  => [$currentStart, $currentEnd],
+                            'new'  => [$expectedStart, $expectedEnd],
+                        ];
+                    }
+                }
+            }
+
+            // Sync Main Task dates based on its Sub Tasks
+            $subsAfter = SubWbs::where('sub_wbs_id', $mainWbs->id)
+                ->whereNotNull('start')
+                ->whereNotNull('end')
+                ->get();
+
+            if ($subsAfter->isNotEmpty()) {
+                $expectedMainStart = Carbon::parse($subsAfter->min('start'))->startOfDay()->format('Y-m-d');
+                $expectedMainEnd   = Carbon::parse($subsAfter->max('end'))->startOfDay()->format('Y-m-d');
+
+                $currentMainStart = $mainWbs->start ? Carbon::parse($mainWbs->start)->format('Y-m-d') : null;
+                $currentMainEnd   = $mainWbs->end ? Carbon::parse($mainWbs->end)->format('Y-m-d') : null;
+
+                if ($currentMainStart !== $expectedMainStart || $currentMainEnd !== $expectedMainEnd) {
+                    $oldDatesStr = "{$currentMainStart} s/d {$currentMainEnd}";
+                    $newDatesStr = "{$expectedMainStart} s/d {$expectedMainEnd}";
+
+                    $mainWbs->update([
+                        'start'        => $expectedMainStart,
+                        'end'          => $expectedMainEnd,
+                        'actual_start' => $expectedMainStart,
+                        'actual_end'   => $expectedMainEnd,
+                    ]);
+
+                    if (\Illuminate\Support\Facades\Schema::hasTable('audit_logs')) {
+                        \App\Models\AuditLog::record(
+                            'SYSTEM_SYNC_DATES',
+                            "{$actorName} otomatis menyesuaikan tanggal Main Task '{$mainWbs->name}' dari {$oldDatesStr} menjadi {$newDatesStr} mengikuti sub task terlama pada proyek '{$project->title}'.",
+                            null,
+                            request()?->ip(),
+                            [
+                                'actor'       => $actorName,
+                                'project_id'  => $project->id,
+                                'main_wbs_id' => $mainWbs->id,
+                                'old_start'   => $currentMainStart,
+                                'old_end'     => $currentMainEnd,
+                                'new_start'   => $expectedMainStart,
+                                'new_end'     => $expectedMainEnd,
+                            ]
+                        );
+                    }
+
+                    $repairs[] = [
+                        'type' => 'main_wbs',
+                        'id'   => $mainWbs->id,
+                        'name' => $mainWbs->name,
+                        'old'  => [$currentMainStart, $currentMainEnd],
+                        'new'  => [$expectedMainStart, $expectedMainEnd],
+                    ];
+                }
+
+                if ($project->end && Carbon::parse($expectedMainEnd)->gt(Carbon::parse($project->end)->startOfDay())) {
+                    $project->update(['end' => $expectedMainEnd]);
+                }
+            }
+        }
+
+        return $repairs;
+    }
 }
+

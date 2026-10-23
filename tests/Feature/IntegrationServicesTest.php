@@ -41,6 +41,10 @@ class IntegrationServicesTest extends TestCase
                 'name' => 'Task Test 1',
                 'weight' => 50,
                 'order_index' => 1,
+                'divisions_id' => Division::first()?->id ?? 1,
+                'vendor' => 'Internal',
+                'start' => now(),
+                'end' => now()->addDays(5),
             ]);
             Wbs::create([
                 'id' => 'test-task-2',
@@ -48,6 +52,10 @@ class IntegrationServicesTest extends TestCase
                 'name' => 'Task Test 2',
                 'weight' => 50,
                 'order_index' => 2,
+                'divisions_id' => Division::first()?->id ?? 1,
+                'vendor' => 'Internal',
+                'start' => now(),
+                'end' => now()->addDays(5),
             ]);
             $tasks = Wbs::where('sub_wbs_id', $subWbs->id)->get();
         }
@@ -110,19 +118,20 @@ class IntegrationServicesTest extends TestCase
     {
         $superadmin = User::where('email', 'superadmin@provis.id')->first();
         $project = Project::first();
-        $subWbs = SubWbs::whereHas('mainWbs', function ($q) use ($project) {
-            $q->where('projects_id', $project->id);
-        })->first();
+        $mainWbs = MainWbs::where('projects_id', $project->id)->first();
+        $subWbs = SubWbs::create([
+            'sub_wbs_id' => $mainWbs->id,
+            'list_sub_wbs_names_id' => \App\Models\ListSubWbsName::first()?->id ?? 1,
+            'name' => 'SubWbs for Weight Test',
+            'weight' => 10,
+            'predecessor' => '',
+            'predecessor_type' => 'FS',
+            'start' => now(),
+            'end' => now()->addDays(5),
+        ]);
 
-        $tasks = Wbs::where('sub_wbs_id', $subWbs->id)->get();
-        if ($tasks->count() < 2) {
-            Wbs::create(['id' => 'task-wt-1', 'sub_wbs_id' => $subWbs->id, 'name' => 'W1', 'weight' => 50]);
-            Wbs::create(['id' => 'task-wt-2', 'sub_wbs_id' => $subWbs->id, 'name' => 'W2', 'weight' => 50]);
-            $tasks = Wbs::where('sub_wbs_id', $subWbs->id)->get();
-        }
-
-        $t1 = $tasks[0];
-        $t2 = $tasks[1];
+        $t1 = Wbs::create(['id' => 'task-wt-' . \Illuminate\Support\Str::uuid(), 'sub_wbs_id' => $subWbs->id, 'name' => 'W1', 'weight' => 50, 'divisions_id' => Division::first()?->id ?? 1, 'vendor' => 'Internal', 'start' => now(), 'end' => now()->addDays(5)]);
+        $t2 = Wbs::create(['id' => 'task-wt-' . \Illuminate\Support\Str::uuid(), 'sub_wbs_id' => $subWbs->id, 'name' => 'W2', 'weight' => 50, 'divisions_id' => Division::first()?->id ?? 1, 'vendor' => 'Internal', 'start' => now(), 'end' => now()->addDays(5)]);
 
         // Case A: Total is 80% (Not 100%) -> Must fail validation
         $responseBad = $this->actingAs($superadmin)->post("/projects/{$project->id}/weights", [

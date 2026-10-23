@@ -67,7 +67,7 @@ export default function WorkingTreePage({
   allTasks = [],
   userRole = '',
 }: Props) {
-  const isPIC = userRole === 'pic' || userRole === 'SuperAdmin';
+  const isPIC = userRole === 'SuperAdmin' || (userRole === 'pic' && project?.can_edit !== false);
 
   // Navigation tab: 'team' or 'task_divisions'
   const [activeTab, setActiveTab] = useState<'team' | 'task_divisions'>('team');

@@ -187,7 +187,9 @@ export default function TasksPage() {
         rawRole === "super_admin" ||
         rawRole === "superadministrator" ||
         rawRole === "superadmin";
-    const isPIC = authUser?.isPIC === true || rawRole === "pic" || isSuperAdmin;
+    const isPICRole = authUser?.isPIC === true || rawRole === "pic" || isSuperAdmin;
+    const canEditProject = isSuperAdmin || (Boolean(authUser?.isPIC === true || rawRole === "pic") && ((project as any)?.can_edit ?? (usePage().props as any)?.canEdit ?? false) !== false);
+    const isPIC = canEditProject;
     const isWorker = authUser?.isWorker === true || rawRole === "worker";
     const isAdmin =
         authUser?.isAdminUtama === true ||

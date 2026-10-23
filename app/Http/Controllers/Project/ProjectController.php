@@ -36,6 +36,18 @@ class ProjectController extends Controller
      *
      * @suppress PHP6613
      */
+    /**
+     * Get all project IDs a worker is permitted to access.
+     * Merges permission_matrix['project_access'] and working tree project_members assignments.
+     */
+    private function getWorkerAllowedProjectIds(User $user): array
+    {
+        $matrixAccess = $user->permission_matrix['project_access'] ?? [];
+        $matrixAllowed = array_keys(array_filter($matrixAccess, fn($access) => !empty($access['view_project'])));
+        $memberAllowed = \App\Models\ProjectMember::where('user_id', $user->id)->pluck('project_id')->all();
+        return array_values(array_unique(array_map('intval', array_merge($matrixAllowed, $memberAllowed))));
+    }
+
     public function projectListPage(Request $request)
     {
         /** @var User|null $user */
@@ -43,8 +55,7 @@ class ProjectController extends Controller
         $role = $user->role->name ?? '';
 
         if ($role === 'worker') {
-            $projectAccess = $user->permission_matrix['project_access'] ?? [];
-            $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
+            $allowedIds = $this->getWorkerAllowedProjectIds($user);
 
             $companyIds = $user->getCompanyIds();
             $projectsQuery = Project::whereIn('companies_id', $companyIds)->whereIn('id', $allowedIds)->with(['manager', 'company']);
@@ -245,6 +256,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($project) {
+            app(\App\Services\DependencyScheduler::class)->reconcileProjectDates($project);
+        }
+
         if ($redirect = $this->guardProjectSetup($project, $role)) {
             return $redirect;
         }
@@ -272,6 +287,10 @@ class ProjectController extends Controller
         $project = $this->resolveProjectForUser($targetId);
         if (!$project) {
             return redirect()->route('projectlistpage');
+        }
+
+        if ($project) {
+            app(\App\Services\DependencyScheduler::class)->reconcileProjectDates($project);
         }
 
         if ($redirect = $this->guardProjectSetup($project, $role)) {
@@ -327,6 +346,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($project) {
+            app(\App\Services\DependencyScheduler::class)->reconcileProjectDates($project);
+        }
+
         if ($project && ($redirect = $this->guardProjectSetup($project, $role))) {
             return $redirect;
         }
@@ -335,8 +358,7 @@ class ProjectController extends Controller
 
         $availableProjects = [];
         if ($role === 'worker') {
-            $projectAccess = $user->permission_matrix['project_access'] ?? [];
-            $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
+            $allowedIds = $this->getWorkerAllowedProjectIds($user);
             $companyIds = $user->getCompanyIds();
             $availableProjects = Project::whereIn('companies_id', $companyIds)
                 ->whereIn('id', $allowedIds)
@@ -350,6 +372,7 @@ class ProjectController extends Controller
             'userRole'          => $role,
             'division'          => $user->division?->divisi ?? null,
             'divisions'         => $divisions,
+            'canEdit'           => ($role === 'SuperAdmin') || ($role === 'pic' && $this->isPicAuthorizedForProject($user, $project)),
         ]);
     }
 
@@ -372,6 +395,10 @@ class ProjectController extends Controller
             return redirect()->route('projectlistpage');
         }
 
+        if ($project) {
+            app(\App\Services\DependencyScheduler::class)->reconcileProjectDates($project);
+        }
+
         if ($redirect = $this->guardProjectSetup($project, $role)) {
             return $redirect;
         }
@@ -381,8 +408,7 @@ class ProjectController extends Controller
 
         $availableProjects = [];
         if ($role === 'worker') {
-            $projectAccess = $user->permission_matrix['project_access'] ?? [];
-            $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
+            $allowedIds = $this->getWorkerAllowedProjectIds($user);
             $companyIds = $user->getCompanyIds();
             $availableProjects = Project::whereIn('companies_id', $companyIds)
                 ->whereIn('id', $allowedIds)
@@ -396,6 +422,7 @@ class ProjectController extends Controller
             'userRole'          => $role,
             'division'          => $user->division?->divisi ?? null,
             'divisions'         => $divisions,
+            'canEdit'           => ($role === 'SuperAdmin') || ($role === 'pic' && $this->isPicAuthorizedForProject($user, $project)),
         ]);
     }
 
@@ -659,6 +686,8 @@ class ProjectController extends Controller
             return back()->withErrors(['message' => 'Access Denied: Only the PIC of this project can configure it.']);
         }
 
+        app(\App\Services\DependencyScheduler::class)->reconcileProjectDates($project);
+
         $divisions = Division::select('id', 'divisi')->get();
 
         $allTasks = Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($project) {
@@ -874,6 +903,8 @@ class ProjectController extends Controller
         if ($firstTask) {
             $scheduler->propagate($firstTask->id);
         }
+
+        $scheduler->reconcileProjectDates($project);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
@@ -1330,9 +1361,7 @@ class ProjectController extends Controller
         if ($mainWbs->end) {
             $mainEnd = Carbon::parse($mainWbs->end)->startOfDay();
             if ($end->gt($mainEnd)) {
-                $mainWbs->end = $end;
-                $mainWbs->actual_end = $end;
-                $mainWbs->save();
+                return back()->withErrors(['end' => "End date Sub Task ({$end->format('d/m/Y')}) tidak boleh melebihi End date Main Task ({$mainEnd->format('d/m/Y')})."]);
             }
         }
 
@@ -1351,7 +1380,7 @@ class ProjectController extends Controller
             'list_main_wbs_names_copy1_id' => $listMainId,
         ]);
 
-        SubWbs::create([
+        $newSub = SubWbs::create([
             'sub_wbs_id'             => $mainWbs->id,
             'list_sub_wbs_names_id'  => $listSub->id,
             'name'                   => $validated['name'],
@@ -1366,6 +1395,8 @@ class ProjectController extends Controller
             'weight'                 => 0, // Auto-calculated below by ProgressService
         ]);
 
+        app(\App\Services\DependencyScheduler::class)->syncParentWbsDates($newSub);
+        app(\App\Services\DependencyScheduler::class)->reconcileProjectDates($project);
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
         return back()->with('success', 'Sub Task added successfully.');
@@ -1411,8 +1442,13 @@ class ProjectController extends Controller
             if ($newEnd && $newEnd->gt($projEnd)) {
                 return back()->withErrors(['end' => "End date Sub Task ({$newEnd->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
             }
-            if ($newStart && $newStart->gt($projEnd)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$newStart->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+        }
+
+        $mainWbs = $subWbs->mainWbs;
+        if ($mainWbs && $mainWbs->end && $newEnd) {
+            $mainEnd = Carbon::parse($mainWbs->end)->startOfDay();
+            if ($newEnd->gt($mainEnd)) {
+                return back()->withErrors(['end' => "End date Sub Task ({$newEnd->format('d/m/Y')}) tidak boleh melebihi End date Main Task ({$mainEnd->format('d/m/Y')})."]);
             }
         }
 
@@ -1435,7 +1471,8 @@ class ProjectController extends Controller
         }
         $subWbs->save();
 
-        app(\App\Services\DependencyScheduler::class)->syncParentWbsDates($subWbs->id);
+        app(\App\Services\DependencyScheduler::class)->syncParentWbsDates($subWbs);
+        app(\App\Services\DependencyScheduler::class)->reconcileProjectDates($project);
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
         $renamedNote = ($oldName !== $subWbs->name) ? " (diubah dari '{$oldName}')" : "";
@@ -1475,8 +1512,14 @@ class ProjectController extends Controller
             $q->where('projects_id', $projectId);
         })->where('id', $subWbsId)->firstOrFail();
 
+        $mainWbs = $subWbs->mainWbs;
         $subWbs->wbsTasks()->withTrashed()->delete();
         $subWbs->delete();
+
+        if ($mainWbs) {
+            app(\App\Services\DependencyScheduler::class)->syncParentWbsDates($mainWbs);
+        }
+        app(\App\Services\DependencyScheduler::class)->reconcileProjectDates($project);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
@@ -1647,6 +1690,8 @@ class ProjectController extends Controller
         }
 
         $this->cascadeTaskDates($taskObj->id);
+        $scheduler->syncParentWbsDates($taskObj);
+        $scheduler->reconcileProjectDates($project);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
@@ -1839,6 +1884,8 @@ class ProjectController extends Controller
         $scheduler = app(DependencyScheduler::class);
         $scheduler->recalculateTaskDates($task);
         $this->cascadeTaskDates($task->id);
+        $scheduler->syncParentWbsDates($task);
+        $scheduler->reconcileProjectDates($project);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
@@ -1925,8 +1972,14 @@ class ProjectController extends Controller
             $q->where('projects_id', $projectId);
         })->where('id', $taskId)->firstOrFail();
 
+        $subWbs = $task->parentSubWbs;
         $tName = $task->name;
         $task->delete();
+
+        if ($subWbs) {
+            app(\App\Services\DependencyScheduler::class)->syncParentWbsDates($subWbs);
+        }
+        app(\App\Services\DependencyScheduler::class)->reconcileProjectDates($project);
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
@@ -2177,14 +2230,26 @@ class ProjectController extends Controller
     }
 
     /**
-     * Check if a PIC is authorized to manage a project.
-     * Authorized if they are the direct project_manager OR if the project belongs to their company.
+     * Check if a PIC is authorized to manage/edit a project.
+     * Authorized if they are the direct project_manager OR explicitly granted access via project members.
+     * Merely sharing company on a public project only grants VIEW access, NOT EDIT access.
      */
-    private function isPicAuthorizedForProject($user, $project): bool
+    public function isPicAuthorizedForProject($user, $project): bool
     {
         if (!$user || !$project) return false;
-        if ($project->project_manager == $user->id) return true;
+        if ((int) $project->project_manager === (int) $user->id) return true;
         if ($project->projectMembers()->where('user_id', $user->id)->exists()) return true;
+        return false;
+    }
+
+    /**
+     * Check if a PIC is authorized to view a project.
+     * Can view if authorized to edit, or if public and belongs to their company.
+     */
+    public function canPicViewProject($user, $project): bool
+    {
+        if (!$user || !$project) return false;
+        if ($this->isPicAuthorizedForProject($user, $project)) return true;
         if (!$project->is_private && $user->hasCompany($project->companies_id)) return true;
         return false;
     }
@@ -2235,8 +2300,8 @@ class ProjectController extends Controller
             if ($id) {
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
-                if (!$this->isPicAuthorizedForProject($user, $project)) {
-                    abort(403, 'Access Denied: PICs cannot access projects belonging to another company.');
+                if (!$this->canPicViewProject($user, $project)) {
+                    abort(403, 'Access Denied: You do not have permission to view this project.');
                 }
 
                 return $project;
@@ -2247,6 +2312,12 @@ class ProjectController extends Controller
                     $project = $queryPic->where(function ($q) use ($user, $companyIds) {
                         $q->whereIn('companies_id', $companyIds)
                             ->orWhere('project_manager', $user->id);
+                    })->where(function ($q) use ($user) {
+                        $q->where('project_manager', $user->id)
+                            ->orWhere('is_private', false)
+                            ->orWhereHas('projectMembers', function ($mq) use ($user) {
+                                $mq->where('user_id', $user->id);
+                            });
                     })->first();
                 } else {
                     $project = $queryPic->where('project_manager', $user->id)->first();
@@ -2256,6 +2327,8 @@ class ProjectController extends Controller
             }
         } elseif ($role === 'worker') {
             $companyIds = $user->getCompanyIds();
+            $allowedIds = $this->getWorkerAllowedProjectIds($user);
+
             if ($id) {
                 $project = $query->find($id);
                 if (!$project) abort(404, 'Project not found');
@@ -2263,15 +2336,12 @@ class ProjectController extends Controller
                     abort(403, 'Access Denied: Workers can only access projects belonging to their assigned company.');
                 }
 
-                $projectAccess = $user->permission_matrix['project_access'] ?? [];
-                if (empty($projectAccess[$id]['view_project'])) {
+                if (!in_array((int) $id, $allowedIds, true)) {
                     abort(403, 'Access Denied: You do not have permission to view this project.');
                 }
 
                 return $project;
             } else {
-                $projectAccess = $user->permission_matrix['project_access'] ?? [];
-                $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
                 return $query->whereIn('companies_id', $companyIds)->whereIn('id', $allowedIds)->first();
             }
         } else {
@@ -2497,6 +2567,7 @@ class ProjectController extends Controller
             'budgetEntries'       => $budgetEntries,
             'mainJobs'            => $mainJobs->values()->toArray(),
             'activityLogs'        => $activityLogs,
+            'can_edit'            => (Auth::user()?->role?->name === 'SuperAdmin') || (Auth::user()?->role?->name === 'pic' && $this->isPicAuthorizedForProject(Auth::user(), $p)),
         ];
     }
 
@@ -3094,6 +3165,17 @@ class ProjectController extends Controller
         );
 
         $targetUser = User::find($validated['user_id']);
+        if ($targetUser) {
+            $matrix = $targetUser->permission_matrix ?? [];
+            $projectAccess = $matrix['project_access'] ?? [];
+            $projectAccess[$project->id] = [
+                'view_project' => true,
+                'view_progress' => true,
+            ];
+            $matrix['project_access'] = $projectAccess;
+            $targetUser->update(['permission_matrix' => $matrix]);
+        }
+
         AuditLog::record(
             'ASSIGN_PROJECT_MEMBER',
             "User {$user->username} assigned user '{$targetUser?->username}' to project '{$project->title}'.",
@@ -3121,6 +3203,15 @@ class ProjectController extends Controller
         $member = \App\Models\ProjectMember::where('project_id', $project->id)->where('id', $memberId)->firstOrFail();
         $targetUser = $member->user;
         $member->delete();
+
+        if ($targetUser) {
+            $matrix = $targetUser->permission_matrix ?? [];
+            if (isset($matrix['project_access'][$project->id])) {
+                $matrix['project_access'][$project->id]['view_project'] = false;
+                $matrix['project_access'][$project->id]['view_progress'] = false;
+                $targetUser->update(['permission_matrix' => $matrix]);
+            }
+        }
 
         AuditLog::record(
             'REMOVE_PROJECT_MEMBER',

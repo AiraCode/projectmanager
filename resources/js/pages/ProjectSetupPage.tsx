@@ -513,6 +513,17 @@ export default function ProjectSetupPage() {
             );
             return;
         }
+        const parentMw = proj.mainWbs.find(
+            (m) =>
+                m.id === subModal.parentId ||
+                (subModal.item && m.id === subModal.item.main_wbs_id),
+        );
+        if (parentMw?.end && subForm.end && subForm.end > parentMw.end) {
+            setActionError(
+                `End date Sub Task (${formatDateDisplay(subForm.end)}) cannot exceed Main Task end date (${formatDateDisplay(parentMw.end)}).`,
+            );
+            return;
+        }
         if (subForm.start && subForm.end && subForm.end <= subForm.start) {
             setActionError(
                 "End date must be after Start date (minimum +1 day).",

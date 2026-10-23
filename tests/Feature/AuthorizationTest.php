@@ -165,4 +165,83 @@ class AuthorizationTest extends TestCase
 
         $response->assertStatus(403);
     }
+
+    /** 10. PIC in same company cannot edit another PIC's public project unless granted access */
+    public function test_pic_in_same_company_cannot_edit_other_pic_public_project_unless_granted_access(): void
+    {
+        $pic1 = User::where('email', 'pic1@provis.id')->first();
+        $pic2 = User::where('email', 'pic2@provis.id')->first();
+
+        // Project 1 belongs to Company 1, manager is pic1, public
+        $project1 = Project::find(1);
+        $this->assertEquals($pic1->id, $project1->project_manager);
+
+        // Ensure pic2 is in the same company as project 1
+        $pic2->companies_id = $project1->companies_id;
+        $pic2->save();
+        $pic2->companies()->sync([$project1->companies_id]);
+
+        // pic2 can view project 1 (public in same company)
+        $viewRes = $this->actingAs($pic2)->get("/projects/{$project1->id}");
+        $this->assertTrue(in_array($viewRes->status(), [200, 302]));
+
+        // pic2 CANNOT edit project 1 (e.g. add a task)
+        $subWbs = SubWbs::whereHas('mainWbs', fn($q) => $q->where('projects_id', $project1->id))->first();
+        $illegalEditRes = $this->actingAs($pic2)
+            ->withSession(['_token' => 'tok123'])
+            ->post("/projects/{$project1->id}/tasks", [
+                '_token' => 'tok123',
+                'sub_wbs_id' => $subWbs->id,
+                'name' => 'Illegal Task by Non-Owner PIC',
+                'duration' => 5,
+            ]);
+
+        // Must be rejected with 403 or back with Access Denied error
+        $this->assertTrue(
+            $illegalEditRes->status() === 403 ||
+            $illegalEditRes->isRedirect() && session()->has('errors')
+        );
+
+        // Once pic1 explicitly grants access via Working Tree (ProjectMember), pic2 can edit
+        \App\Models\ProjectMember::create([
+            'project_id' => $project1->id,
+            'user_id' => $pic2->id,
+            'project_role' => 'pic',
+            'assigned_by' => $pic1->id,
+        ]);
+
+        $allowedEditRes = $this->actingAs($pic2)
+            ->withSession(['_token' => 'tok123'])
+            ->post("/projects/{$project1->id}/tasks", [
+                '_token' => 'tok123',
+                'sub_wbs_id' => $subWbs->id,
+                'name' => 'Authorized Task by Assigned PIC',
+                'duration' => 5,
+            ]);
+
+        $this->assertDatabaseHas('wbs', ['name' => 'Authorized Task by Assigned PIC']);
+    }
+
+    /** 11. Worker assigned via working tree can access project even if SuperAdmin matrix is not pre-configured */
+    public function test_worker_assigned_via_working_tree_can_access_project(): void
+    {
+        $worker = User::where('email', 'hrga@provis.id')->first();
+        $project1 = Project::find(1);
+
+        // Clear matrix project access
+        $matrix = $worker->permission_matrix ?? [];
+        unset($matrix['project_access'][$project1->id]);
+        $worker->permission_matrix = $matrix;
+        $worker->save();
+
+        // Assign worker in working tree
+        \App\Models\ProjectMember::updateOrCreate(
+            ['project_id' => $project1->id, 'user_id' => $worker->id],
+            ['project_role' => 'member', 'position_title' => 'HR Staff']
+        );
+
+        // Worker accesses tasks page -> should succeed (200)
+        $response = $this->actingAs($worker)->get("/tasks?project_id={$project1->id}");
+        $response->assertStatus(200);
+    }
 }

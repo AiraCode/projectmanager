@@ -98,6 +98,16 @@ class DependencySchedulerTest extends BaseTestCase
             $table->integer('lag_days')->default(0);
             $table->timestamps();
         });
+
+        Schema::create('audit_logs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('action');
+            $table->text('description');
+            $table->string('ip_address')->nullable();
+            $table->json('metadata')->nullable();
+            $table->timestamps();
+        });
     }
 
     protected function tearDown(): void
@@ -270,7 +280,7 @@ class DependencySchedulerTest extends BaseTestCase
         }
     }
 
-    public function test_sync_parent_wbs_dates_preserves_planned_deadline(): void
+    public function test_sync_parent_wbs_dates_follows_latest_child_end(): void
     {
         $main = MainWbs::create([
             'projects_id' => 1,
@@ -300,12 +310,62 @@ class DependencySchedulerTest extends BaseTestCase
         $main->refresh();
         $sub->refresh();
 
-        // Target planned end dates MUST remain 2026-10-30, not shrunk to 2026-10-10
-        $this->assertSame('2026-10-30', $main->end->toDateString());
-        $this->assertSame('2026-10-30', $sub->end->toDateString());
-
-        // Actual end dates reflect child execution
+        // Main task and sub task end dates must strictly follow the latest child task end date (2026-10-10)
+        $this->assertSame('2026-10-10', $main->end->toDateString());
+        $this->assertSame('2026-10-10', $sub->end->toDateString());
         $this->assertSame('2026-10-10', $main->actual_end->toDateString());
         $this->assertSame('2026-10-10', $sub->actual_end->toDateString());
+    }
+
+    public function test_reconcile_project_dates_auto_repairs_and_records_audit_log_under_provis_support_system(): void
+    {
+        $project = Project::create([
+            'title' => 'Test Project Retroactive Repair',
+            'start' => '2026-10-01',
+            'end' => '2026-10-30',
+        ]);
+
+        $main = MainWbs::create([
+            'projects_id' => $project->id,
+            'name' => 'Main Pre-Update',
+            'start' => '2026-10-01',
+            'end' => '2026-10-30', // outdated broad end date
+        ]);
+
+        $sub = SubWbs::create([
+            'sub_wbs_id' => $main->id,
+            'name' => 'Sub Pre-Update',
+            'start' => '2026-10-01',
+            'end' => '2026-10-30', // outdated broad end date
+        ]);
+
+        Wbs::create([
+            'id' => 'TASK-RECON-1',
+            'sub_wbs_id' => $sub->id,
+            'name' => 'Actual Child Task',
+            'start' => '2026-10-05',
+            'end' => '2026-10-15',
+            'duration_days' => 11,
+        ]);
+
+        $scheduler = new DependencyScheduler();
+        $repairs = $scheduler->reconcileProjectDates($project);
+
+        $this->assertNotEmpty($repairs);
+
+        $main->refresh();
+        $sub->refresh();
+
+        // Dates are automatically fixed to follow child task bounds (2026-10-05 to 2026-10-15)
+        $this->assertSame('2026-10-05', $sub->start->toDateString());
+        $this->assertSame('2026-10-15', $sub->end->toDateString());
+        $this->assertSame('2026-10-05', $main->start->toDateString());
+        $this->assertSame('2026-10-15', $main->end->toDateString());
+
+        // AuditLog record created with actor Provis Support System
+        $log = \App\Models\AuditLog::where('action', 'SYSTEM_SYNC_DATES')->latest()->first();
+        $this->assertNotNull($log);
+        $this->assertSame('Provis Support System', $log->metadata['actor'] ?? null);
+        $this->assertStringContainsString('Provis Support System', $log->description);
     }
 }

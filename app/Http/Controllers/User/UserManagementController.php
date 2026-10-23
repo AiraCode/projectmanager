@@ -38,6 +38,22 @@ class UserManagementController extends Controller
         $users = $query->get()->map(function($u) {
             $u->company_ids = $u->getCompanyIds();
             $u->division_ids = $u->getDivisionIds();
+
+            // Synchronize permission_matrix project_access with project_members table
+            $matrix = $u->permission_matrix ?? [];
+            $projectAccess = $matrix['project_access'] ?? [];
+            $memberProjectIds = \App\Models\ProjectMember::where('user_id', $u->id)->pluck('project_id')->all();
+            foreach ($memberProjectIds as $pId) {
+                if (empty($projectAccess[$pId]['view_project'])) {
+                    $projectAccess[$pId] = [
+                        'view_project' => true,
+                        'view_progress' => true,
+                    ];
+                }
+            }
+            $matrix['project_access'] = $projectAccess;
+            $u->permission_matrix = $matrix;
+
             return $u;
         });
 
@@ -384,6 +400,22 @@ class UserManagementController extends Controller
 
         $data['last_modified_by'] = $user->id;
         $targetUser->update($data);
+
+        // Synchronize ProjectMember table based on permission_matrix['project_access']
+        if (isset($data['permission_matrix']['project_access']) && is_array($data['permission_matrix']['project_access'])) {
+            foreach ($data['permission_matrix']['project_access'] as $projId => $access) {
+                if (!empty($access['view_project'])) {
+                    \App\Models\ProjectMember::updateOrCreate(
+                        ['project_id' => (int) $projId, 'user_id' => $targetUser->id],
+                        ['project_role' => 'member', 'position_title' => 'Member']
+                    );
+                } else {
+                    \App\Models\ProjectMember::where('project_id', (int) $projId)
+                        ->where('user_id', $targetUser->id)
+                        ->delete();
+                }
+            }
+        }
 
         // Sync pivot if modified by SuperAdmin
         if ($user->role?->name !== 'pic' && $companyIds !== null) {
