@@ -344,17 +344,7 @@ export default function ProjectDetailPage() {
         actions={
           <div className="flex items-center gap-2.5">
             <StatusBadge status={p.status} size="md" />
-            {canCreate && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setShowCreateModal(true)}
-                className="text-[12.5px] shadow-xs"
-              >
-                <Plus size={14} className="mr-1.5" />
-                Create Project
-              </Button>
-            )}
+            {canCreate}
           </div>
         }
       />
