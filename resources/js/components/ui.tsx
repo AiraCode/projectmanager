@@ -107,12 +107,24 @@ export function PageHeader({
   );
 }
 
-export function Card({ children, className = '', interactive = false }: { children: React.ReactNode; className?: string; interactive?: boolean }) {
+export function Card({
+  children,
+  className = '',
+  interactive = false,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & {
+  children?: React.ReactNode;
+  className?: string;
+  interactive?: boolean;
+}) {
   const interactiveClasses = interactive
     ? 'transition-all duration-200 ease-out hover:shadow-md hover:border-brand/35 active:scale-[0.99] cursor-pointer'
     : '';
   return (
-    <div className={`bg-white rounded-lg border border-neutral-200 shadow-xs ${interactiveClasses} ${className}`}>
+    <div
+      className={`bg-white rounded-lg border border-neutral-200 shadow-xs ${interactiveClasses} ${className}`}
+      {...props}
+    >
       {children}
     </div>
   );

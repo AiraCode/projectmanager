@@ -16,7 +16,7 @@ return new class extends Migration
         if (!Schema::hasTable('division_wbs')) {
             Schema::create('division_wbs', function (Blueprint $table) {
                 $table->increments('id');
-                $table->string('wbs_id', 255);
+                $table->string('wbs_id', 45);
                 $table->unsignedInteger('division_id');
                 $table->timestamps();
 

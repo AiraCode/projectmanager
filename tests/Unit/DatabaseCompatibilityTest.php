@@ -32,6 +32,11 @@ class DatabaseCompatibilityTest extends BaseTestCase
         $sql = $grammar->compileColumns(null, 'main_wbs');
         $this->assertStringNotContainsString('generation_expression', $sql);
         $this->assertStringContainsString('null as `expression`', $sql);
+
+        $fluent = new \Illuminate\Support\Fluent();
+        $refMethod = new \ReflectionMethod($grammar, 'typeJson');
+        $refMethod->setAccessible(true);
+        $this->assertEquals('longtext', $refMethod->invoke($grammar, $fluent));
     }
 
     public function test_compatible_mariadb_grammar_omits_generation_expression(): void
@@ -45,6 +50,11 @@ class DatabaseCompatibilityTest extends BaseTestCase
         $sql = $grammar->compileColumns(null, 'main_wbs');
         $this->assertStringNotContainsString('generation_expression', $sql);
         $this->assertStringContainsString('null as `expression`', $sql);
+
+        $fluent = new \Illuminate\Support\Fluent();
+        $refMethod = new \ReflectionMethod($grammar, 'typeJson');
+        $refMethod->setAccessible(true);
+        $this->assertEquals('longtext', $refMethod->invoke($grammar, $fluent));
     }
 
     public function test_connection_resolver_resolves_compatible_connection(): void

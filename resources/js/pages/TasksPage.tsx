@@ -1810,20 +1810,20 @@ export default function TasksPage() {
                                         ? "border-2 border-brand ring-2 ring-brand/30 bg-purple-50/30"
                                         : ""
                                 }`}
-                                onDragOver={(e) => {
+                                onDragOver={(e: React.DragEvent<HTMLDivElement>) => {
                                     if (draggedMainJobId && draggedMainJobId !== mj.id) {
                                         e.preventDefault();
                                         e.stopPropagation();
                                         setDropTargetMainJobId(mj.id);
                                     }
                                 }}
-                                onDragLeave={(e) => {
+                                onDragLeave={(e: React.DragEvent<HTMLDivElement>) => {
                                     e.stopPropagation();
                                     if (dropTargetMainJobId === mj.id) {
                                         setDropTargetMainJobId(null);
                                     }
                                 }}
-                                onDrop={(e) => {
+                                onDrop={(e: React.DragEvent<HTMLDivElement>) => {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     if (draggedMainJobId && draggedMainJobId !== mj.id) {

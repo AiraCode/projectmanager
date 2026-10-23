@@ -28,4 +28,28 @@ class CompatibleMariaDbGrammar extends MariaDbGrammar
             $this->quoteString($table)
         );
     }
+
+    /**
+     * Create the column definition for a json type.
+     * Compatible with older MySQL (< 5.7.8) and MariaDB (< 10.2.7) where
+     * `json` keyword is not supported syntax. Falls back to `longtext`.
+     *
+     * @param  \Illuminate\Support\Fluent  $column
+     * @return string
+     */
+    protected function typeJson(\Illuminate\Support\Fluent $column)
+    {
+        return 'longtext';
+    }
+
+    /**
+     * Create the column definition for a jsonb type.
+     *
+     * @param  \Illuminate\Support\Fluent  $column
+     * @return string
+     */
+    protected function typeJsonb(\Illuminate\Support\Fluent $column)
+    {
+        return 'longtext';
+    }
 }
