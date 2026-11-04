@@ -113,6 +113,16 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
 
   const isSuperAdmin = user.role === 'SuperAdmin';
 
+  const pageProps = usePage().props as any;
+  const authUser = pageProps?.auth?.user;
+
+  const assignedProjectsCount = authUser?.assigned_projects_count ?? user?.assigned_projects_count ?? 0;
+  const hasMultipleProjects = (user.permission_matrix?.features?.projects || []).includes('Multiple Projects');
+  const hasMultipleAssignments = Boolean(
+    (authUser?.hasMultipleAssignments ?? user?.hasMultipleAssignments) ||
+    assignedProjectsCount > 1
+  );
+
   const ALL_NAV_ITEMS = [
     { to: '/projectlistpage',   icon: FolderOpen,      label: 'Project List' },
     { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
@@ -128,20 +138,26 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     { to: '/users',             icon: Shield,          label: 'User Management' },
   ];
 
+  const shouldShowProjectList = () => {
+    if (isAdminUtama || isAdminProgres) return true;
+    if (isPIC) return hasMultipleProjects || hasMultipleAssignments || assignedProjectsCount > 1;
+    if (isWorker) return assignedProjectsCount > 1;
+    return user.permission_matrix?.sidebar?.includes('Project List') ?? false;
+  };
+
   let visibleNav: { to: string; icon: any; label: string }[] = [];
 
   if (isSuperAdmin || user.permission_matrix?.sidebar?.includes('*')) {
     visibleNav = ALL_NAV_ITEMS;
   } else if (user.permission_matrix?.sidebar) {
-    const hasMultipleProjects = (user.permission_matrix?.features?.projects || []).includes('Multiple Projects');
-
     visibleNav = ALL_NAV_ITEMS.filter(item => {
-      // Project List is visible for admin_utama, admin_progres, or PIC if they have Multiple Projects enabled
       if (item.to === '/projectlistpage') {
-        if (isAdminUtama || isAdminProgres) return true;
-        if (isPIC) return hasMultipleProjects;
+        return shouldShowProjectList();
       }
-      if (item.to === '/dashboard' && (isAdminUtama || isPIC)) return true;
+      if (item.to === '/dashboard') {
+        if (isAdminUtama || isPIC) return true;
+        return user.permission_matrix?.sidebar?.includes('Dashboard') ?? false;
+      }
       if ((item.to === '/projectdetailpage' || item.to === '/working-tree') && (isAdminUtama || isPIC || isWorker)) return true;
       if (item.to === '/division-progress' && (isAdminProgres || isAdminUtama || isPIC)) return true;
       if (item.to === '/today-tasks') return true;
@@ -149,6 +165,9 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     });
   } else {
     visibleNav = ALL_NAV_ITEMS.filter(item => {
+      if (item.to === '/projectlistpage') {
+        return shouldShowProjectList();
+      }
       if (item.to === '/budget') return isAdminUtama || isSuperAdmin;
       if (item.to === '/users') return isAdminUtama || isSuperAdmin;
       return true;
@@ -163,7 +182,6 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
     : 'bg-white/10 text-white/80 border border-white/20';
 
-  const pageProps = usePage().props as any;
   const activeProjectId = pageProps?.project?.id;
   const activeProject = pageProps?.project;
   

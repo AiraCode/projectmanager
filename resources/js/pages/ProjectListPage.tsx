@@ -224,9 +224,10 @@ function getProjectTitleClasses(title: string) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {projects.map((project: Project) => {
             const isPending = project.setup_status === 'pending_setup';
+            const hasDashboardAccess = !isWorker || (auth?.user?.permission_matrix?.sidebar || []).includes('Dashboard');
             const targetHref = isPending
               ? (isWorker || isAdminProgres ? '#' : `/projects/${project.id}/setup`)
-              : (isAdminProgres ? `/scurve?project_id=${project.id}` : (isWorker ? `/tasks?project_id=${project.id}` : `/projects/${project.id}`));
+              : (isAdminProgres ? `/scurve?project_id=${project.id}` : (isWorker && !hasDashboardAccess ? `/tasks?project_id=${project.id}` : `/projects/${project.id}`));
 
             return (
               <Link

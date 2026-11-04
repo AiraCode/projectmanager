@@ -42,10 +42,7 @@ class ProjectController extends Controller
      */
     private function getWorkerAllowedProjectIds(User $user): array
     {
-        $matrixAccess = $user->permission_matrix['project_access'] ?? [];
-        $matrixAllowed = array_keys(array_filter($matrixAccess, fn($access) => !empty($access['view_project'])));
-        $memberAllowed = \App\Models\ProjectMember::where('user_id', $user->id)->pluck('project_id')->all();
-        return array_values(array_unique(array_map('intval', array_merge($matrixAllowed, $memberAllowed))));
+        return $user->getAllowedProjectIds();
     }
 
     public function projectListPage(Request $request)

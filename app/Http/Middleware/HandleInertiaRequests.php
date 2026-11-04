@@ -87,6 +87,9 @@ class HandleInertiaRequests extends Middleware
                     'permission_matrix'=> $permissionMatrix,
                     'isSuperAdmin'     => ($user->role?->name ?? '') === 'SuperAdmin',
                     'must_change_password' => $user->must_change_password ?? false,
+                    'assigned_projects_count' => count($user->getAllowedProjectIds()),
+                    'assigned_tasks_count'    => $user->getAssignedTasksCount(),
+                    'hasMultipleAssignments'  => $user->hasMultipleAssignments(),
                 ] : null,
             ],
         ];

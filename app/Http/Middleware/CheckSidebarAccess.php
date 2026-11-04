@@ -41,7 +41,7 @@ class CheckSidebarAccess
         if ($sidebar === null || (empty($sidebar) && $user->role?->name === 'worker')) {
             // Fallback rules if not set or empty for workers
             if ($user->role?->name === 'worker') {
-                $sidebar = ['WBS Tasks', 'Today Tasks'];
+                $sidebar = ['Tasks', "Today's Tasks", 'WBS Tasks', 'Today Tasks'];
                 if (in_array($menuName, $sidebar)) {
                     return $next($request);
                 }
@@ -69,12 +69,15 @@ class CheckSidebarAccess
 
         // Special exceptions based on roles (matches Layout.tsx)
         if ($menuName === 'Dashboard') {
+            if (in_array($user->role?->name, ['pic', 'admin_utama'])) {
+                return $next($request);
+            }
+            if (is_array($sidebar) && in_array('Dashboard', $sidebar)) {
+                return $next($request);
+            }
             if ($user->role?->name === 'worker') {
                 $targetId = $request->query('project_id') ?? $request->route('id');
                 return redirect($targetId ? "/tasks?project_id={$targetId}" : '/tasks');
-            }
-            if (in_array($user->role?->name, ['pic', 'admin_utama'])) {
-                return $next($request);
             }
         }
 

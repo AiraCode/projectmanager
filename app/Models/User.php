@@ -253,4 +253,69 @@ class User extends Authenticatable
         if ($this->role?->name === 'SuperAdmin') return 'all';
         return $this->permission_matrix['data_scope'] ?? 'own_company';
     }
+
+    /**
+     * Get all project IDs this user (worker or member) is permitted to access within their assigned company.
+     *
+     * @return array<int>
+     */
+    public function getAllowedProjectIds(): array
+    {
+        $matrixAccess = $this->permission_matrix['project_access'] ?? [];
+        $matrixAllowed = array_keys(array_filter($matrixAccess, fn($access) => !empty($access['view_project'])));
+        $memberAllowed = \App\Models\ProjectMember::where('user_id', $this->id)->pluck('project_id')->all();
+        $allIds = array_values(array_unique(array_map('intval', array_merge($matrixAllowed, $memberAllowed))));
+
+        $companyIds = $this->getCompanyIds();
+        if (empty($companyIds) || empty($allIds)) {
+            return [];
+        }
+
+        return \App\Models\Project::whereIn('companies_id', $companyIds)
+            ->whereIn('id', $allIds)
+            ->pluck('id')
+            ->map(fn($id) => (int) $id)
+            ->all();
+    }
+
+    /**
+     * Get count of tasks assigned to this user's division(s) within their allowed projects.
+     */
+    public function getAssignedTasksCount(): int
+    {
+        $divisionIds = $this->getDivisionIds();
+        $projectIds = $this->getAllowedProjectIds();
+
+        if (empty($divisionIds) || empty($projectIds)) {
+            return 0;
+        }
+
+        return \App\Models\Wbs::whereHas('parentSubWbs.mainWbs', function ($q) use ($projectIds) {
+            $q->whereIn('projects_id', $projectIds);
+        })->where(function ($q) use ($divisionIds) {
+            $q->whereIn('divisions_id', $divisionIds)
+              ->orWhereHas('divisions', function ($dq) use ($divisionIds) {
+                  $dq->whereIn('divisions.id', $divisionIds);
+              });
+        })->count();
+    }
+
+    /**
+     * Determine if user (worker, pic, etc.) is assigned to more than 1 task or project.
+     */
+    public function hasMultipleAssignments(): bool
+    {
+        $projectFeatures = $this->permission_matrix['features']['projects'] ?? [];
+        if (in_array('Multiple Projects', $projectFeatures)) {
+            return true;
+        }
+
+        $projectCount = count($this->getAllowedProjectIds());
+        if ($projectCount > 1) {
+            return true;
+        }
+
+        $taskCount = $this->getAssignedTasksCount();
+        return $taskCount > 1;
+    }
 }

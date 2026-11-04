@@ -30,8 +30,7 @@ Route::middleware('auth')->group(function () {
         if ($role === 'SuperAdmin') return redirect('/admin');
         
         if ($role === 'worker') {
-            $projectAccess = $user->permission_matrix['project_access'] ?? [];
-            $allowedIds = array_keys(array_filter($projectAccess, fn($access) => !empty($access['view_project'])));
+            $allowedIds = $user->getAllowedProjectIds();
             $companyIds = $user->getCompanyIds();
             $hasProject = !empty($allowedIds) && \App\Models\Project::whereIn('companies_id', $companyIds)->whereIn('id', $allowedIds)->exists();
 

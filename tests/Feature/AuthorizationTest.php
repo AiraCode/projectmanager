@@ -244,4 +244,129 @@ class AuthorizationTest extends TestCase
         $response = $this->actingAs($worker)->get("/tasks?project_id={$project1->id}");
         $response->assertStatus(200);
     }
+
+    /** 12. Worker can access dashboard when granted Dashboard in sidebar permission matrix */
+    public function test_worker_can_access_dashboard_when_granted_by_superadmin(): void
+    {
+        $worker = User::where('email', 'hrga@provis.id')->first();
+        $project1 = Project::find(1);
+
+        // Assign worker to project 1
+        \App\Models\ProjectMember::updateOrCreate(
+            ['project_id' => $project1->id, 'user_id' => $worker->id],
+            ['project_role' => 'member', 'position_title' => 'HR Staff']
+        );
+
+        // Grant Dashboard in permission_matrix sidebar
+        $worker->permission_matrix = [
+            'sidebar' => ['Dashboard', 'Tasks'],
+            'project_access' => [
+                $project1->id => ['view_project' => true, 'view_progress' => true],
+            ],
+            'data_scope' => 'own_company',
+        ];
+        $worker->save();
+
+        $response = $this->actingAs($worker)->get("/projects/{$project1->id}");
+        $response->assertStatus(200);
+        $response->assertInertia(fn ($page) => $page->component('DashboardPage'));
+    }
+
+    /** 13. Worker without Dashboard permission is redirected to tasks */
+    public function test_worker_without_dashboard_permission_is_redirected_to_tasks(): void
+    {
+        $worker = User::where('email', 'hrga@provis.id')->first();
+        $project1 = Project::find(1);
+
+        \App\Models\ProjectMember::updateOrCreate(
+            ['project_id' => $project1->id, 'user_id' => $worker->id],
+            ['project_role' => 'member', 'position_title' => 'HR Staff']
+        );
+
+        // Worker has sidebar permissions without Dashboard
+        $worker->permission_matrix = [
+            'sidebar' => ['Tasks', "Today's Tasks"],
+            'project_access' => [
+                $project1->id => ['view_project' => true, 'view_progress' => true],
+            ],
+            'data_scope' => 'own_company',
+        ];
+        $worker->save();
+
+        $response = $this->actingAs($worker)->get("/projects/{$project1->id}");
+        $response->assertRedirect("/tasks?project_id={$project1->id}");
+    }
+
+    /** 14. Worker hasMultipleAssignments is true when assigned more than 1 project or task */
+    public function test_worker_has_multiple_assignments(): void
+    {
+        $worker = User::where('email', 'hrga@provis.id')->first();
+        $project1 = Project::find(1);
+
+        // With 1 project and 0 tasks assigned:
+        $worker->permission_matrix = [
+            'sidebar' => ['Tasks'],
+            'project_access' => [
+                $project1->id => ['view_project' => true],
+            ],
+        ];
+        // Ensure no other memberships
+        \App\Models\ProjectMember::where('user_id', $worker->id)->delete();
+        \App\Models\ProjectMember::create([
+            'project_id' => $project1->id,
+            'user_id' => $worker->id,
+            'project_role' => 'member',
+        ]);
+        $worker->save();
+
+        $allowed = $worker->getAllowedProjectIds();
+        $this->assertCount(1, $allowed);
+
+        // Assign multiple projects (more than 1 project)
+        $project2 = Project::where('companies_id', $worker->companies_id)->where('id', '!=', $project1->id)->first();
+        if ($project2) {
+            \App\Models\ProjectMember::create([
+                'project_id' => $project2->id,
+                'user_id' => $worker->id,
+                'project_role' => 'member',
+            ]);
+            $this->assertTrue($worker->hasMultipleAssignments());
+        }
+    }
+
+    /** A worker assigned to multiple projects sees Project List without sidebar permission. */
+    public function test_worker_project_list_is_available_when_assigned_to_multiple_projects(): void
+    {
+        $worker = User::where('email', 'hrga@provis.id')->firstOrFail();
+        $project1 = Project::where('companies_id', $worker->companies_id)->firstOrFail();
+        $project2 = Project::create([
+            'companies_id' => $worker->companies_id,
+            'project_manager' => $project1->project_manager,
+            'title' => 'Second project for worker access test',
+            'start' => '2026-01-01',
+            'end' => '2026-12-31',
+        ]);
+
+        $worker->permission_matrix = [
+            'sidebar' => ['Tasks'],
+            'data_scope' => 'own_company',
+        ];
+        $worker->save();
+
+        foreach ([$project1, $project2] as $project) {
+            \App\Models\ProjectMember::updateOrCreate(
+                ['project_id' => $project->id, 'user_id' => $worker->id],
+                ['project_role' => 'worker']
+            );
+        }
+
+        $response = $this->actingAs($worker)->get('/projectlistpage');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('ProjectListPage')
+            ->where('auth.user.assigned_projects_count', 2)
+            ->has('projects', 2)
+        );
+    }
 }
