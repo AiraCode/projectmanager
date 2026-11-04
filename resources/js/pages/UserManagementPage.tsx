@@ -76,7 +76,6 @@ interface User {
 }
 
 const MODULE_PERMISSIONS = [
-  { module: 'Project List', sidebarKey: 'Project List', features: [] },
   { module: 'Dashboard', sidebarKey: 'Dashboard', features: [] },
   { module: 'Project Detail', sidebarKey: 'Project Detail', features: [] },
   { module: 'Tasks', sidebarKey: 'Tasks', featureGroup: 'tasks', features: ['create', 'edit', 'delete', 'Edit Task'] },
@@ -331,7 +330,7 @@ export default function UserManagementPage({
     } else if (selectedRoleName === 'admin_utama' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
       setData('permission_matrix', {
         ...data.permission_matrix,
-        sidebar: ['Project List', 'Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
+        sidebar: ['Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
         features: {
           projects: ['view'],
           tasks: ['view'],
@@ -344,7 +343,7 @@ export default function UserManagementPage({
     } else if (selectedRoleName === 'admin_progres' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
       setData('permission_matrix', {
         ...data.permission_matrix,
-        sidebar: ['Project List', 'S-Curve Report', 'Division Progress'],
+        sidebar: ['S-Curve Report', 'Division Progress'],
         features: {
           projects: ['view'],
           reports: ['view']

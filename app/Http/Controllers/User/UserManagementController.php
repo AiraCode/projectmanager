@@ -159,7 +159,7 @@ class UserManagementController extends Controller
         $targetRole = Role::find($request->roles_id);
         if ($targetRole?->name === 'admin_utama' && (empty($data['permission_matrix']) || empty($data['permission_matrix']['sidebar']))) {
             $data['permission_matrix'] = [
-                'sidebar' => ['Project List', 'Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
+                'sidebar' => ['Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
                 'features' => [
                     'projects' => ['view'],
                     'tasks' => ['view'],
@@ -171,7 +171,7 @@ class UserManagementController extends Controller
             ];
         } elseif ($targetRole?->name === 'admin_progres' && (empty($data['permission_matrix']) || empty($data['permission_matrix']['sidebar']))) {
             $data['permission_matrix'] = [
-                'sidebar' => ['Project List', 'S-Curve Report', 'Division Progress'],
+                'sidebar' => ['S-Curve Report', 'Division Progress'],
                 'features' => [
                     'projects' => ['view'],
                     'reports' => ['view']
@@ -362,7 +362,7 @@ class UserManagementController extends Controller
         $targetRole = $request->filled('roles_id') ? Role::find($request->roles_id) : $targetUser->role;
         if ($targetRole?->name === 'admin_utama' && (empty($data['permission_matrix']) || empty($data['permission_matrix']['sidebar']))) {
             $data['permission_matrix'] = [
-                'sidebar' => ['Project List', 'Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
+                'sidebar' => ['Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
                 'features' => [
                     'projects' => ['view'],
                     'tasks' => ['view'],
@@ -374,7 +374,7 @@ class UserManagementController extends Controller
             ];
         } elseif ($targetRole?->name === 'admin_progres' && (empty($data['permission_matrix']) || empty($data['permission_matrix']['sidebar']))) {
             $data['permission_matrix'] = [
-                'sidebar' => ['Project List', 'S-Curve Report', 'Division Progress'],
+                'sidebar' => ['S-Curve Report', 'Division Progress'],
                 'features' => [
                     'projects' => ['view'],
                     'reports' => ['view']

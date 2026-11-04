@@ -141,7 +141,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   const shouldShowProjectList = () => {
     if (isAdminUtama || isAdminProgres) return true;
     if (isPIC) return hasMultipleProjects || hasMultipleAssignments || assignedProjectsCount > 1;
-    if (isWorker) return assignedProjectsCount > 1;
+    if (isWorker) return true;
     return user.permission_matrix?.sidebar?.includes('Project List') ?? false;
   };
 

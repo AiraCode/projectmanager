@@ -334,18 +334,11 @@ class AuthorizationTest extends TestCase
         }
     }
 
-    /** A worker assigned to multiple projects sees Project List without sidebar permission. */
-    public function test_worker_project_list_is_available_when_assigned_to_multiple_projects(): void
+    /** A worker assigned to one project can access Project List without sidebar permission. */
+    public function test_worker_project_list_is_available_when_assigned_to_one_project(): void
     {
         $worker = User::where('email', 'hrga@provis.id')->firstOrFail();
         $project1 = Project::where('companies_id', $worker->companies_id)->firstOrFail();
-        $project2 = Project::create([
-            'companies_id' => $worker->companies_id,
-            'project_manager' => $project1->project_manager,
-            'title' => 'Second project for worker access test',
-            'start' => '2026-01-01',
-            'end' => '2026-12-31',
-        ]);
 
         $worker->permission_matrix = [
             'sidebar' => ['Tasks'],
@@ -353,20 +346,19 @@ class AuthorizationTest extends TestCase
         ];
         $worker->save();
 
-        foreach ([$project1, $project2] as $project) {
-            \App\Models\ProjectMember::updateOrCreate(
-                ['project_id' => $project->id, 'user_id' => $worker->id],
-                ['project_role' => 'worker']
-            );
-        }
+        \App\Models\ProjectMember::where('user_id', $worker->id)->delete();
+        \App\Models\ProjectMember::updateOrCreate(
+            ['project_id' => $project1->id, 'user_id' => $worker->id],
+            ['project_role' => 'worker']
+        );
 
         $response = $this->actingAs($worker)->get('/projectlistpage');
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('ProjectListPage')
-            ->where('auth.user.assigned_projects_count', 2)
-            ->has('projects', 2)
+            ->where('auth.user.assigned_projects_count', 1)
+            ->has('projects', 1)
         );
     }
 }
