@@ -35,6 +35,7 @@ class TemplateController extends Controller
         $divisions = \App\Models\Division::orderBy('divisi')->get(['id', 'divisi']);
 
         if ($selectedId) {
+            $this->resyncTemplateCodes((int) $selectedId);
             $selectedTemplate = ProjectTemplate::with([
                 'mainTasks' => function ($q) {
                     $q->orderBy('order_index')->orderBy('id');
@@ -58,6 +59,39 @@ class TemplateController extends Controller
             'selectedTemplate' => $selectedTemplate,
             'divisions' => $divisions,
         ]);
+    }
+
+    /**
+     * Resync and renumber all codes sequentially according to order_index.
+     */
+    public function resyncTemplateCodes(int $templateId): void
+    {
+        DB::transaction(function () use ($templateId) {
+            $mainTasks = TemplateMainTask::where('template_id', $templateId)
+                ->orderBy('order_index')
+                ->orderBy('id')
+                ->get();
+
+            foreach ($mainTasks as $mIdx => $mt) {
+                $mainCode = (string) ($mIdx + 1);
+                $mt->update([
+                    'order_index' => $mIdx + 1,
+                    'code' => $mainCode,
+                ]);
+
+                $subTasks = TemplateSubTask::where('template_main_task_id', $mt->id)
+                    ->orderBy('order_index')
+                    ->orderBy('id')
+                    ->get();
+
+                foreach ($subTasks as $sIdx => $st) {
+                    $st->update([
+                        'order_index' => $sIdx + 1,
+                        'code' => "{$mainCode}." . ($sIdx + 1),
+                    ]);
+                }
+            }
+        });
     }
 
     /**
@@ -138,7 +172,7 @@ class TemplateController extends Controller
 
         $task = TemplateMainTask::create([
             'template_id' => $templateId,
-            'code' => $validated['code'] ?? (string) ($maxOrder + 1),
+            'code' => (string) ($maxOrder + 1),
             'name' => $validated['name'],
             'weight' => (float) ($validated['weight'] ?? 0.0),
             'order_index' => $maxOrder + 1,
@@ -168,6 +202,7 @@ class TemplateController extends Controller
     {
         $task = TemplateMainTask::where('template_id', $templateId)->where('id', $mainTaskId)->firstOrFail();
         $task->delete();
+        $this->resyncTemplateCodes($templateId);
 
         return back()->with('success', 'Main Task template berhasil dihapus.');
     }
@@ -181,7 +216,26 @@ class TemplateController extends Controller
 
         DB::transaction(function () use ($templateId, $validated) {
             foreach ($validated['ordered_ids'] as $idx => $id) {
-                TemplateMainTask::where('template_id', $templateId)->where('id', $id)->update(['order_index' => $idx + 1]);
+                $newCode = (string) ($idx + 1);
+                $mainTask = TemplateMainTask::where('template_id', $templateId)->where('id', $id)->first();
+                if ($mainTask) {
+                    $mainTask->update([
+                        'order_index' => $idx + 1,
+                        'code' => $newCode,
+                    ]);
+
+                    $subTasks = TemplateSubTask::where('template_main_task_id', $id)
+                        ->orderBy('order_index')
+                        ->orderBy('id')
+                        ->get();
+
+                    foreach ($subTasks as $sIdx => $st) {
+                        $st->update([
+                            'order_index' => $sIdx + 1,
+                            'code' => "{$newCode}." . ($sIdx + 1),
+                        ]);
+                    }
+                }
             }
         });
 
@@ -206,7 +260,7 @@ class TemplateController extends Controller
 
         $subTask = TemplateSubTask::create([
             'template_main_task_id' => $mainTaskId,
-            'code' => $validated['code'] ?? "{$mainTask->code}." . ($maxOrder + 1),
+            'code' => "{$mainTask->code}." . ($maxOrder + 1),
             'name' => $validated['name'],
             'default_pic_division' => $validated['default_pic_division'] ?? 'General',
             'weight' => (float) ($validated['weight'] ?? 0.0),
@@ -243,6 +297,7 @@ class TemplateController extends Controller
         })->where('id', $subTaskId)->firstOrFail();
 
         $subTask->delete();
+        $this->resyncTemplateCodes($templateId);
 
         return back()->with('success', 'Sub Task template berhasil dihapus.');
     }
@@ -254,9 +309,15 @@ class TemplateController extends Controller
             'ordered_ids.*' => 'integer|exists:template_sub_tasks,id',
         ]);
 
-        DB::transaction(function () use ($mainTaskId, $validated) {
+        $mainTask = TemplateMainTask::where('template_id', $templateId)->where('id', $mainTaskId)->firstOrFail();
+        $mainCode = $mainTask->code ?: (string) $mainTask->order_index;
+
+        DB::transaction(function () use ($mainTaskId, $mainCode, $validated) {
             foreach ($validated['ordered_ids'] as $idx => $id) {
-                TemplateSubTask::where('template_main_task_id', $mainTaskId)->where('id', $id)->update(['order_index' => $idx + 1]);
+                TemplateSubTask::where('template_main_task_id', $mainTaskId)->where('id', $id)->update([
+                    'order_index' => $idx + 1,
+                    'code' => "{$mainCode}." . ($idx + 1),
+                ]);
             }
         });
 

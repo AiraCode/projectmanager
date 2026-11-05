@@ -4,7 +4,7 @@ import {
   Calendar, FolderOpen, Plus, ShieldAlert, Settings, Lock,
   Users, Search, Trash2, UserPlus, X, Network, ExternalLink
 } from 'lucide-react';
-import { PageHeader, Button, Modal, formatDateDisplay } from '@/components/ui';
+import { PageHeader, Button, Modal, formatDateDisplay, AlertModal } from '@/components/ui';
 
 interface ProjectMemberItem {
   id: number;
@@ -70,6 +70,7 @@ export default function ProjectListPage() {
 
   // Modal create project state (PIC only)
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [infoModalMessage, setInfoModalMessage] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [companyId, setCompanyId] = useState<string>('');
   const [newCompanyName, setNewCompanyName] = useState('');
@@ -196,11 +197,17 @@ function getProjectTitleClasses(title: string) {
             <FolderOpen size={26} />
           </div>
           <h3 className="text-[15px] font-bold text-neutral-800 mb-1">
-            {canCreate && isPIC ? "You Don't Have Any Projects Yet" : "No Projects Found"}
+            {canCreate && isPIC
+              ? "You Don't Have Any Projects Yet"
+              : isWorker
+              ? "You Don't Have Any Projects Yet"
+              : "No Projects Found"}
           </h3>
           <p className="text-[13px] text-neutral-500 max-w-md mb-4">
             {canCreate && isPIC
               ? "As a newly registered PIC, you can create the first project for your company. A standard 3-tier WBS template will be automatically initialized!"
+              : isWorker
+              ? "You haven't been assigned to any projects yet. Please contact your PIC or project administrator to be assigned to a project."
               : "There are currently no projects registered in the system."}
           </p>
           {canCreate && isPIC && (
@@ -217,9 +224,10 @@ function getProjectTitleClasses(title: string) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {projects.map((project: Project) => {
             const isPending = project.setup_status === 'pending_setup';
+            const hasDashboardAccess = !isWorker || (auth?.user?.permission_matrix?.sidebar || []).includes('Dashboard');
             const targetHref = isPending
               ? (isWorker || isAdminProgres ? '#' : `/projects/${project.id}/setup`)
-              : (isAdminProgres ? `/scurve?project_id=${project.id}` : (isWorker ? `/tasks?project_id=${project.id}` : `/projects/${project.id}`));
+              : (isAdminProgres ? `/scurve?project_id=${project.id}` : (isWorker && !hasDashboardAccess ? `/tasks?project_id=${project.id}` : `/projects/${project.id}`));
 
             return (
               <Link
@@ -228,7 +236,7 @@ function getProjectTitleClasses(title: string) {
                 onClick={(e) => {
                   if (isPending && (isWorker || isAdminProgres)) {
                     e.preventDefault();
-                    alert('This project is currently in WBS setup mode by the PIC and cannot be accessed yet.');
+                    setInfoModalMessage('This project is currently in WBS setup mode by the PIC and cannot be accessed yet.');
                   }
                 }}
                 className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-2xl"
@@ -755,6 +763,14 @@ function getProjectTitleClasses(title: string) {
           </form>
         </Modal>
       )}
+
+      <AlertModal
+        isOpen={!!infoModalMessage}
+        onClose={() => setInfoModalMessage(null)}
+        title="Project Setup in Progress"
+        message={infoModalMessage}
+        variant="warning"
+      />
     </div>
   );
 }

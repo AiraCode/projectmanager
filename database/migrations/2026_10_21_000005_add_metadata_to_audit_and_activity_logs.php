@@ -21,7 +21,7 @@ return new class extends Migration
                     $table->integer('new_progress')->nullable()->after('old_progress');
                 }
                 if (!Schema::hasColumn('project_activity_logs', 'metadata')) {
-                    $table->json('metadata')->nullable()->after('description');
+                    $table->longText('metadata')->nullable()->after('description');
                 }
             });
         }
@@ -29,7 +29,7 @@ return new class extends Migration
         if (Schema::hasTable('audit_logs')) {
             Schema::table('audit_logs', function (Blueprint $table) {
                 if (!Schema::hasColumn('audit_logs', 'metadata')) {
-                    $table->json('metadata')->nullable()->after('description');
+                    $table->longText('metadata')->nullable()->after('description');
                 }
             });
         }

@@ -44,7 +44,7 @@ class DatabaseSeeder extends Seeder
 
         // Default permission matrices
         $matrixSuperAdmin = [
-            'sidebar' => ['Project List', 'Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
+            'sidebar' => ['Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
             'features' => [
                 'projects' => ['view', 'create', 'edit', 'delete'],
                 'tasks' => ['view', 'create', 'edit', 'delete', 'toggle_status'],
@@ -56,7 +56,7 @@ class DatabaseSeeder extends Seeder
         ];
 
         $matrixAdminProgres = [
-            'sidebar' => ['Project List', 'S-Curve Report'],
+            'sidebar' => ['S-Curve Report'],
             'features' => [
                 'projects' => ['view'],
                 'reports' => ['view']
@@ -65,7 +65,7 @@ class DatabaseSeeder extends Seeder
         ];
 
         $matrixPic = [
-            'sidebar' => ['Dashboard', 'Project List', 'Tasks', 'Weekly Progress', 'Budget Management', 'Timeline', 'Division Progress', 'S-Curve Report', 'User Management'],
+            'sidebar' => ['Dashboard', 'Tasks', 'Weekly Progress', 'Budget Management', 'Timeline', 'Division Progress', 'S-Curve Report', 'User Management'],
             'features' => [
                 'projects' => ['view', 'create', 'edit', 'delete'],
                 'tasks' => ['view', 'create', 'edit', 'delete', 'toggle_status'],

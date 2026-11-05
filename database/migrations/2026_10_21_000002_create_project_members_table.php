@@ -20,7 +20,7 @@ return new class extends Migration
                 $table->unsignedInteger('division_id')->nullable();
                 $table->string('project_role', 50)->default('worker'); // 'pm', 'co_pm', 'lead', 'worker'
                 $table->string('position_title', 100)->nullable(); // e.g. "Site Supervisor", "Lead Civil"
-                $table->json('custom_permissions')->nullable();
+                $table->longText('custom_permissions')->nullable();
                 $table->unsignedInteger('assigned_by')->nullable();
                 $table->timestamps();
 

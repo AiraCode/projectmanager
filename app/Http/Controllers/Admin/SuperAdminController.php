@@ -43,11 +43,11 @@ class SuperAdminController extends Controller
             ->get()
             ->map(fn($log) => [
                 'id'          => $log->id,
-                'actor'       => $log->user?->username ?? 'System',
+                'actor'       => $log->metadata['actor'] ?? ($log->user?->username ?? 'System'),
                 'action'      => $log->action,
                 'description' => $log->description,
                 'ip_address'  => $log->ip_address,
-                'created_at'  => $log->created_at?->diffForHumans(),
+                'created_at'  => $log->created_at?->timezone('Asia/Jakarta')->diffForHumans(),
             ]);
 
         return Inertia::render('SuperAdmin/DashboardPage', [
@@ -71,6 +71,7 @@ class SuperAdminController extends Controller
                 $q->where('description', 'like', "%{$search}%")
                   ->orWhere('ip_address', 'like', "%{$search}%")
                   ->orWhere('action', 'like', "%{$search}%")
+                  ->orWhere('metadata->actor', 'like', "%{$search}%")
                   ->orWhereHas('user', function ($uq) use ($search) {
                       $uq->where('username', 'like', "%{$search}%")
                          ->orWhere('email', 'like', "%{$search}%");
@@ -80,13 +81,13 @@ class SuperAdminController extends Controller
 
         $logs = $query->paginate(25)->withQueryString()->through(fn($log) => [
             'id'          => $log->id,
-            'actor'       => $log->user?->username ?? 'System',
+            'actor'       => $log->metadata['actor'] ?? ($log->user?->username ?? 'System'),
             'actor_email' => $log->user?->email,
             'action'      => $log->action,
             'description' => $log->description,
             'ip_address'  => $log->ip_address,
             'metadata'    => $log->metadata,
-            'created_at'  => $log->created_at?->format('d M Y, H:i:s'),
+            'created_at'  => $log->created_at?->timezone('Asia/Jakarta')->format('d M Y, H:i:s'),
         ]);
 
         $actionTypes = AuditLog::select('action')->distinct()->pluck('action');

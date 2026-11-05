@@ -73,6 +73,11 @@ class Wbs extends Model
         return $this->belongsTo(Division::class, 'divisions_id');
     }
 
+    public function divisions()
+    {
+        return $this->belongsToMany(Division::class, 'division_wbs', 'wbs_id', 'division_id');
+    }
+
     public function predecessorDependencies()
     {
         return $this->hasMany(TaskDependency::class, 'successor_wbs_id');

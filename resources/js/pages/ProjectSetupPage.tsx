@@ -36,6 +36,7 @@ import {
     Modal,
     formatDateDisplay,
     formatDivisionName,
+    AlertModal,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 
@@ -512,6 +513,17 @@ export default function ProjectSetupPage() {
             );
             return;
         }
+        const parentMw = proj.mainWbs.find(
+            (m) =>
+                m.id === subModal.parentId ||
+                (subModal.item && m.id === subModal.item.main_wbs_id),
+        );
+        if (parentMw?.end && subForm.end && subForm.end > parentMw.end) {
+            setActionError(
+                `End date Sub Task (${formatDateDisplay(subForm.end)}) cannot exceed Main Task end date (${formatDateDisplay(parentMw.end)}).`,
+            );
+            return;
+        }
         if (subForm.start && subForm.end && subForm.end <= subForm.start) {
             setActionError(
                 "End date must be after Start date (minimum +1 day).",
@@ -643,11 +655,6 @@ export default function ProjectSetupPage() {
             calculatedStart = minBound;
         }
 
-        // Clamping: Tanggal mulai tidak boleh dimulai lebih lama dari waktu selesai Main Task
-        if (maxBound && calculatedStart > maxBound) {
-            calculatedStart = maxBound;
-        }
-
         return calculatedStart;
     };
 
@@ -695,23 +702,10 @@ export default function ProjectSetupPage() {
                     minBound,
                     maxBound,
                 );
-                const maxDur =
-                    maxBound && newStart
-                        ? Math.max(1, diffDaysSafe(newStart, maxBound) + 1)
-                        : undefined;
-                const clampedDuration =
-                    maxDur !== undefined && taskForm.duration > maxDur
-                        ? maxDur
-                        : taskForm.duration;
-
-                if (
-                    (newStart && newStart !== taskForm.start) ||
-                    clampedDuration !== taskForm.duration
-                ) {
+                if (newStart && newStart !== taskForm.start) {
                     setTaskForm((prev) => ({
                         ...prev,
-                        start: newStart || prev.start,
-                        duration: clampedDuration,
+                        start: newStart,
                     }));
                 }
             }
@@ -763,11 +757,7 @@ export default function ProjectSetupPage() {
             );
         }
 
-        const maxInitDur =
-            maxBound && defaultStart
-                ? Math.max(1, diffDaysSafe(defaultStart, maxBound) + 1)
-                : 5;
-        const initialDur = Math.min(5, maxInitDur);
+        const initialDur = 5;
 
         const defaultDivId =
             filterDivisionId !== "all"
@@ -834,14 +824,9 @@ export default function ProjectSetupPage() {
             if (computed) startVal = computed;
         } else {
             if (minBound && startVal < minBound) startVal = minBound;
-            if (maxBound && startVal > maxBound) startVal = maxBound;
         }
 
-        const maxEditDur =
-            maxBound && startVal
-                ? Math.max(1, diffDaysSafe(startVal, maxBound) + 1)
-                : item.duration_days || 1;
-        const editDur = Math.min(item.duration_days || 1, maxEditDur);
+        const editDur = item.duration_days || 1;
 
         setSearchDep("");
         setTaskForm({
@@ -881,51 +866,12 @@ export default function ProjectSetupPage() {
             return;
         }
 
-        // Find parent Main Task boundaries
-        let parentMain: MainWbs | undefined;
-        const targetSubId = Number(
-            taskModal.parentId || taskModal.item?.sub_wbs_id,
-        );
-        for (const m of proj.mainWbs || []) {
-            if (
-                m.subWbs?.some(
-                    (s) => Number(s.id) === targetSubId,
-                )
-            ) {
-                parentMain = m;
-                break;
-            }
-        }
-        const minTaskStart = parentMain?.start || proj.start || "";
-        const maxTaskEnd = parentMain?.end || proj.end || "";
-
-        // Strictly clamp duration so it cannot push end date past maxTaskEnd
-        let safeDuration = Math.max(1, taskForm.duration || 1);
-        if (maxTaskEnd && taskForm.start) {
-            const maxAllowed = Math.max(1, diffDaysSafe(taskForm.start, maxTaskEnd) + 1);
-            if (safeDuration > maxAllowed) {
-                safeDuration = maxAllowed;
-            }
-        }
-
-        // Auto-calculate end date from start + safe duration
+        const safeDuration = Math.max(1, taskForm.duration || 1);
         const computedEnd = calcEndDate(taskForm.start, safeDuration);
 
-        if (minTaskStart && taskForm.start < minTaskStart) {
+        if (proj.start && taskForm.start < proj.start) {
             setActionError(
-                `Task Start Date (${formatDateDisplay(taskForm.start)}) cannot be earlier than project / Main Task schedule start (${formatDateDisplay(minTaskStart)}).`,
-            );
-            return;
-        }
-        if (maxTaskEnd && taskForm.start > maxTaskEnd) {
-            setActionError(
-                `Task Start Date (${formatDateDisplay(taskForm.start)}) cannot be later than Main Task finish date (${formatDateDisplay(maxTaskEnd)}).`,
-            );
-            return;
-        }
-        if (maxTaskEnd && computedEnd > maxTaskEnd) {
-            setActionError(
-                `Task end date (${formatDateDisplay(computedEnd)}) exceeds Main Task finish date (${formatDateDisplay(maxTaskEnd)}). Reduce duration or extend Main Task schedule.`,
+                `Task Start Date (${formatDateDisplay(taskForm.start)}) cannot be earlier than project schedule start (${formatDateDisplay(proj.start)}).`,
             );
             return;
         }
@@ -1081,13 +1027,17 @@ export default function ProjectSetupPage() {
     };
 
     // Complete Setup Execution
+    const [alertModalInfo, setAlertModalInfo] = useState<{ title: string; message: string; variant?: 'info' | 'warning' | 'danger' } | null>(null);
+
     const handleCompleteSetup = () => {
         // Validate all main tasks have at least 1 subtask
         for (const m of proj.mainWbs || []) {
             if (!m.subWbs || m.subWbs.length === 0) {
-                alert(
-                    `Main Task "${m.name}" does not have any Sub Tasks yet. Please add at least 1 Sub Task.`,
-                );
+                setAlertModalInfo({
+                    title: "Sub Tasks Required",
+                    message: `Main Task "${m.name}" does not have any Sub Tasks yet. Please add at least 1 Sub Task before activating the project.`,
+                    variant: "warning",
+                });
                 return;
             }
         }
@@ -1098,10 +1048,11 @@ export default function ProjectSetupPage() {
             {},
             {
                 onError: (errs) => {
-                    alert(
-                        (Object.values(errs)[0] as string) ||
-                            "Failed to complete project setup.",
-                    );
+                    setAlertModalInfo({
+                        title: "Setup Failed",
+                        message: (Object.values(errs)[0] as string) || "Failed to complete project setup.",
+                        variant: "danger",
+                    });
                     setSubmitting(false);
                 },
                 onFinish: () => setSubmitting(false),
@@ -2458,7 +2409,6 @@ export default function ProjectSetupPage() {
                             : undefined;
 
                     let maxAllowedLead: number | undefined;
-                    let maxAllowedLag: number | undefined;
                     if (selectedPred && selectedPred.start && selectedPred.end) {
                         const pStart = selectedPred.start.slice(0, 10);
                         const pEnd = selectedPred.end.slice(0, 10);
@@ -2474,19 +2424,6 @@ export default function ProjectSetupPage() {
                                 maxAllowedLead = Math.max(0, diffDaysSafe(minStart, pEnd) - dur);
                             } else if (taskForm.dep_type === "SF") {
                                 maxAllowedLead = Math.max(0, diffDaysSafe(minStart, pStart) - dur);
-                            }
-                        }
-
-                        // Lag: cannot start later than maxEnd
-                        if (maxEnd) {
-                            if (taskForm.dep_type === "FS") {
-                                maxAllowedLag = Math.max(0, diffDaysSafe(pEnd, maxEnd));
-                            } else if (taskForm.dep_type === "SS") {
-                                maxAllowedLag = Math.max(0, diffDaysSafe(pStart, maxEnd));
-                            } else if (taskForm.dep_type === "FF") {
-                                maxAllowedLag = Math.max(0, diffDaysSafe(pEnd, maxEnd) + dur);
-                            } else if (taskForm.dep_type === "SF") {
-                                maxAllowedLag = Math.max(0, diffDaysSafe(pStart, maxEnd) + dur);
                             }
                         }
                     }
@@ -2579,40 +2516,28 @@ export default function ProjectSetupPage() {
                                                     *
                                                 </span>
                                             </label>
-                                            {maxAllowedDuration !== undefined && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                                                    <Lock size={10} /> Max: {maxAllowedDuration}d
-                                                </span>
-                                            )}
                                         </div>
                                         <input
                                             type="number"
                                             min="1"
-                                            max={maxAllowedDuration}
                                             value={taskForm.duration}
                                             onChange={(e) => {
                                                 const rawVal =
-                                                    parseInt(e.target.value) || 0;
-                                                let clamped = Math.max(1, rawVal);
-                                                if (
-                                                    maxAllowedDuration !== undefined &&
-                                                    clamped > maxAllowedDuration
-                                                ) {
-                                                    clamped = maxAllowedDuration;
-                                                }
+                                                    parseInt(e.target.value) || 1;
+                                                const dur = Math.max(1, rawVal);
                                                 const newStart = taskForm.predecessor_wbs_id
                                                     ? calcStartFromPredecessor(
                                                           taskForm.predecessor_wbs_id,
                                                           taskForm.dep_type,
                                                           taskForm.lag,
-                                                          clamped,
+                                                          dur,
                                                           minStart,
                                                           maxEnd,
                                                         )
                                                     : taskForm.start;
                                                 setTaskForm({
                                                     ...taskForm,
-                                                    duration: clamped,
+                                                    duration: dur,
                                                     start: newStart,
                                                 });
                                                 setActionError(null);
@@ -2620,11 +2545,6 @@ export default function ProjectSetupPage() {
                                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-[13px] outline-none focus:border-brand font-semibold"
                                             required
                                         />
-                                        {maxAllowedDuration !== undefined && (
-                                            <span className="text-[10px] text-neutral-500 mt-1 block">
-                                                Locked by Main Task limit (Max {maxAllowedDuration} days).
-                                            </span>
-                                        )}
                                     </div>
                                     <div>
                                         <div className="flex items-center justify-between mb-1">
@@ -2648,26 +2568,15 @@ export default function ProjectSetupPage() {
                                             type="date"
                                             value={taskForm.start}
                                             min={minStart}
-                                            max={maxEnd}
                                             readOnly={!isFirstTask}
                                             tabIndex={!isFirstTask ? -1 : 0}
                                             onChange={(e) => {
                                                 if (isFirstTask) {
                                                     let val = e.target.value;
                                                     if (minStart && val < minStart) val = minStart;
-                                                    if (maxEnd && val > maxEnd) val = maxEnd;
-                                                    const maxDur =
-                                                        maxEnd && val
-                                                            ? Math.max(1, diffDaysSafe(val, maxEnd) + 1)
-                                                            : undefined;
-                                                    const clampedDuration =
-                                                        maxDur !== undefined && taskForm.duration > maxDur
-                                                            ? maxDur
-                                                            : taskForm.duration;
                                                     setTaskForm({
                                                         ...taskForm,
                                                         start: val,
-                                                        duration: clampedDuration,
                                                     });
                                                     setActionError(null);
                                                 }
@@ -2862,20 +2771,11 @@ export default function ProjectSetupPage() {
                                                                                                 minStart,
                                                                                                 maxEnd,
                                                                                             );
-                                                                                            const maxDur =
-                                                                                                maxEnd && newStart
-                                                                                                    ? Math.max(1, diffDaysSafe(newStart, maxEnd) + 1)
-                                                                                                    : undefined;
-                                                                                            const clampedDuration =
-                                                                                                maxDur !== undefined && taskForm.duration > maxDur
-                                                                                                    ? maxDur
-                                                                                                    : taskForm.duration;
                                                                                             setTaskForm({
                                                                                                 ...taskForm,
                                                                                                 predecessor_wbs_id: predId,
                                                                                                 lag: 0,
                                                                                                 start: newStart,
-                                                                                                duration: clampedDuration,
                                                                                             });
                                                                                             setActionError(null);
                                                                                         }}
@@ -2940,21 +2840,12 @@ export default function ProjectSetupPage() {
                                                       taskForm.duration,
                                                       minStart,
                                                       maxEnd,
-                                                  )
+                                                    )
                                                 : taskForm.start;
-                                            const maxDur =
-                                                maxEnd && newStart
-                                                    ? Math.max(1, diffDaysSafe(newStart, maxEnd) + 1)
-                                                    : undefined;
-                                            const clampedDuration =
-                                                maxDur !== undefined && taskForm.duration > maxDur
-                                                    ? maxDur
-                                                    : taskForm.duration;
                                             setTaskForm({
                                                 ...taskForm,
                                                 dep_type: newDep,
                                                 start: newStart,
-                                                duration: clampedDuration,
                                             });
                                             setActionError(null);
                                         }}
@@ -2982,16 +2873,10 @@ export default function ProjectSetupPage() {
                                             <label className="block text-[12px] font-bold text-neutral-700">
                                                 Lag (Days)
                                             </label>
-                                            {maxAllowedLag !== undefined && (
-                                                <span className="text-[10.5px] text-neutral-400 font-medium">
-                                                    Max: {maxAllowedLag} days
-                                                </span>
-                                            )}
                                         </div>
                                         <input
                                             type="number"
                                             min="0"
-                                            max={maxAllowedLag}
                                             value={
                                                 taskForm.lag > 0
                                                     ? taskForm.lag
@@ -3001,33 +2886,20 @@ export default function ProjectSetupPage() {
                                                 const raw = Math.abs(
                                                     parseInt(e.target.value) || 0,
                                                 );
-                                                const clamped =
-                                                    maxAllowedLag !== undefined
-                                                        ? Math.min(raw, maxAllowedLag)
-                                                        : raw;
                                                 const newStart = taskForm.predecessor_wbs_id
                                                     ? calcStartFromPredecessor(
                                                           taskForm.predecessor_wbs_id,
                                                           taskForm.dep_type,
-                                                          clamped,
+                                                          raw,
                                                           taskForm.duration,
                                                           minStart,
                                                           maxEnd,
-                                                      )
+                                                        )
                                                     : taskForm.start;
-                                                const maxDur =
-                                                    maxEnd && newStart
-                                                        ? Math.max(1, diffDaysSafe(newStart, maxEnd) + 1)
-                                                        : undefined;
-                                                const clampedDuration =
-                                                    maxDur !== undefined && taskForm.duration > maxDur
-                                                        ? maxDur
-                                                        : taskForm.duration;
                                                 setTaskForm({
                                                     ...taskForm,
-                                                    lag: clamped,
+                                                    lag: raw,
                                                     start: newStart,
-                                                    duration: clampedDuration,
                                                 });
                                                 setActionError(null);
                                             }}
@@ -3035,7 +2907,7 @@ export default function ProjectSetupPage() {
                                             placeholder="0"
                                         />
                                         <span className="text-[10px] text-neutral-500 mt-0.5 block">
-                                            Delay time. {maxAllowedLag !== undefined && maxAllowedLag === 0 ? "Main Task end deadline reached." : ""}
+                                            Delay time after predecessor.
                                         </span>
                                     </div>
                                     <div>
@@ -3075,21 +2947,12 @@ export default function ProjectSetupPage() {
                                                           taskForm.duration,
                                                           minStart,
                                                           maxEnd,
-                                                      )
+                                                        )
                                                     : taskForm.start;
-                                                const maxDur =
-                                                    maxEnd && newStart
-                                                        ? Math.max(1, diffDaysSafe(newStart, maxEnd) + 1)
-                                                        : undefined;
-                                                const clampedDuration =
-                                                    maxDur !== undefined && taskForm.duration > maxDur
-                                                        ? maxDur
-                                                        : taskForm.duration;
                                                 setTaskForm({
                                                     ...taskForm,
                                                     lag: newLag,
                                                     start: newStart,
-                                                    duration: clampedDuration,
                                                 });
                                                 setActionError(null);
                                             }}
@@ -3801,6 +3664,15 @@ export default function ProjectSetupPage() {
                     </div>
                 </Modal>
             )}
+
+            <AlertModal
+                isOpen={!!alertModalInfo}
+                onClose={() => setAlertModalInfo(null)}
+                title={alertModalInfo?.title || "Notification"}
+                message={alertModalInfo?.message || ""}
+                variant={alertModalInfo?.variant || "info"}
+            />
         </div>
     );
 }
+

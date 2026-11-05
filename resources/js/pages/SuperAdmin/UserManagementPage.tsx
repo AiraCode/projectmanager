@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
+import { ConfirmModal } from '@/components/ui';
 import CustomSelect from '@/components/CustomSelect';
 import { Plus, Edit2, Trash2, Shield, FolderOpen, Search, X, ChevronDown, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -212,13 +213,20 @@ export default function SuperAdminUserManagementPage({
     }
   };
 
-  const handleDelete = (id: number, name: string) => {
-    if (confirm(`Delete user "${name}"? This action cannot be undone.`)) {
-      destroy(`/admin/users/${id}`, {
-        onSuccess: () => setToast({ msg: 'User deleted.', type: 'success' }),
-        onError: () => setToast({ msg: 'Error deleting user.', type: 'error' }),
-      });
-    }
+  const [userToDelete, setUserToDelete] = useState<{ id: number; name: string } | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  const handleConfirmDelete = () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    destroy(`/admin/users/${userToDelete.id}`, {
+      onSuccess: () => {
+        setToast({ msg: 'User deleted.', type: 'success' });
+        setUserToDelete(null);
+      },
+      onError: () => setToast({ msg: 'Error deleting user.', type: 'error' }),
+      onFinish: () => setIsDeletingUser(false),
+    });
   };
 
   const handleUnifiedViewToggle = (mod: typeof MODULE_PERMISSIONS[0]) => {
@@ -299,7 +307,7 @@ export default function SuperAdminUserManagementPage({
     } else if (selectedRoleName === 'admin_utama' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
       setData('permission_matrix', {
         ...data.permission_matrix,
-        sidebar: ['Project List', 'Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
+        sidebar: ['Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
         features: {
           projects: ['view'],
           tasks: ['view'],
@@ -312,7 +320,7 @@ export default function SuperAdminUserManagementPage({
     } else if (selectedRoleName === 'admin_progres' && (!data.permission_matrix.sidebar || data.permission_matrix.sidebar.length === 0)) {
       setData('permission_matrix', {
         ...data.permission_matrix,
-        sidebar: ['Project List', 'S-Curve Report', 'Division Progress'],
+        sidebar: ['S-Curve Report', 'Division Progress'],
         features: {
           projects: ['view'],
           reports: ['view']
@@ -1233,7 +1241,7 @@ export default function SuperAdminUserManagementPage({
                               <Edit2 size={14} />
                             </button>
                             {u.role !== 'SuperAdmin' && (
-                              <button onClick={() => handleDelete(u.id, u.username)} className="p-1.5 rounded-lg transition-colors hover:bg-red-100 text-neutral-400 hover:text-red-500" title="Delete">
+                              <button onClick={() => setUserToDelete({ id: u.id, name: u.username })} className="p-1.5 rounded-lg transition-colors hover:bg-red-100 text-neutral-400 hover:text-red-500" title="Delete">
                                 <Trash2 size={14} />
                               </button>
                             )}
@@ -1278,6 +1286,25 @@ export default function SuperAdminUserManagementPage({
           </div>
         </div>
       )}
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        isOpen={!!userToDelete}
+        onClose={() => !isDeletingUser && setUserToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        loading={isDeletingUser}
+        title="Delete User"
+        message={
+          userToDelete ? (
+            <>
+              Delete user <span className="font-semibold text-neutral-900">"{userToDelete.name}"</span>? This action cannot be undone.
+            </>
+          ) : null
+        }
+        confirmText="Delete User"
+        cancelText="Cancel"
+        variant="danger"
+      />
 
       {/* Toast */}
       {toast && (

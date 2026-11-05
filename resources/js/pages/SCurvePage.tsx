@@ -79,12 +79,115 @@ export default function SCurvePage() {
 
   const weeks = useMemo(() => {
     const baseWeeks = projectData.weeklyData || [];
-    if (!predictionPoints || !Array.isArray(predictionPoints) || predictionPoints.length === 0) {
-      return baseWeeks;
+    if (!baseWeeks || baseWeeks.length === 0) return [];
+
+    let effectivePoints = predictionPoints;
+
+    // Fallback: If backend predictionPoints is not provided, compute curve-shifting prediction on client side
+    if (!effectivePoints || !Array.isArray(effectivePoints) || effectivePoints.length === 0) {
+      const todayString = new Date().toISOString().slice(0, 10);
+      let lastActualIdx = 0;
+      for (let i = 0; i < baseWeeks.length; i++) {
+        const w = baseWeeks[i];
+        if (todayString >= w.startDate && todayString <= w.endDate) {
+          lastActualIdx = i;
+          break;
+        } else if (todayString > w.endDate) {
+          lastActualIdx = i;
+        }
+      }
+      lastActualIdx = Math.max(0, Math.min(lastActualIdx, baseWeeks.length - 1));
+
+      const currWeek = baseWeeks[lastActualIdx];
+      const overallProg = projectData.overallProgress ? Number(projectData.overallProgress) : 0;
+      const lastActualVal = currWeek.actualCumulative > 0 ? currWeek.actualCumulative : overallProg;
+
+      // Find closest planned point
+      let eqPlanIndex = 0;
+      let minDiff = Infinity;
+      baseWeeks.forEach((w: any, idx: number) => {
+        const diff = Math.abs(Number(w.plannedCumulative || 0) - lastActualVal);
+        if (diff < minDiff) {
+          minDiff = diff;
+          eqPlanIndex = idx;
+        }
+      });
+
+      // Extract increments
+      const rawIncrements: number[] = [];
+      let first100Idx = baseWeeks.length - 1;
+      for (let i = 0; i < baseWeeks.length; i++) {
+        if (Number(baseWeeks[i].plannedCumulative || 0) >= 99.99) {
+          first100Idx = i;
+          break;
+        }
+      }
+      for (let i = eqPlanIndex + 1; i <= first100Idx; i++) {
+        const prev = Number(baseWeeks[i - 1].plannedCumulative || 0);
+        const curr = Number(baseWeeks[i].plannedCumulative || 0);
+        rawIncrements.push(Math.max(0, curr - prev));
+      }
+
+      const remainingWork = Math.max(0, 100 - lastActualVal);
+      const sumRaw = rawIncrements.reduce((a, b) => a + b, 0);
+      const scaledIncrements: number[] = [];
+      if (remainingWork > 0) {
+        if (sumRaw > 0) {
+          const factor = remainingWork / sumRaw;
+          rawIncrements.forEach(inc => scaledIncrements.push(inc * factor));
+        } else {
+          scaledIncrements.push(remainingWork);
+        }
+      }
+
+      const predMap: Record<number, number | null> = {};
+      for (let i = 0; i < lastActualIdx; i++) predMap[i] = null;
+      predMap[lastActualIdx] = lastActualVal;
+
+      let cum = lastActualVal;
+      for (let k = 0; k < scaledIncrements.length && cum < 100; k++) {
+        const targetIdx = lastActualIdx + 1 + k;
+        cum = Math.min(100, Number((cum + scaledIncrements[k]).toFixed(2)));
+        if (k === scaledIncrements.length - 1) cum = 100;
+        predMap[targetIdx] = cum;
+      }
+
+      const maxPredIdx = Math.max(...Object.keys(predMap).map(Number), baseWeeks.length - 1);
+      const totalWeeks = Math.max(baseWeeks.length, maxPredIdx + 1);
+
+      effectivePoints = [];
+      for (let i = 0; i < totalWeeks; i++) {
+        if (i < baseWeeks.length) {
+          effectivePoints.push({
+            week: baseWeeks[i].week,
+            start_date: baseWeeks[i].startDate,
+            end_date: baseWeeks[i].endDate,
+            planned_cumulative: baseWeeks[i].plannedCumulative,
+            prediction_cumulative: predMap[i] ?? null,
+            is_extended_forecast: false,
+          });
+        } else {
+          const prevEnd = new Date(effectivePoints[i - 1].end_date);
+          const newStart = new Date(prevEnd);
+          newStart.setDate(newStart.getDate() + 1);
+          const newEnd = new Date(newStart);
+          newEnd.setDate(newEnd.getDate() + 6);
+
+          const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          effectivePoints.push({
+            week: i + 1,
+            start_date: fmt(newStart),
+            end_date: fmt(newEnd),
+            planned_cumulative: 100,
+            prediction_cumulative: predMap[i] ?? ((predMap[i - 1] ?? 0) >= 100 ? 100 : null),
+            is_extended_forecast: true,
+          });
+        }
+      }
     }
 
     const merged = baseWeeks.map((w: any) => {
-      const point = predictionPoints.find((p: any) => p.week === w.week);
+      const point = effectivePoints.find((p: any) => p.week === w.week);
       if (point) {
         return {
           ...w,
@@ -94,7 +197,7 @@ export default function SCurvePage() {
       return w;
     });
 
-    const extendedPoints = predictionPoints.filter((p: any) => p.is_extended_forecast || p.week > baseWeeks.length);
+    const extendedPoints = effectivePoints.filter((p: any) => p.is_extended_forecast || p.week > baseWeeks.length);
     for (const ep of extendedPoints) {
       merged.push({
         week: ep.week,
@@ -110,7 +213,7 @@ export default function SCurvePage() {
     }
 
     return merged;
-  }, [projectData.weeklyData, predictionPoints]);
+  }, [projectData.weeklyData, projectData.overallProgress, predictionPoints]);
 
   // Granularity & Range State (100% Data-Driven)
   const [granularity, setGranularity] = useState<Granularity>('week');
@@ -129,7 +232,8 @@ export default function SCurvePage() {
       setFromWeek('1');
       setToWeek(String(weeks.length));
       setFromDay(projectData.startDate || weeks[0].startDate);
-      setToDay(projectData.endDate || weeks[weeks.length - 1].endDate);
+      const extendedEndDate = weeks[weeks.length - 1].endDate;
+      setToDay(extendedEndDate || projectData.endDate);
 
       const yStart = new Date(weeks[0].startDate).getFullYear().toString();
       const yEnd = new Date(weeks[weeks.length - 1].endDate).getFullYear().toString();
@@ -182,13 +286,14 @@ export default function SCurvePage() {
     return false;
   }, [granularity, fromWeek, toWeek, fromDay, toDay, fromYear, toYear, weeks.length]);
 
-  // Reset filter to project's entire span
+  // Reset filter to project's entire span (including extended forecast periods)
   const handleResetFilter = () => {
     if (weeks.length > 0) {
       setFromWeek('1');
       setToWeek(String(weeks.length));
       setFromDay(projectData.startDate || weeks[0].startDate);
-      setToDay(projectData.endDate || weeks[weeks.length - 1].endDate);
+      const extendedEndDate = weeks[weeks.length - 1].endDate;
+      setToDay(extendedEndDate || projectData.endDate);
       const yStart = new Date(weeks[0].startDate).getFullYear().toString();
       const yEnd = new Date(weeks[weeks.length - 1].endDate).getFullYear().toString();
       setFromYear(yStart);
@@ -203,7 +308,7 @@ export default function SCurvePage() {
     }
     if (granularity === 'day') {
       const defStart = projectData.startDate || weeks[0]?.startDate;
-      const defEnd = projectData.endDate || weeks[weeks.length - 1]?.endDate;
+      const defEnd = weeks[weeks.length - 1]?.endDate || projectData.endDate;
       return (fromDay !== '' && fromDay !== defStart) || (toDay !== '' && toDay !== defEnd);
     }
     if (granularity === 'year') {
@@ -321,7 +426,7 @@ export default function SCurvePage() {
 
     if (granularity === 'day') {
       const fD = (!isInvalidRange && fromDay) ? fromDay : (projectData.startDate || weeks[0]?.startDate || '');
-      const tD = (!isInvalidRange && toDay) ? toDay : (projectData.endDate || weeks[weeks.length - 1]?.endDate || '');
+      const tD = (!isInvalidRange && toDay) ? toDay : (weeks.length > 0 ? weeks[weeks.length - 1]?.endDate : projectData.endDate || '');
       if (!fD || !tD) return [];
 
       const parseDateStr = (str: string) => {
@@ -389,9 +494,38 @@ export default function SCurvePage() {
 
         const dev = actCum !== null ? Number((actCum - planCum).toFixed(2)) : null;
 
-        // Prediction: only populated if backend supplies it on the week or day
-        const rawDayPred = wIdx !== -1 ? ((weeks[wIdx] as any).predictionCumulative ?? (weeks[wIdx] as any).prediction ?? null) : null;
-        const predCum: number | null = rawDayPred != null && !isNaN(Number(rawDayPred)) ? Number(Number(rawDayPred).toFixed(2)) : null;
+        // Prediction line for Day granularity:
+        // - Days < today: null
+        // - Today: realisasiValue (connects seamlessly to Actual line)
+        // - Future days: smoothly interpolate prediction along the S-curve
+        let predCum: number | null = null;
+        if (dStr === todayStr) {
+          predCum = realisasiValue;
+        } else if (dStr > todayStr && wIdx !== -1) {
+          const w = weeks[wIdx];
+          const currWeekPred = (w as any).predictionCumulative ?? null;
+          if (currWeekPred != null) {
+            if (wIdx === currentWeekIdx) {
+              const wStart = parseDateStr(w.startDate);
+              const todayObj = parseDateStr(todayStr);
+              const daysRemaining = Math.max(1, 7 - Math.round((todayObj.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24)));
+              const daysFromToday = Math.max(0, Math.round((curr.getTime() - todayObj.getTime()) / (1000 * 60 * 60 * 24)));
+              const predDiff = Math.max(0, currWeekPred - realisasiValue);
+              predCum = Number((realisasiValue + (predDiff * daysFromToday / daysRemaining)).toFixed(2));
+            } else {
+              const prevWeekPred = (weeks[wIdx - 1] as any)?.predictionCumulative ?? realisasiValue;
+              const wStart = parseDateStr(w.startDate);
+              const dayDiff = Math.max(0, Math.min(6, Math.round((curr.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24))));
+              const predDiff = Math.max(0, currWeekPred - prevWeekPred);
+              predCum = Number((prevWeekPred + (predDiff * (dayDiff + 1) / 7)).toFixed(2));
+            }
+          }
+        } else if (dStr > todayStr && wIdx === -1 && dStr > (weeks[weeks.length - 1]?.endDate || '')) {
+          const lastWeekPred = (weeks[weeks.length - 1] as any)?.predictionCumulative;
+          if (lastWeekPred != null && lastWeekPred >= 99.99) {
+            predCum = 100;
+          }
+        }
 
         const dayEvidences = allEvidences.filter(ev => ev.date === dStr);
 
@@ -670,7 +804,7 @@ export default function SCurvePage() {
           {
             label: 'Target S-Curve',
             value: `${(weeks.length > 0 ? (weeks.at(-1)?.plannedCumulative ?? 100) : 0).toFixed(1)}%`,
-            sub: weeks.length > 0 ? `Target at completion (W${weeks.length})` : 'No schedule available',
+            sub: weeks.length > 0 ? `Target at completion (W${weeks.filter(w => !w.isExtendedForecast).length || weeks.length})` : 'No schedule available',
           },
           {
             label: 'Actual Progress',
@@ -686,7 +820,7 @@ export default function SCurvePage() {
           {
             label: 'Reported Periods',
             value: `${weeks.length > 0 && currentWeekIdx >= 0 ? Math.min(weeks.length, currentWeekIdx + 1) : 0} Weeks`,
-            sub: `of ${weeks.length} project weeks`,
+            sub: `of ${weeks.filter(w => !w.isExtendedForecast).length || weeks.length} planned weeks`,
           },
         ].map(({ label, value, sub, accent }) => (
           <Card key={label} className="p-4 border border-neutral-200/90 shadow-2xs bg-white">
@@ -752,7 +886,7 @@ export default function SCurvePage() {
                   type="date"
                   value={fromDay}
                   min={projectData.startDate || (weeks.length > 0 ? weeks[0].startDate : undefined)}
-                  max={toDay || projectData.endDate || (weeks.length > 0 ? weeks[weeks.length - 1].endDate : undefined)}
+                  max={toDay || (weeks.length > 0 ? weeks[weeks.length - 1].endDate : projectData.endDate)}
                   onChange={(e) => setFromDay(e.target.value)}
                   className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs text-neutral-700 cursor-pointer"
                 />
@@ -792,7 +926,7 @@ export default function SCurvePage() {
                   type="date"
                   value={toDay}
                   min={fromDay || projectData.startDate || (weeks.length > 0 ? weeks[0].startDate : undefined)}
-                  max={projectData.endDate || (weeks.length > 0 ? weeks[weeks.length - 1].endDate : undefined)}
+                  max={weeks.length > 0 ? weeks[weeks.length - 1].endDate : projectData.endDate}
                   onChange={(e) => setToDay(e.target.value)}
                   className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs text-neutral-700 cursor-pointer"
                 />

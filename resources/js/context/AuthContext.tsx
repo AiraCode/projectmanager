@@ -23,6 +23,9 @@ export interface User {
   } | null;
   ownedProject?: any;
   must_change_password?: boolean;
+  assigned_projects_count?: number;
+  assigned_tasks_count?: number;
+  hasMultipleAssignments?: boolean;
 }
 
 export type Role = 'Admin Utama' | 'Admin Progres' | 'PIC' | 'Worker';
@@ -54,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     : 'Worker';
 
   const user: User | null = authUser ? {
+    ...authUser,
     id:       authUser.id,
     name:     authUser.name ?? 'User',
     email:    authUser.email ?? '',
@@ -72,6 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     canCreateProject: isPIC && (authUser.canCreateProject ?? true),
     permission_matrix: authUser.permission_matrix ?? null,
     must_change_password: authUser.must_change_password ?? false,
+    assigned_projects_count: authUser.assigned_projects_count ?? 0,
+    assigned_tasks_count: authUser.assigned_tasks_count ?? 0,
+    hasMultipleAssignments: Boolean(authUser.hasMultipleAssignments),
   } : null;
 
   const login        = async () => ({ success: true });

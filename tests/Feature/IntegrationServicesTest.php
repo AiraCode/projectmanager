@@ -41,6 +41,10 @@ class IntegrationServicesTest extends TestCase
                 'name' => 'Task Test 1',
                 'weight' => 50,
                 'order_index' => 1,
+                'divisions_id' => Division::first()?->id ?? 1,
+                'vendor' => 'Internal',
+                'start' => now(),
+                'end' => now()->addDays(5),
             ]);
             Wbs::create([
                 'id' => 'test-task-2',
@@ -48,6 +52,10 @@ class IntegrationServicesTest extends TestCase
                 'name' => 'Task Test 2',
                 'weight' => 50,
                 'order_index' => 2,
+                'divisions_id' => Division::first()?->id ?? 1,
+                'vendor' => 'Internal',
+                'start' => now(),
+                'end' => now()->addDays(5),
             ]);
             $tasks = Wbs::where('sub_wbs_id', $subWbs->id)->get();
         }
@@ -110,19 +118,20 @@ class IntegrationServicesTest extends TestCase
     {
         $superadmin = User::where('email', 'superadmin@provis.id')->first();
         $project = Project::first();
-        $subWbs = SubWbs::whereHas('mainWbs', function ($q) use ($project) {
-            $q->where('projects_id', $project->id);
-        })->first();
+        $mainWbs = MainWbs::where('projects_id', $project->id)->first();
+        $subWbs = SubWbs::create([
+            'sub_wbs_id' => $mainWbs->id,
+            'list_sub_wbs_names_id' => \App\Models\ListSubWbsName::first()?->id ?? 1,
+            'name' => 'SubWbs for Weight Test',
+            'weight' => 10,
+            'predecessor' => '',
+            'predecessor_type' => 'FS',
+            'start' => now(),
+            'end' => now()->addDays(5),
+        ]);
 
-        $tasks = Wbs::where('sub_wbs_id', $subWbs->id)->get();
-        if ($tasks->count() < 2) {
-            Wbs::create(['id' => 'task-wt-1', 'sub_wbs_id' => $subWbs->id, 'name' => 'W1', 'weight' => 50]);
-            Wbs::create(['id' => 'task-wt-2', 'sub_wbs_id' => $subWbs->id, 'name' => 'W2', 'weight' => 50]);
-            $tasks = Wbs::where('sub_wbs_id', $subWbs->id)->get();
-        }
-
-        $t1 = $tasks[0];
-        $t2 = $tasks[1];
+        $t1 = Wbs::create(['id' => 'task-wt-' . \Illuminate\Support\Str::uuid(), 'sub_wbs_id' => $subWbs->id, 'name' => 'W1', 'weight' => 50, 'divisions_id' => Division::first()?->id ?? 1, 'vendor' => 'Internal', 'start' => now(), 'end' => now()->addDays(5)]);
+        $t2 = Wbs::create(['id' => 'task-wt-' . \Illuminate\Support\Str::uuid(), 'sub_wbs_id' => $subWbs->id, 'name' => 'W2', 'weight' => 50, 'divisions_id' => Division::first()?->id ?? 1, 'vendor' => 'Internal', 'start' => now(), 'end' => now()->addDays(5)]);
 
         // Case A: Total is 80% (Not 100%) -> Must fail validation
         $responseBad = $this->actingAs($superadmin)->post("/projects/{$project->id}/weights", [
@@ -321,6 +330,49 @@ class IntegrationServicesTest extends TestCase
     }
 
     /**
+     * 7b. Test S-Curve Curve Shifting / Remaining Work Projection.
+     * Verify Prediction connects to last actual point, shifts remaining plan increments, and reaches 100%.
+     */
+    public function test_scurve_curve_shifting_prediction_logic(): void
+    {
+        $service = app(SCurvePredictionService::class);
+        $project = Project::whereHas('mainWbs.subWbs.wbsTasks')->first();
+        if (!$project) {
+            $this->markTestSkipped('No project with tasks found for curve shifting test.');
+        }
+
+        $result = $service->calculate($project);
+        $points = $result['points'];
+        $this->assertNotEmpty($points);
+
+        // Find last actual point in result
+        $lastActualIdx = null;
+        $lastActualVal = null;
+        foreach ($points as $idx => $p) {
+            if ($p['actual_cumulative'] !== null && $p['actual_cumulative'] > 0) {
+                $lastActualIdx = $idx;
+                $lastActualVal = $p['actual_cumulative'];
+            }
+        }
+
+        if ($lastActualIdx !== null) {
+            // Check periods < lastActualIdx have prediction = null
+            for ($i = 0; $i < $lastActualIdx; $i++) {
+                $this->assertNull($points[$i]['prediction_cumulative'], "Prediction at week index {$i} before lastActualIdx must be null");
+            }
+
+            // At lastActualIdx, prediction must connect seamlessly to lastActualVal
+            $this->assertEquals($lastActualVal, $points[$lastActualIdx]['prediction_cumulative'], 'Prediction must connect seamlessly at lastActualIdx');
+
+            // Prediction should eventually reach 100%
+            $lastPoint = end($points);
+            $this->assertNotNull($lastPoint['prediction_cumulative']);
+            $this->assertEquals(100.0, (float) $lastPoint['prediction_cumulative'], 'Prediction must reach 100% on the final period');
+        }
+    }
+
+    /**
+
      * 8. Test Task Evidence Upload is Recorded in Activity Log.
      */
     public function test_task_evidence_upload_recorded_in_activity_log(): void
@@ -352,7 +404,7 @@ class IntegrationServicesTest extends TestCase
 
         $this->assertNotNull($latestLog, 'Activity log must be recorded');
         $this->assertStringContainsString('laporan_progress_12.pdf', $latestLog->description);
-        $this->assertStringContainsString('Input evidence:', $latestLog->description);
+        $this->assertStringContainsStringIgnoringCase('input evidence:', $latestLog->description);
         $this->assertIsArray($latestLog->metadata);
         $this->assertContains('laporan_progress_12.pdf', $latestLog->metadata['evidence_files'] ?? []);
     }

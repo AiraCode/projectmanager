@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->json('permission_matrix')->nullable()->after('roles_id');
+            $table->longText('permission_matrix')->nullable()->after('roles_id');
         });
     }
 
