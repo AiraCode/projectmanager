@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Company;
+use App\Models\MainWbs;
 use App\Models\Project;
 use App\Models\User;
+use Carbon\Carbon;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 
@@ -176,6 +178,89 @@ class SuperAdminController extends Controller
         return Inertia::render('SuperAdmin/AllProjectsPage', [
             'projects' => $projects,
         ]);
+    }
+
+    /**
+     * SuperAdmin: Update overall project schedule and duration (start date & target finish date).
+     * Strictly restricted to role SuperAdmin.
+     */
+    public function updateProjectDates(Request $request, int|string $id)
+    {
+        $user = $request->user();
+        if (!$user || ($user->role?->name ?? '') !== 'SuperAdmin') {
+            abort(403, 'Akses Ditolak: Hanya SuperAdmin yang berhak mengubah jadwal dan durasi proyek.');
+        }
+
+        $validated = $request->validate([
+            'start' => 'required|date',
+            'end'   => 'required|date',
+        ]);
+
+        $project = Project::findOrFail($id);
+
+        $newStart = Carbon::parse($validated['start'])->startOfDay();
+        $newEnd   = Carbon::parse($validated['end'])->startOfDay();
+
+        if ($newEnd->lte($newStart)) {
+            return back()->withErrors(['end' => 'Target Finish Date proyek harus setelah Start Date (minimal 1 hari setelahnya).']);
+        }
+
+        // Validate that new dates do not violate existing task boundaries
+        $earliestTaskStart = null;
+        $latestTaskEnd = null;
+
+        $mainTasks = MainWbs::where('projects_id', $project->id)->get();
+        foreach ($mainTasks as $m) {
+            if ($m->start) {
+                $mStart = Carbon::parse($m->start)->startOfDay();
+                if (!$earliestTaskStart || $mStart->lt($earliestTaskStart)) {
+                    $earliestTaskStart = $mStart;
+                }
+            }
+            if ($m->end) {
+                $mEnd = Carbon::parse($m->end)->startOfDay();
+                if (!$latestTaskEnd || $mEnd->gt($latestTaskEnd)) {
+                    $latestTaskEnd = $mEnd;
+                }
+            }
+        }
+
+        if ($earliestTaskStart && $newStart->gt($earliestTaskStart)) {
+            return back()->withErrors([
+                'start' => "Start Date proyek ({$newStart->format('d/m/Y')}) tidak boleh lebih lambat dari jadwal mulai tugas yang sudah ada ({$earliestTaskStart->format('d/m/Y')}).",
+            ]);
+        }
+
+        if ($latestTaskEnd && $newEnd->lt($latestTaskEnd)) {
+            return back()->withErrors([
+                'end' => "Target Finish Date proyek ({$newEnd->format('d/m/Y')}) tidak boleh lebih awal dari batas selesai tugas yang sudah ada ({$latestTaskEnd->format('d/m/Y')}).",
+            ]);
+        }
+
+        $oldStartStr = $project->start ? Carbon::parse($project->start)->format('d/m/Y') : '—';
+        $oldEndStr   = $project->end ? Carbon::parse($project->end)->format('d/m/Y') : '—';
+
+        $project->start = $newStart;
+        $project->end   = $newEnd;
+        $project->save();
+
+        AuditLog::record(
+            'UPDATE_PROJECT_DATES',
+            "SuperAdmin {$user->username} memperbarui durasi proyek '{$project->title}' (ID #{$project->id}): Start {$oldStartStr} -> {$newStart->format('d/m/Y')}, Finish {$oldEndStr} -> {$newEnd->format('d/m/Y')}.",
+            $user->id,
+            $request->ip(),
+            [
+                'project_id' => $project->id,
+                'old_start'  => $oldStartStr,
+                'old_end'    => $oldEndStr,
+                'new_start'  => $newStart->format('Y-m-d'),
+                'new_end'    => $newEnd->format('Y-m-d'),
+            ]
+        );
+
+        app(\App\Services\ProgressService::class)->recalculateProjectProgress($project->id);
+
+        return back()->with('success', "Jadwal proyek '{$project->title}' berhasil diperbarui menjadi {$newStart->format('d/m/Y')} s/d {$newEnd->format('d/m/Y')}.");
     }
     public function divisionsPage()
     {

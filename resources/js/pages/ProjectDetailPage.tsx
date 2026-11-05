@@ -4,7 +4,7 @@ import {
   Building2, User, Calendar, Target, CheckCircle2, Layers, ShieldCheck,
   Plus, Lock, AlertCircle, Check, Search, Filter, ChevronDown, ChevronRight,
   Clock, Shield, Paperclip, Eye, Scale, ArrowRight, ExternalLink, X, FileText,
-  Link2
+  Link2, Edit2, AlertTriangle
 } from 'lucide-react';
 import type { MainJob, SubMainJob, SubSubtask, EvidenceItem } from '@/data/mockData';
 import {
@@ -308,6 +308,57 @@ export default function ProjectDetailPage() {
   const isPIC = user?.isPIC || user?.role === 'pic';
   const canCreate = isPIC && Boolean(user?.canCreateProject);
 
+  const roleName = typeof user?.role === 'string' ? user?.role : (user as any)?.role?.name;
+  const isSuperAdmin = roleName?.toLowerCase() === 'superadmin';
+
+  const [showEditDatesModal, setShowEditDatesModal] = useState(false);
+  const [editStart, setEditStart] = useState('');
+  const [editEnd, setEditEnd] = useState('');
+  const [isUpdatingDates, setIsUpdatingDates] = useState(false);
+  const [dateError, setDateError] = useState<string | null>(null);
+
+  const openEditDatesModal = () => {
+    setEditStart(p?.startDate || '');
+    setEditEnd(p?.endDate || '');
+    setDateError(null);
+    setShowEditDatesModal(true);
+  };
+
+  const handleSaveDates = (e: FormEvent) => {
+    e.preventDefault();
+    if (!p) return;
+    if (!editStart || !editEnd) {
+      setDateError('Start Date dan Target Finish Date harus diisi.');
+      return;
+    }
+    if (editEnd <= editStart) {
+      setDateError('Target Finish Date harus setelah Start Date (minimal 1 hari setelahnya).');
+      return;
+    }
+
+    setIsUpdatingDates(true);
+    setDateError(null);
+
+    router.put(`/admin/projects/${p.id}/dates`, {
+      start: editStart,
+      end: editEnd,
+    }, {
+      onSuccess: () => {
+        setIsUpdatingDates(false);
+        setShowEditDatesModal(false);
+        setToast({
+          message: `Jadwal proyek "${p.name}" berhasil diperbarui.`,
+          type: 'success',
+        });
+      },
+      onError: (errs) => {
+        setIsUpdatingDates(false);
+        const firstErr = Object.values(errs)[0];
+        setDateError(typeof firstErr === 'string' ? firstErr : 'Gagal memperbarui jadwal proyek.');
+      },
+    });
+  };
+
   if (!p) {
     return (
       <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-6">
@@ -344,6 +395,17 @@ export default function ProjectDetailPage() {
         actions={
           <div className="flex items-center gap-2.5">
             <StatusBadge status={p.status} size="md" />
+            {isSuperAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openEditDatesModal}
+                className="bg-white border-violet-200 text-violet-700 hover:bg-violet-50 font-bold shadow-2xs"
+                icon={Calendar}
+              >
+                Edit Duration (SuperAdmin)
+              </Button>
+            )}
             {canCreate}
           </div>
         }
@@ -352,19 +414,37 @@ export default function ProjectDetailPage() {
       {/* Top summary row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
-          { icon: Building2, label: 'Company', value: p.company },
-          { icon: User, label: 'Project Manager', value: p.projectManager },
-          { icon: Calendar, label: 'Start Date', value: formatDateDisplay(p.startDate) },
-          { icon: Target, label: 'Target Completion', value: formatDateDisplay(p.endDate) },
-        ].map(({ icon: Icon, label, value }) => (
-          <Card key={label} className="p-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-brand-light flex items-center justify-center flex-shrink-0">
-              <Icon size={16} className="text-brand" />
+          { icon: Building2, label: 'Company', value: p.company, editable: false },
+          { icon: User, label: 'Project Manager', value: p.projectManager, editable: false },
+          { icon: Calendar, label: 'Start Date', value: formatDateDisplay(p.startDate), editable: isSuperAdmin },
+          { icon: Target, label: 'Target Completion', value: formatDateDisplay(p.endDate), editable: isSuperAdmin },
+        ].map(({ icon: Icon, label, value, editable }) => (
+          <Card
+            key={label}
+            className={`p-4 flex items-center justify-between ${editable ? 'cursor-pointer hover:border-violet-300 hover:shadow-xs transition-all group' : ''}`}
+            onClick={editable ? openEditDatesModal : undefined}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-lg bg-brand-light flex items-center justify-center flex-shrink-0">
+                <Icon size={16} className="text-brand" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <span>{label}</span>
+                  {editable && (
+                    <span className="text-[9px] font-bold text-violet-600 bg-violet-50 px-1 py-0.2 rounded border border-violet-200">
+                      SuperAdmin
+                    </span>
+                  )}
+                </div>
+                <div className="text-[13px] font-bold text-neutral-800 truncate mt-0.5">{value}</div>
+              </div>
             </div>
-            <div className="min-w-0">
-              <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">{label}</div>
-              <div className="text-[13px] font-bold text-neutral-800 truncate mt-0.5">{value}</div>
-            </div>
+            {editable && (
+              <div className="opacity-0 group-hover:opacity-100 text-neutral-400 group-hover:text-violet-600 p-1 rounded transition-opacity" title="Edit Duration (SuperAdmin Only)">
+                <Edit2 size={13} />
+              </div>
+            )}
           </Card>
         ))}
       </div>
@@ -541,11 +621,10 @@ export default function ProjectDetailPage() {
                       normalizeDiv(prev) === normalizeDiv(userDivision) ? 'all' : userDivision
                     )
                   }
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] font-bold transition-all border ${
-                    normalizeDiv(filterDivision) === normalizeDiv(userDivision)
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] font-bold transition-all border ${normalizeDiv(filterDivision) === normalizeDiv(userDivision)
                       ? 'bg-brand text-white border-brand shadow-2xs'
                       : 'bg-white text-neutral-700 border-neutral-200 hover:border-brand/40'
-                  }`}
+                    }`}
                   title="Quickly filter to your assigned department"
                 >
                   <Shield size={11} />
@@ -882,6 +961,115 @@ export default function ProjectDetailPage() {
           )}
         </div>
       </Modal>
+
+      {/* Modal: Edit Project Duration (SuperAdmin Only) */}
+      {showEditDatesModal && p && (
+        <Modal
+          isOpen={showEditDatesModal}
+          onClose={() => !isUpdatingDates && setShowEditDatesModal(false)}
+          title="Edit Project Duration & Schedule"
+          subtitle="SuperAdmin Privilege: Sesuaikan batas tanggal keseluruhan proyek"
+          size="md"
+        >
+          <form onSubmit={handleSaveDates} className="space-y-4">
+            {dateError && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+                <AlertTriangle size={15} className="flex-shrink-0" />
+                <span>{dateError}</span>
+              </div>
+            )}
+
+            <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80 space-y-1">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Project Information</div>
+              <div className="text-[13.5px] font-bold text-neutral-800">{p.name}</div>
+              <div className="text-[11.5px] text-neutral-500 flex items-center gap-2 pt-0.5">
+                <span>Company: <strong>{p.company ?? '—'}</strong></span>
+                <span>•</span>
+                <span>Status: <span className="font-semibold text-neutral-700">{p.status}</span></span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-900 text-[12px] leading-relaxed flex items-start gap-2.5">
+              <ShieldCheck size={16} className="text-amber-700 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-amber-950">Batas Tanggal Proyek (Project Target Limit)</p>
+                <p className="text-[11.5px] text-amber-800 mt-0.5">
+                  Start Date dan Target Finish Date ini merupakan batas acuan untuk seluruh Main Task dan Sub Task di dalam proyek.
+                  Jika proyek mengalami keterlambatan (molor), perpanjang Target Finish Date agar tugas-tugas dapat dijadwalkan lebih lanjut.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3.5">
+              <div>
+                <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                  Start Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={editStart}
+                  onChange={(e) => {
+                    setEditStart(e.target.value);
+                    setDateError(null);
+                  }}
+                  className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-white font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                  Target Finish Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={editEnd}
+                  onChange={(e) => {
+                    setEditEnd(e.target.value);
+                    setDateError(null);
+                  }}
+                  className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-white font-medium"
+                />
+              </div>
+            </div>
+
+            {/* Duration calculation */}
+            {editStart && editEnd && editEnd > editStart && (
+              <div className="text-[11.5px] text-neutral-600 bg-violet-50/60 p-2.5 rounded-lg border border-violet-100 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Clock size={12} className="text-violet-600" />
+                  <span>Total Durasi Proyek Baru:</span>
+                </span>
+                <span className="font-bold text-violet-900">
+                  {Math.round((new Date(editEnd).getTime() - new Date(editStart).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari kalender
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEditDatesModal(false)}
+                disabled={isUpdatingDates}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={isUpdatingDates}
+                className="bg-violet-600 hover:bg-violet-700 text-white font-semibold"
+              >
+                {isUpdatingDates ? 'Saving Changes...' : 'Save Schedule'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -950,9 +1138,8 @@ function MainJobTreeCard({
           </span>
           <ChevronDown
             size={16}
-            className={`text-neutral-400 transition-transform duration-200 ${
-              isMainExpanded ? 'rotate-180' : ''
-            }`}
+            className={`text-neutral-400 transition-transform duration-200 ${isMainExpanded ? 'rotate-180' : ''
+              }`}
           />
         </div>
       </button>
@@ -978,9 +1165,8 @@ function MainJobTreeCard({
                   >
                     <ChevronRight
                       size={15}
-                      className={`text-neutral-400 flex-shrink-0 transition-transform duration-200 ${
-                        isSubExpanded ? 'rotate-90' : ''
-                      }`}
+                      className={`text-neutral-400 flex-shrink-0 transition-transform duration-200 ${isSubExpanded ? 'rotate-90' : ''
+                        }`}
                     />
 
                     <div className="w-6 h-6 rounded bg-neutral-200/90 flex items-center justify-center flex-shrink-0">
@@ -1081,13 +1267,12 @@ function MainJobTreeCard({
                                   {/* Days Left */}
                                   {task.daysLeft !== undefined && (
                                     <span
-                                      className={`inline-flex items-center gap-0.5 text-[10.5px] font-medium ${
-                                        task.daysLeft <= 0
+                                      className={`inline-flex items-center gap-0.5 text-[10.5px] font-medium ${task.daysLeft <= 0
                                           ? 'text-red-600 font-bold'
                                           : task.daysLeft <= 3
-                                          ? 'text-amber-600 font-semibold'
-                                          : 'text-neutral-500'
-                                      }`}
+                                            ? 'text-amber-600 font-semibold'
+                                            : 'text-neutral-500'
+                                        }`}
                                       title={`Days Remaining: ${task.daysLeft} days`}
                                     >
                                       <Clock size={10} />

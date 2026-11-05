@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
-import { ConfirmModal } from '@/components/ui';
-import { Search, Lock, Globe, Trash2, ExternalLink, Building2, Calendar } from 'lucide-react';
+import { ConfirmModal, Modal, Button } from '@/components/ui';
+import { Search, Lock, Globe, Trash2, ExternalLink, Building2, Calendar, Edit2, AlertTriangle, ShieldCheck, Clock } from 'lucide-react';
 
 interface Project {
   id: number;
@@ -23,6 +23,14 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Edit Project Dates (SuperAdmin Only)
+  const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
+  const [editStart, setEditStart] = useState('');
+  const [editEnd, setEditEnd] = useState('');
+  const [isUpdatingDates, setIsUpdatingDates] = useState(false);
+  const [dateError, setDateError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
   const filtered = projects.filter(p => {
     const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) ||
       (p.company ?? '').toLowerCase().includes(search.toLowerCase());
@@ -42,6 +50,48 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
     });
   };
 
+  const openEditDates = (p: Project) => {
+    setProjectToEdit(p);
+    setEditStart(p.start_date || '');
+    setEditEnd(p.end_date || '');
+    setDateError(null);
+  };
+
+  const handleSaveDates = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectToEdit) return;
+    if (!editStart || !editEnd) {
+      setDateError('Start Date dan Target Finish Date harus diisi.');
+      return;
+    }
+    if (editEnd <= editStart) {
+      setDateError('Target Finish Date harus setelah Start Date (minimal 1 hari setelahnya).');
+      return;
+    }
+
+    setIsUpdatingDates(true);
+    setDateError(null);
+
+    router.put(`/admin/projects/${projectToEdit.id}/dates`, {
+      start: editStart,
+      end: editEnd,
+    }, {
+      onSuccess: () => {
+        setIsUpdatingDates(false);
+        setToast({
+          msg: `Jadwal proyek "${projectToEdit.title}" berhasil diperbarui.`,
+          type: 'success',
+        });
+        setProjectToEdit(null);
+      },
+      onError: (errs) => {
+        setIsUpdatingDates(false);
+        const firstErr = Object.values(errs)[0];
+        setDateError(typeof firstErr === 'string' ? firstErr : 'Gagal memperbarui jadwal proyek.');
+      },
+    });
+  };
+
   const statusColor = (s: string) => {
     if (s === 'Completed') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
     if (s === 'On Track')  return 'bg-blue-50 text-blue-700 border-blue-200';
@@ -55,10 +105,20 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
       <Head title="All Projects — SuperAdmin" />
       <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
 
+        {/* Toast Feedback */}
+        {toast && (
+          <div className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded-xl text-white text-[13px] font-semibold shadow-xl transition-all flex items-center justify-between gap-4 ${
+            toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500'
+          }`}>
+            <span>{toast.msg}</span>
+            <button onClick={() => setToast(null)} className="opacity-75 hover:opacity-100 font-bold">✕</button>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-xl font-black text-neutral-900 tracking-tight">All Projects</h1>
-            <p className="text-[12px] text-neutral-500 mt-0.5">View and manage all projects across companies, including private ones.</p>
+            <p className="text-[12px] text-neutral-500 mt-0.5">View and manage all projects across companies, including private ones and schedule limits.</p>
           </div>
           <div className="flex items-center gap-2 text-[12px] text-neutral-500">
             <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 font-bold">{projects.length} total</span>
@@ -138,13 +198,27 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1 text-[11.5px] text-neutral-500">
-                      <Calendar size={11} className="text-neutral-400" />
-                      {p.start_date ?? '—'} - {p.end_date ?? '—'}
+                    <div className="flex items-center gap-1.5 text-[11.5px] text-neutral-600 group">
+                      <Calendar size={12} className="text-neutral-400" />
+                      <span>{p.start_date ?? '—'} - {p.end_date ?? '—'}</span>
+                      <button
+                        onClick={() => openEditDates(p)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-neutral-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-all ml-1"
+                        title="Edit Project Duration (SuperAdmin)"
+                      >
+                        <Edit2 size={11} />
+                      </button>
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        onClick={() => openEditDates(p)}
+                        className="p-1.5 rounded-lg text-neutral-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                        title="Edit Project Schedule / Duration (SuperAdmin)"
+                      >
+                        <Calendar size={14} />
+                      </button>
                       <a href={`/projects/${p.id}`} target="_blank" className="p-1.5 rounded-lg text-neutral-400 hover:text-violet-600 hover:bg-violet-50 transition-colors" title="Open project">
                         <ExternalLink size={14} />
                       </a>
@@ -158,6 +232,115 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
             </tbody>
           </table>
         </div>
+
+        {/* Modal: Edit Project Duration (SuperAdmin Only) */}
+        {projectToEdit && (
+          <Modal
+            isOpen={!!projectToEdit}
+            onClose={() => !isUpdatingDates && setProjectToEdit(null)}
+            title="Edit Project Duration & Schedule"
+            subtitle="SuperAdmin Privilege: Sesuaikan batas tanggal keseluruhan proyek"
+            size="md"
+          >
+            <form onSubmit={handleSaveDates} className="space-y-4">
+              {dateError && (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
+                  <AlertTriangle size={15} className="flex-shrink-0" />
+                  <span>{dateError}</span>
+                </div>
+              )}
+
+              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80 space-y-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Project Information</div>
+                <div className="text-[13.5px] font-bold text-neutral-800">{projectToEdit.title}</div>
+                <div className="text-[11.5px] text-neutral-500 flex items-center gap-2 pt-0.5">
+                  <span>Company: <strong>{projectToEdit.company ?? '—'}</strong></span>
+                  <span>•</span>
+                  <span>Status: <span className="font-semibold text-neutral-700">{projectToEdit.status}</span></span>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-900 text-[12px] leading-relaxed flex items-start gap-2.5">
+                <ShieldCheck size={16} className="text-amber-700 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-amber-950">Batas Tanggal Proyek (Project Target Limit)</p>
+                  <p className="text-[11.5px] text-amber-800 mt-0.5">
+                    Start Date dan Target Finish Date ini merupakan batas acuan untuk seluruh Main Task dan Sub Task di dalam proyek.
+                    Jika proyek mengalami keterlambatan (molor), perpanjang Target Finish Date agar tugas-tugas dapat dijadwalkan lebih lanjut.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                    Start Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editStart}
+                    onChange={(e) => {
+                      setEditStart(e.target.value);
+                      setDateError(null);
+                    }}
+                    className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-white font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                    Target Finish Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editEnd}
+                    onChange={(e) => {
+                      setEditEnd(e.target.value);
+                      setDateError(null);
+                    }}
+                    className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-white font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Duration calculation */}
+              {editStart && editEnd && editEnd > editStart && (
+                <div className="text-[11.5px] text-neutral-600 bg-violet-50/60 p-2.5 rounded-lg border border-violet-100 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock size={12} className="text-violet-600" />
+                    <span>Total Durasi Proyek Baru:</span>
+                  </span>
+                  <span className="font-bold text-violet-900">
+                    {Math.round((new Date(editEnd).getTime() - new Date(editStart).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari kalender
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setProjectToEdit(null)}
+                  disabled={isUpdatingDates}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  disabled={isUpdatingDates}
+                  className="bg-violet-600 hover:bg-violet-700 text-white font-semibold"
+                >
+                  {isUpdatingDates ? 'Saving Changes...' : 'Save Schedule'}
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        )}
 
         <ConfirmModal
           isOpen={!!projectToDelete}

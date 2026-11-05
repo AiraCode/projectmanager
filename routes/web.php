@@ -98,7 +98,8 @@ Route::middleware('auth')->group(function () {
         Route::put('/divisions/{id}',    [\App\Http\Controllers\DivisionController::class, 'update'])->name('admin.divisions.update');
         Route::delete('/divisions/{id}', [\App\Http\Controllers\DivisionController::class, 'destroy'])->name('admin.divisions.destroy');
 
-        // Project delete (SuperAdmin only)
+        // Project management (SuperAdmin only)
+        Route::put('/projects/{id}/dates', [SuperAdminController::class, 'updateProjectDates'])->name('admin.projects.dates.update');
         Route::delete('/projects/{id}',  [\App\Http\Controllers\ProjectController::class, 'superAdminDestroy'])->name('admin.projects.destroy');
 
         // ── BE-08: Master Templates Management (SuperAdmin only) ──
