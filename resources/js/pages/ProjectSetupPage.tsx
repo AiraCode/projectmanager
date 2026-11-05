@@ -37,6 +37,7 @@ import {
     formatDateDisplay,
     formatDivisionName,
     AlertModal,
+    DatePicker,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 
@@ -2051,13 +2052,12 @@ export default function ProjectSetupPage() {
                                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                                     Start Date
                                 </label>
-                                <input
-                                    type="date"
+                                <DatePicker
                                     value={mainForm.start}
                                     min={proj.start || undefined}
                                     max={mainForm.end || proj.end || undefined}
-                                    onChange={(e) => {
-                                        let newStart = e.target.value;
+                                    onChange={(newVal) => {
+                                        let newStart = newVal;
                                         if (
                                             proj.start &&
                                             newStart &&
@@ -2092,15 +2092,14 @@ export default function ProjectSetupPage() {
                                         }
                                         setMainForm(nextForm);
                                     }}
-                                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
+                                    placeholder="Select Start Date"
                                 />
                             </div>
                             <div>
                                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                                     End Date
                                 </label>
-                                <input
-                                    type="date"
+                                <DatePicker
                                     value={mainForm.end}
                                     min={
                                         getMinEndDate(mainForm.start) ||
@@ -2108,8 +2107,8 @@ export default function ProjectSetupPage() {
                                         undefined
                                     }
                                     max={proj.end || undefined}
-                                    onChange={(e) => {
-                                        let newEnd = e.target.value;
+                                    onChange={(newVal) => {
+                                        let newEnd = newVal;
                                         // Kunci batas akhir agar mentok sampai tanggal selesai proyek
                                         if (
                                             proj.end &&
@@ -2123,7 +2122,7 @@ export default function ProjectSetupPage() {
                                             end: newEnd,
                                         });
                                     }}
-                                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
+                                    placeholder="Select End Date"
                                 />
                             </div>
                             {proj.end && (
@@ -2227,8 +2226,7 @@ export default function ProjectSetupPage() {
                                         <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                                             Start Date
                                         </label>
-                                        <input
-                                            type="date"
+                                        <DatePicker
                                             value={subForm.start}
                                             min={mainStart || undefined}
                                             max={
@@ -2236,8 +2234,8 @@ export default function ProjectSetupPage() {
                                                 projectEnd ||
                                                 undefined
                                             }
-                                            onChange={(e) => {
-                                                let newStart = e.target.value;
+                                            onChange={(newVal) => {
+                                                let newStart = newVal;
                                                 const minBound =
                                                     mainStart || proj.start;
                                                 const maxBound = projectEnd;
@@ -2273,15 +2271,14 @@ export default function ProjectSetupPage() {
                                                 }
                                                 setSubForm(nextForm);
                                             }}
-                                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
+                                            placeholder="Select Start Date"
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                                             End Date
                                         </label>
-                                        <input
-                                            type="date"
+                                        <DatePicker
                                             value={subForm.end}
                                             min={
                                                 getMinEndDate(subForm.start) ||
@@ -2289,8 +2286,8 @@ export default function ProjectSetupPage() {
                                                 undefined
                                             }
                                             max={projectEnd || undefined}
-                                            onChange={(e) => {
-                                                let newEnd = e.target.value;
+                                            onChange={(newVal) => {
+                                                let newEnd = newVal;
                                                 const maxBound = projectEnd;
                                                 if (
                                                     maxBound &&
@@ -2303,7 +2300,7 @@ export default function ProjectSetupPage() {
                                                     end: newEnd,
                                                 });
                                             }}
-                                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
+                                            placeholder="Select End Date"
                                         />
                                     </div>
                                     {projectEnd && (
@@ -2564,15 +2561,14 @@ export default function ProjectSetupPage() {
                                                 </span>
                                             )}
                                         </div>
-                                        <input
-                                            type="date"
+                                        <DatePicker
                                             value={taskForm.start}
                                             min={minStart}
-                                            readOnly={!isFirstTask}
-                                            tabIndex={!isFirstTask ? -1 : 0}
-                                            onChange={(e) => {
+                                            disabled={!isFirstTask}
+                                            required
+                                            onChange={(newVal) => {
                                                 if (isFirstTask) {
-                                                    let val = e.target.value;
+                                                    let val = newVal;
                                                     if (minStart && val < minStart) val = minStart;
                                                     setTaskForm({
                                                         ...taskForm,
@@ -2581,12 +2577,7 @@ export default function ProjectSetupPage() {
                                                     setActionError(null);
                                                 }
                                             }}
-                                            className={`w-full px-3 py-2 rounded-lg border text-[13px] outline-none ${
-                                                !isFirstTask
-                                                    ? "bg-neutral-100 text-neutral-600 border-neutral-200 cursor-not-allowed select-none"
-                                                    : "border-neutral-200 text-neutral-900 focus:border-brand bg-white"
-                                            }`}
-                                            required
+                                            placeholder="Select Start Date"
                                         />
                                     </div>
                                 </div>

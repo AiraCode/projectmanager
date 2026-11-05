@@ -4,7 +4,7 @@ import {
   Calendar, FolderOpen, Plus, ShieldAlert, Settings, Lock,
   Users, Search, Trash2, UserPlus, X, Network, ExternalLink
 } from 'lucide-react';
-import { PageHeader, Button, Modal, formatDateDisplay, AlertModal } from '@/components/ui';
+import { PageHeader, Button, Modal, formatDateDisplay, AlertModal, DatePicker } from '@/components/ui';
 
 interface ProjectMemberItem {
   id: number;
@@ -570,11 +570,10 @@ function getProjectTitleClasses(title: string) {
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                   Start Date <span className="text-danger">*</span>
                 </label>
-                <input
-                  type="date"
+                <DatePicker
                   value={startDate}
-                  onChange={e => {
-                    const newStart = e.target.value;
+                  required
+                  onChange={newStart => {
                     setStartDate(newStart);
                     if (newStart && endDate && endDate <= newStart) {
                       const next = new Date(newStart);
@@ -582,26 +581,24 @@ function getProjectTitleClasses(title: string) {
                       setEndDate(next.toISOString().slice(0, 10));
                     }
                   }}
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
-                  required
+                  placeholder="Select Start Date"
                 />
               </div>
               <div>
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                   Target Finish Date <span className="text-danger">*</span>
                 </label>
-                <input
-                  type="date"
+                <DatePicker
                   value={endDate}
+                  required
                   min={(() => {
                     if (!startDate) return undefined;
                     const next = new Date(startDate);
                     next.setDate(next.getDate() + 1);
                     return next.toISOString().slice(0, 10);
                   })()}
-                  onChange={e => setEndDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
-                  required
+                  onChange={newEnd => setEndDate(newEnd)}
+                  placeholder="Select Target Finish Date"
                 />
               </div>
             </div>

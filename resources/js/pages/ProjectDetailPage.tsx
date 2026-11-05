@@ -9,7 +9,7 @@ import {
 import type { MainJob, SubMainJob, SubSubtask, EvidenceItem } from '@/data/mockData';
 import {
   StatusBadge, ProgressBar, PageHeader, Card, Button, Modal, Toast,
-  formatDateDisplay, formatDivisionName, STATUS_CONFIG
+  formatDateDisplay, formatDivisionName, STATUS_CONFIG, DatePicker
 } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
@@ -890,22 +890,22 @@ export default function ProjectDetailPage() {
                   <label className="block text-[12.5px] font-semibold text-neutral-700 mb-1.5">
                     Start Date *
                   </label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={startDate}
-                    onChange={e => setStartDate(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg outline-none focus:border-brand"
+                    onChange={val => setStartDate(val)}
+                    placeholder="Select Start Date"
+                    required
                   />
                 </div>
                 <div>
                   <label className="block text-[12.5px] font-semibold text-neutral-700 mb-1.5">
                     Target End Date
                   </label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={endDate}
-                    onChange={e => setEndDate(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg outline-none focus:border-brand"
+                    min={startDate}
+                    onChange={val => setEndDate(val)}
+                    placeholder="Select Target End Date"
                   />
                 </div>
               </div>
@@ -994,15 +994,15 @@ export default function ProjectDetailPage() {
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                   Start Date <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  required
+                <DatePicker
                   value={editStart}
-                  onChange={(e) => {
-                    setEditStart(e.target.value);
+                  required
+                  accentColor="violet"
+                  onChange={(val) => {
+                    setEditStart(val);
                     setDateError(null);
                   }}
-                  className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-white font-medium"
+                  placeholder="Select Start Date"
                 />
               </div>
 
@@ -1010,15 +1010,16 @@ export default function ProjectDetailPage() {
                 <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                   Target Finish Date <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  required
+                <DatePicker
                   value={editEnd}
-                  onChange={(e) => {
-                    setEditEnd(e.target.value);
+                  required
+                  min={editStart}
+                  accentColor="violet"
+                  onChange={(val) => {
+                    setEditEnd(val);
                     setDateError(null);
                   }}
-                  className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-white font-medium"
+                  placeholder="Select Target Finish Date"
                 />
               </div>
             </div>

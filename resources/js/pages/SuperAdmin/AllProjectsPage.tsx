@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
-import { ConfirmModal, Modal, Button } from '@/components/ui';
+import { ConfirmModal, Modal, Button, DatePicker } from '@/components/ui';
 import { Search, Lock, Globe, Trash2, ExternalLink, Building2, Calendar, Edit2, AlertTriangle, Clock } from 'lucide-react';
 
 interface Project {
@@ -209,13 +209,6 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center justify-center gap-1.5">
-                      <button
-                        onClick={() => openEditDates(p)}
-                        className="p-1.5 rounded-lg text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors"
-                        title="Edit Project Schedule (SuperAdmin)"
-                      >
-                        <Calendar size={14} />
-                      </button>
                       <a href={`/projects/${p.id}`} target="_blank" className="p-1.5 rounded-lg text-neutral-400 hover:text-violet-600 hover:bg-violet-50 transition-colors" title="Open project">
                         <ExternalLink size={14} />
                       </a>
@@ -262,15 +255,15 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                   <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                     Start Date <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="date"
-                    required
+                  <DatePicker
                     value={editStart}
-                    onChange={(e) => {
-                      setEditStart(e.target.value);
+                    required
+                    accentColor="violet"
+                    onChange={(val) => {
+                      setEditStart(val);
                       setDateError(null);
                     }}
-                    className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-white font-medium"
+                    placeholder="Select Start Date"
                   />
                 </div>
 
@@ -278,15 +271,16 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                   <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                     Target Finish Date <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="date"
-                    required
+                  <DatePicker
                     value={editEnd}
-                    onChange={(e) => {
-                      setEditEnd(e.target.value);
+                    required
+                    min={editStart}
+                    accentColor="violet"
+                    onChange={(val) => {
+                      setEditEnd(val);
                       setDateError(null);
                     }}
-                    className="w-full px-3 py-2 text-[13px] border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-white font-medium"
+                    placeholder="Select Target Finish Date"
                   />
                 </div>
               </div>

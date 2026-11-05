@@ -3,7 +3,7 @@ import { usePage, router } from '@inertiajs/react';
 import { Plus, Search, Trash2, Calculator, DollarSign, TrendingDown, ShieldCheck, Layers, Tag, X, Download, Loader2 } from 'lucide-react';
 import { BudgetEntry } from '@/data/mockData';
 import { exportToCSV } from '@/utils/exportEngine';
-import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState, formatDateDisplay, ConfirmModal } from '@/components/ui';
+import { PageHeader, Card, formatRupiah, formatRupiahFull, ProgressBar, Button, Modal, Toast, EmptyState, formatDateDisplay, ConfirmModal, DatePicker } from '@/components/ui';
 
 const KATEGORI = ['Material', 'Jasa', 'Mesin', 'Peralatan', 'Logistik', 'Lainnya'];
 const KATEGORI_LABELS: Record<string, string> = {
@@ -463,12 +463,12 @@ export default function BudgetPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
               <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Date</label>
-              <input
-                type="date"
-                required
+              <DatePicker
                 value={form.tanggal}
-                onChange={e => setForm(p => ({ ...p, tanggal: e.target.value }))}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] outline-none focus:border-brand bg-white"
+                required
+                onChange={val => setForm(p => ({ ...p, tanggal: val }))}
+                placeholder="Select Date"
+                size="sm"
               />
             </div>
             <div className="sm:col-span-2">

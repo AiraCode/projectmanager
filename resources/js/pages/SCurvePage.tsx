@@ -3,7 +3,7 @@ import { usePage, Link } from '@inertiajs/react';
 import { Project } from '@/data/mockData';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
 import { exportToCSV } from '@/utils/exportEngine';
-import { PageHeader, Card, Button, formatDateDisplay } from '@/components/ui';
+import { PageHeader, Card, Button, formatDateDisplay, DatePicker } from '@/components/ui';
 import {
   TrendingUp, BarChart2, Calendar, Eye, EyeOff, Download,
   AlertTriangle, RotateCcw, Filter, Camera, FileText, X,
@@ -882,14 +882,16 @@ export default function SCurvePage() {
                 </select>
               )}
               {granularity === 'day' && (
-                <input
-                  type="date"
-                  value={fromDay}
-                  min={projectData.startDate || (weeks.length > 0 ? weeks[0].startDate : undefined)}
-                  max={toDay || (weeks.length > 0 ? weeks[weeks.length - 1].endDate : projectData.endDate)}
-                  onChange={(e) => setFromDay(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs text-neutral-700 cursor-pointer"
-                />
+                <div className="w-36">
+                  <DatePicker
+                    value={fromDay}
+                    size="sm"
+                    min={projectData.startDate || (weeks.length > 0 ? weeks[0].startDate : undefined)}
+                    max={toDay || (weeks.length > 0 ? weeks[weeks.length - 1].endDate : projectData.endDate)}
+                    onChange={(val) => setFromDay(val)}
+                    placeholder="From Date"
+                  />
+                </div>
               )}
               {granularity === 'year' && (
                 <select
@@ -922,14 +924,16 @@ export default function SCurvePage() {
                 </select>
               )}
               {granularity === 'day' && (
-                <input
-                  type="date"
-                  value={toDay}
-                  min={fromDay || projectData.startDate || (weeks.length > 0 ? weeks[0].startDate : undefined)}
-                  max={weeks.length > 0 ? weeks[weeks.length - 1].endDate : projectData.endDate}
-                  onChange={(e) => setToDay(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg border border-neutral-200 text-[12.5px] font-medium bg-white outline-none focus:border-brand shadow-2xs text-neutral-700 cursor-pointer"
-                />
+                <div className="w-36">
+                  <DatePicker
+                    value={toDay}
+                    size="sm"
+                    min={fromDay || projectData.startDate || (weeks.length > 0 ? weeks[0].startDate : undefined)}
+                    max={weeks.length > 0 ? weeks[weeks.length - 1].endDate : projectData.endDate}
+                    onChange={(val) => setToDay(val)}
+                    placeholder="To Date"
+                  />
+                </div>
               )}
               {granularity === 'year' && (
                 <select

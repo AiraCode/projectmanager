@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { usePage, router, Link } from '@inertiajs/react';
 import { ArrowLeft, Save, Plus, Edit2, Trash2, LayoutList, GitMerge, Lock } from 'lucide-react';
-import { PageHeader, Card, Button, Modal, formatDateDisplay } from '@/components/ui';
+import { PageHeader, Card, Button, Modal, formatDateDisplay, DatePicker } from '@/components/ui';
 import { ReactFlow, Controls, Background, MiniMap, addEdge, applyNodeChanges, applyEdgeChanges, MarkerType, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -314,23 +314,22 @@ export default function PredecessorManagerPage() {
                       )
                     )}
                   </div>
-                  <input
-                    type="date"
+                  <DatePicker
+                    value={formData.start}
                     min={project?.start ? project.start.slice(0, 10) : undefined}
                     max={formData.end || (project?.end ? project.end.slice(0, 10) : undefined)}
-                    className={`w-full form-input ${isLockedTask ? 'bg-neutral-100 text-neutral-500 cursor-not-allowed select-none' : ''}`}
-                    value={formData.start}
-                    readOnly={isLockedTask}
-                    onChange={(e) => {
+                    disabled={isLockedTask}
+                    onChange={(val) => {
                       if (!isLockedTask) {
-                        let val = e.target.value;
+                        let v = val;
                         const pStart = project?.start ? project.start.slice(0, 10) : null;
                         const pEnd = project?.end ? project.end.slice(0, 10) : null;
-                        if (pStart && val && val < pStart) val = pStart;
-                        if (pEnd && val && val > pEnd) val = pEnd;
-                        setFormData({...formData, start: val});
+                        if (pStart && v && v < pStart) v = pStart;
+                        if (pEnd && v && v > pEnd) v = pEnd;
+                        setFormData({...formData, start: v});
                       }
                     }}
+                    placeholder="Select Start Date"
                   />
                   {isLockedTask && (
                     <p className="text-[11px] text-neutral-500 mt-1">Start date is computed from predecessor.</p>
@@ -338,18 +337,17 @@ export default function PredecessorManagerPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-1">End Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
+                    value={formData.end}
                     min={formData.start || (project?.start ? project.start.slice(0, 10) : undefined)}
                     max={project?.end ? project.end.slice(0, 10) : undefined}
-                    className="w-full form-input"
-                    value={formData.end}
-                    onChange={(e) => {
-                      let val = e.target.value;
+                    onChange={(val) => {
+                      let v = val;
                       const pEnd = project?.end ? project.end.slice(0, 10) : null;
-                      if (pEnd && val && val > pEnd) val = pEnd;
-                      setFormData({...formData, end: val});
+                      if (pEnd && v && v > pEnd) v = pEnd;
+                      setFormData({...formData, end: v});
                     }}
+                    placeholder="Select End Date"
                   />
                 </div>
                 {project?.end && (

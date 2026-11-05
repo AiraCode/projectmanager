@@ -59,6 +59,7 @@ import {
     EmptyState,
     formatDateDisplay,
     formatDivisionName,
+    DatePicker,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 
@@ -4632,32 +4633,30 @@ function EditSubMainJobModal({
                         <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                             Start Date
                         </label>
-                        <input
-                            type="date"
+                        <DatePicker
                             value={startDate}
                             min={projectStartDate || undefined}
                             max={endDate || projectEndDate || undefined}
-                            onChange={(e) => {
-                                setStartDate(e.target.value);
+                            onChange={(val) => {
+                                setStartDate(val);
                                 setActionError(null);
                             }}
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                            placeholder="Select Start Date"
                         />
                     </div>
                     <div>
                         <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                             End Date
                         </label>
-                        <input
-                            type="date"
+                        <DatePicker
                             value={endDate}
                             min={startDate || projectStartDate || undefined}
                             max={projectEndDate || undefined}
-                            onChange={(e) => {
-                                setEndDate(e.target.value);
+                            onChange={(val) => {
+                                setEndDate(val);
                                 setActionError(null);
                             }}
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                            placeholder="Select End Date"
                         />
                     </div>
                 </div>
@@ -4839,37 +4838,35 @@ function AddSubMainJobModal({
                         <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                             Start Date
                         </label>
-                        <input
-                            type="date"
+                        <DatePicker
                             value={startDate}
                             min={parentStart || undefined}
                             max={endDate || maxAllowedEnd || undefined}
-                            onChange={(e) => {
-                                let val = e.target.value;
-                                if (parentStart && val && val < parentStart) val = parentStart;
-                                if (maxAllowedEnd && val && val > maxAllowedEnd) val = maxAllowedEnd;
-                                setStartDate(val);
+                            onChange={(val) => {
+                                let v = val;
+                                if (parentStart && v && v < parentStart) v = parentStart;
+                                if (maxAllowedEnd && v && v > maxAllowedEnd) v = maxAllowedEnd;
+                                setStartDate(v);
                                 setActionError(null);
                             }}
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                            placeholder="Select Start Date"
                         />
                     </div>
                     <div>
                         <label className="block text-[12px] font-bold text-neutral-700 mb-1">
                             End Date
                         </label>
-                        <input
-                            type="date"
+                        <DatePicker
                             value={endDate}
                             min={startDate || parentStart || undefined}
                             max={maxAllowedEnd || undefined}
-                            onChange={(e) => {
-                                let val = e.target.value;
-                                if (maxAllowedEnd && val && val > maxAllowedEnd) val = maxAllowedEnd;
-                                setEndDate(val);
+                            onChange={(val) => {
+                                let v = val;
+                                if (maxAllowedEnd && v && v > maxAllowedEnd) v = maxAllowedEnd;
+                                setEndDate(v);
                                 setActionError(null);
                             }}
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                            placeholder="Select End Date"
                         />
                     </div>
                     {maxAllowedEnd && (
@@ -5061,52 +5058,35 @@ function MainJobModal({
                         <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
                             Start Date
                         </label>
-                        <input
-                            type="date"
+                        <DatePicker
                             value={startDate}
                             min={projectStartDate || undefined}
                             max={endDate || projectEndDate || undefined}
-                            onChange={(e) => {
-                                let val = e.target.value;
-                                if (
-                                    projectStartDate &&
-                                    val &&
-                                    val < projectStartDate
-                                )
-                                    val = projectStartDate;
-                                if (
-                                    projectEndDate &&
-                                    val &&
-                                    val > projectEndDate
-                                )
-                                    val = projectEndDate;
-                                setStartDate(val);
+                            onChange={(val) => {
+                                let v = val;
+                                if (projectStartDate && v && v < projectStartDate) v = projectStartDate;
+                                if (projectEndDate && v && v > projectEndDate) v = projectEndDate;
+                                setStartDate(v);
                                 setActionError(null);
                             }}
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                            placeholder="Select Start Date"
                         />
                     </div>
                     <div>
                         <label className="block text-[11.5px] font-semibold text-neutral-600 mb-1">
                             Finish Date
                         </label>
-                        <input
-                            type="date"
+                        <DatePicker
                             value={endDate}
                             min={startDate || projectStartDate || undefined}
                             max={projectEndDate || undefined}
-                            onChange={(e) => {
-                                let val = e.target.value;
-                                if (
-                                    projectEndDate &&
-                                    val &&
-                                    val > projectEndDate
-                                )
-                                    val = projectEndDate;
-                                setEndDate(val);
+                            onChange={(val) => {
+                                let v = val;
+                                if (projectEndDate && v && v > projectEndDate) v = projectEndDate;
+                                setEndDate(v);
                                 setActionError(null);
                             }}
-                            className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
+                            placeholder="Select Finish Date"
                         />
                     </div>
                     {projectEndDate && (
@@ -5582,26 +5562,20 @@ function AddSubtaskModal({
                                 </span>
                             )}
                         </div>
-                        <input
-                            type="date"
+                        <DatePicker
                             value={currentStart}
                             min={minStart || undefined}
-                            readOnly={!isFirstTask}
-                            tabIndex={!isFirstTask ? -1 : 0}
-                            onChange={(e) => {
+                            disabled={!isFirstTask}
+                            required
+                            onChange={(val) => {
                                 if (isFirstTask) {
-                                    let val = e.target.value;
-                                    if (minStart && val < minStart) val = minStart;
-                                    setManualStart(val);
+                                    let v = val;
+                                    if (minStart && v < minStart) v = minStart;
+                                    setManualStart(v);
                                     setActionError(null);
                                 }
                             }}
-                            className={`w-full px-3 py-2 rounded-lg border text-[13px] outline-none ${
-                                !isFirstTask
-                                    ? "bg-neutral-100 text-neutral-600 border-neutral-200 cursor-not-allowed select-none"
-                                    : "border-neutral-200 text-neutral-900 focus:border-brand bg-white"
-                            }`}
-                            required
+                            placeholder="Select Start Date"
                         />
                     </div>
                 </div>
