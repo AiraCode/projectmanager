@@ -355,8 +355,8 @@ class DependencyScheduler
                     $mainStart = Carbon::parse($siblingSubs->min('start'))->startOfDay();
                     $mainEnd   = Carbon::parse($siblingSubs->max('end'))->startOfDay();
 
-                    $existingMainEnd = $mainWbs->end ? Carbon::parse($mainWbs->end)->startOfDay() : null;
-                    $newMainEnd = $existingMainEnd && $existingMainEnd->gt($mainEnd) ? $existingMainEnd : $mainEnd;
+                    // Main Task Finish Date must follow the latest Finish Date among its Sub Tasks
+                    $newMainEnd = $mainEnd;
 
                     $existingMainStart = $mainWbs->start ? Carbon::parse($mainWbs->start)->startOfDay() : null;
                     $newMainStart = $existingMainStart && $existingMainStart->lt($mainStart) ? $existingMainStart : $mainStart;

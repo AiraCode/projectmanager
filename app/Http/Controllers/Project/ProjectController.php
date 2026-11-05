@@ -1230,9 +1230,40 @@ class ProjectController extends Controller
         }
         $mainWbs->save();
 
+        $this->syncMainWbsDates($mainWbs);
+
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
         return back()->with('success', 'Main Task updated successfully.');
+    }
+
+    /**
+     * Synchronize Main Task (MainWbs) Finish Date to follow the latest Finish Date
+     * among its existing Sub Tasks (SubWbs).
+     * When a Main Task has no Sub Tasks, its existing Finish Date is preserved.
+     */
+    private function syncMainWbsDates(MainWbs $mainWbs): void
+    {
+        $subWbsList = SubWbs::where('sub_wbs_id', $mainWbs->id)->get();
+        if ($subWbsList->isEmpty()) {
+            return;
+        }
+
+        $maxEnd = null;
+        foreach ($subWbsList as $sub) {
+            if ($sub->end) {
+                $sEnd = Carbon::parse($sub->end)->startOfDay();
+                if (!$maxEnd || $sEnd->gt($maxEnd)) {
+                    $maxEnd = $sEnd;
+                }
+            }
+        }
+
+        if ($maxEnd) {
+            $mainWbs->end = $maxEnd;
+            $mainWbs->actual_end = $maxEnd;
+            $mainWbs->save();
+        }
     }
 
     /**
@@ -1316,10 +1347,17 @@ class ProjectController extends Controller
             'end'         => 'nullable|date',
         ]);
 
-        $mainWbs = MainWbs::findOrFail($validated['main_wbs_id']);
+        $mainWbs = MainWbs::where('projects_id', $project->id)->where('id', $validated['main_wbs_id'])->firstOrFail();
 
-        $start = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($mainWbs->start ? Carbon::parse($mainWbs->start)->startOfDay() : Carbon::now()->startOfDay());
-        $end   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : ($mainWbs->end ? Carbon::parse($mainWbs->end)->startOfDay() : Carbon::now()->addMonths(1)->startOfDay());
+        $start = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($mainWbs->start ? Carbon::parse($mainWbs->start)->startOfDay() : ($project->start ? Carbon::parse($project->start)->startOfDay() : Carbon::now()->startOfDay()));
+        $end   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : ($mainWbs->end ? Carbon::parse($mainWbs->end)->startOfDay() : ($project->end ? Carbon::parse($project->end)->startOfDay() : Carbon::now()->addMonths(1)->startOfDay()));
+
+        if ($project->start) {
+            $projStart = Carbon::parse($project->start)->startOfDay();
+            if ($start->lt($projStart)) {
+                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh lebih awal dari Start Date proyek ({$projStart->format('d/m/Y')})."]);
+            }
+        }
 
         if ($mainWbs->start) {
             $mainStart = Carbon::parse($mainWbs->start)->startOfDay();
@@ -1328,13 +1366,13 @@ class ProjectController extends Controller
             }
         }
 
-        if ($mainWbs->end) {
-            $mainEnd = Carbon::parse($mainWbs->end)->startOfDay();
-            if ($end->gt($mainEnd)) {
-                return back()->withErrors(['end' => "End date Sub Task ({$end->format('d/m/Y')}) tidak boleh melebihi Target Finish Date Main Task ({$mainEnd->format('d/m/Y')})."]);
+        if ($project->end) {
+            $projEnd = Carbon::parse($project->end)->startOfDay();
+            if ($end->gt($projEnd)) {
+                return back()->withErrors(['end' => "End date Sub Task ({$end->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
             }
-            if ($start->gt($mainEnd)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh melebihi Target Finish Date Main Task ({$mainEnd->format('d/m/Y')})."]);
+            if ($start->gt($projEnd)) {
+                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
             }
         }
 
@@ -1368,6 +1406,8 @@ class ProjectController extends Controller
             'weight'                 => 0, // Auto-calculated below by ProgressService
         ]);
 
+        $this->syncMainWbsDates($mainWbs);
+
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
         return back()->with('success', 'Sub Task added successfully.');
@@ -1391,12 +1431,27 @@ class ProjectController extends Controller
             $q->where('projects_id', $projectId);
         })->where('id', $subWbsId)->firstOrFail();
 
+        if ($request->has('main_wbs_id')) {
+            $rawMain = $request->input('main_wbs_id');
+            $cleanMainId = is_string($rawMain) ? (int) str_replace('mj-', '', $rawMain) : (int) $rawMain;
+            $request->merge(['main_wbs_id' => $cleanMainId]);
+        }
+
         $validated = $request->validate([
-            'name'   => 'required|string|max:255',
-            'weight' => 'nullable|numeric|min:0|max:100',
-            'start'  => 'nullable|date',
-            'end'    => 'nullable|date',
+            'main_wbs_id' => 'nullable|exists:main_wbs,id',
+            'name'        => 'required|string|max:255',
+            'weight'      => 'nullable|numeric|min:0|max:100',
+            'start'       => 'nullable|date',
+            'end'         => 'nullable|date',
         ]);
+
+        $oldMainWbs = $subWbs->mainWbs;
+        $targetMainWbs = $oldMainWbs;
+        if (!empty($validated['main_wbs_id']) && (int) $validated['main_wbs_id'] !== (int) $subWbs->sub_wbs_id) {
+            $targetMainWbs = MainWbs::where('projects_id', $project->id)
+                ->where('id', $validated['main_wbs_id'])
+                ->firstOrFail();
+        }
 
         $newStart = !empty($validated['start']) ? Carbon::parse($validated['start'])->startOfDay() : ($subWbs->start ? Carbon::parse($subWbs->start)->startOfDay() : null);
         $newEnd   = !empty($validated['end']) ? Carbon::parse($validated['end'])->startOfDay() : ($subWbs->end ? Carbon::parse($subWbs->end)->startOfDay() : null);
@@ -1405,6 +1460,13 @@ class ProjectController extends Controller
             $projStart = Carbon::parse($project->start)->startOfDay();
             if ($newStart->lt($projStart)) {
                 return back()->withErrors(['start' => "Start date Sub Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari Start Date proyek ({$projStart->format('d/m/Y')})."]);
+            }
+        }
+
+        if ($targetMainWbs && $targetMainWbs->start && $newStart) {
+            $mainStart = Carbon::parse($targetMainWbs->start)->startOfDay();
+            if ($newStart->lt($mainStart)) {
+                return back()->withErrors(['start' => "Start date Sub Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari Start Date Main Task ({$mainStart->format('d/m/Y')})."]);
             }
         }
 
@@ -1424,6 +1486,9 @@ class ProjectController extends Controller
 
         $oldName = $subWbs->name;
         $subWbs->name = $validated['name'];
+        if ($targetMainWbs && $oldMainWbs && $targetMainWbs->id !== $oldMainWbs->id) {
+            $subWbs->sub_wbs_id = $targetMainWbs->id;
+        }
         if (array_key_exists('weight', $validated)) {
             $subWbs->weight = (float) $validated['weight'];
         }
@@ -1436,6 +1501,13 @@ class ProjectController extends Controller
             $subWbs->actual_end = $newEnd;
         }
         $subWbs->save();
+
+        if ($oldMainWbs && $targetMainWbs && $oldMainWbs->id !== $targetMainWbs->id) {
+            $this->syncMainWbsDates($oldMainWbs);
+            $this->syncMainWbsDates($targetMainWbs);
+        } elseif ($targetMainWbs) {
+            $this->syncMainWbsDates($targetMainWbs);
+        }
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 
@@ -1476,8 +1548,14 @@ class ProjectController extends Controller
             $q->where('projects_id', $projectId);
         })->where('id', $subWbsId)->firstOrFail();
 
+        $mainWbs = $subWbs->mainWbs;
+
         $subWbs->wbsTasks()->withTrashed()->delete();
         $subWbs->delete();
+
+        if ($mainWbs) {
+            $this->syncMainWbsDates($mainWbs);
+        }
 
         app(ProgressService::class)->recalculateProjectProgress($project->id);
 

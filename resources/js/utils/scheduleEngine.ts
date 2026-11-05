@@ -130,23 +130,27 @@ export function recalculateSchedule(project: Project): Project {
         }
 
         // Roll up to Sub Main Job
-        if (!smjStart || st.startDate < smjStart) smjStart = st.startDate;
-        if (!smjFinish || st.finishDate > smjFinish) smjFinish = st.finishDate;
+        if (st.startDate && (!smjStart || st.startDate < smjStart)) smjStart = st.startDate;
+        if (st.finishDate && (!smjFinish || st.finishDate > smjFinish)) smjFinish = st.finishDate;
       }
       
-      if (smjStart) smj.startDate = smjStart;
-      if (smjFinish) smj.finishDate = smjFinish;
+      if (!smj.startDate && smjStart) smj.startDate = smjStart;
+      else if (smjStart && smjStart < smj.startDate) smj.startDate = smjStart;
+
+      if (!smj.finishDate && smjFinish) smj.finishDate = smjFinish;
+      else if (smjFinish && smjFinish > smj.finishDate) smj.finishDate = smjFinish;
 
       // Roll up to Main Job
-      if (!mjStart || smj.startDate < mjStart) mjStart = smj.startDate;
-      if (!mjFinish || smj.finishDate > mjFinish) mjFinish = smj.finishDate;
+      if (smj.startDate && (!mjStart || smj.startDate < mjStart)) mjStart = smj.startDate;
+      if (smj.finishDate && (!mjFinish || smj.finishDate > mjFinish)) mjFinish = smj.finishDate;
     }
 
     if (!mj.startDate) mj.startDate = mjStart;
     else if (mjStart && mjStart < mj.startDate) mj.startDate = mjStart;
 
-    if (!mj.finishDate) mj.finishDate = mjFinish;
-    else if (mjFinish && mjFinish > mj.finishDate) mj.finishDate = mjFinish;
+    if (mjFinish) {
+      mj.finishDate = mjFinish;
+    }
   }
 
   return newProject;

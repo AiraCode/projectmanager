@@ -259,6 +259,7 @@ export default function TasksPage() {
         mjName: string;
         parentWeight?: number;
         currentSubCount?: number;
+        smj?: SubMainJob;
     } | null>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<{
         title: string;
@@ -615,16 +616,66 @@ export default function TasksPage() {
         });
     };
 
-    // Add Sub Task (Sub Main Job under Main Job)
+    // Add or Edit Sub Task (Sub Main Job under Main Job)
     const handleSaveSubMainJob = (
         mjId: string,
         name: string,
         start?: string,
         end?: string,
         mjDbId?: number,
+        smjId?: string,
+        smjDbId?: number,
+        weight?: number,
         onComplete?: (error?: string) => void,
     ) => {
         if (!projectData.id || !name) return;
+
+        if (smjId || smjDbId) {
+            const cleanSubId =
+                smjDbId ||
+                (smjId && smjId.startsWith("smj-")
+                    ? parseInt(smjId.replace("smj-", ""))
+                    : parseInt(String(smjId)));
+            router.put(
+                `/projects/${projectData.id}/sub-wbs/${cleanSubId}`,
+                {
+                    name: name,
+                    ...(weight !== undefined ? { weight } : {}),
+                    start: start || null,
+                    end: end || null,
+                },
+                {
+                    preserveScroll: true,
+                    onSuccess: (page: any) => {
+                        const flashError = page?.props?.flash?.error;
+                        const pageErrors = page?.props?.errors;
+                        const err =
+                            flashError ||
+                            (pageErrors && Object.values(pageErrors)[0]);
+                        if (err) {
+                            const msg =
+                                typeof err === "string"
+                                    ? err
+                                    : JSON.stringify(err);
+                            onComplete?.(msg);
+                            setToastMsg(msg);
+                            return;
+                        }
+                        setToastMsg(`Sub Task "${name}" updated successfully.`);
+                        setShowAddSubMainJobModal(null);
+                        onComplete?.();
+                    },
+                    onError: (errors) => {
+                        console.error("Error updating Sub Task:", errors);
+                        const errText = Object.values(errors).flat().join(", ");
+                        const msg = `Failed to update Sub Task: ${errText || "Please check your input"}`;
+                        onComplete?.(msg);
+                        setToastMsg(msg);
+                    },
+                },
+            );
+            return;
+        }
 
         const cleanMainId =
             mjDbId ||
@@ -1684,6 +1735,17 @@ export default function TasksPage() {
                                                     task,
                                                 })
                                             }
+                                            onEditSubMainJob={() =>
+                                                setShowAddSubMainJobModal({
+                                                    mjId: mj.id,
+                                                    mjDbId: (mj as any).dbId,
+                                                    mjName: mj.name,
+                                                    parentWeight: mj.weight,
+                                                    currentSubCount:
+                                                        mj.subMainJobs.length,
+                                                    smj,
+                                                })
+                                            }
                                             onDeleteSubMainJob={() =>
                                                 handleDeleteSubMainJob(
                                                     mj.id,
@@ -2359,7 +2421,7 @@ export default function TasksPage() {
                 />
             )}
 
-            {/* Modal Add Sub Task (Sub Main Job under Main Job) */}
+            {/* Modal Add / Edit Sub Task (Sub Main Job under Main Job) */}
             {showAddSubMainJobModal && (() => {
                 const parentMj = projectData.mainJobs.find(
                     (m) =>
@@ -2368,6 +2430,7 @@ export default function TasksPage() {
                 );
                 const parentStart = parentMj?.startDate || projectData.startDate || projectData.start;
                 const parentEnd = parentMj?.finishDate || projectData.endDate || projectData.end;
+                const projectEnd = projectData.endDate || projectData.end;
 
                 return (
                     <AddSubMainJobModal
@@ -2376,14 +2439,19 @@ export default function TasksPage() {
                         currentSubCount={showAddSubMainJobModal.currentSubCount}
                         parentStart={parentStart}
                         parentEnd={parentEnd}
+                        projectEnd={projectEnd}
+                        initialData={showAddSubMainJobModal.smj}
                         onClose={() => setShowAddSubMainJobModal(null)}
-                        onSave={(name, start, end, callback) =>
+                        onSave={(name, start, end, weight, callback) =>
                             handleSaveSubMainJob(
                                 showAddSubMainJobModal.mjId,
                                 name,
                                 start,
                                 end,
                                 showAddSubMainJobModal.mjDbId,
+                                showAddSubMainJobModal.smj?.id,
+                                (showAddSubMainJobModal.smj as any)?.dbId,
+                                weight,
                                 callback,
                             )
                         }
@@ -2697,6 +2765,7 @@ function SubMainJobSection({
     isAdmin,
     onOpenAddModal,
     onOpenEditModal,
+    onEditSubMainJob,
     onDeleteSubMainJob,
     onDeleteTask,
     onManageDependencies,
@@ -2729,6 +2798,7 @@ function SubMainJobSection({
     isAdmin: boolean;
     onOpenAddModal: () => void;
     onOpenEditModal: (task: SubSubtask) => void;
+    onEditSubMainJob?: () => void;
     onDeleteSubMainJob: () => void;
     onDeleteTask: (taskId: string, taskName: string) => void;
     onManageDependencies: (task: SubSubtask) => void;
@@ -2797,7 +2867,7 @@ function SubMainJobSection({
                         {smj.progress}%
                     </span>
 
-                    {/* Only PIC can add tasks / delete sub tasks */}
+                    {/* Only PIC can add tasks / edit or delete sub tasks */}
                     {isPIC && (
                         <div className="flex items-center gap-1.5 ml-1 flex-wrap">
                             <Button
@@ -2809,6 +2879,16 @@ function SubMainJobSection({
                             >
                                 Add Task
                             </Button>
+                            {onEditSubMainJob && (
+                                <button
+                                    type="button"
+                                    onClick={onEditSubMainJob}
+                                    className="p-1.5 text-neutral-400 hover:text-brand bg-white hover:bg-neutral-50 rounded border border-neutral-200 shadow-xs transition-colors flex-shrink-0"
+                                    title="Edit Sub Task"
+                                >
+                                    <Edit2 size={13} />
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 onClick={onDeleteSubMainJob}
@@ -3976,6 +4056,8 @@ function AddSubMainJobModal({
     currentSubCount = 0,
     parentStart,
     parentEnd,
+    projectEnd,
+    initialData,
     onClose,
     onSave,
 }: {
@@ -3984,19 +4066,32 @@ function AddSubMainJobModal({
     currentSubCount?: number;
     parentStart?: string;
     parentEnd?: string;
+    projectEnd?: string;
+    initialData?: SubMainJob;
     onClose: () => void;
     onSave: (
         name: string,
         start?: string,
         end?: string,
+        weight?: number,
         callback?: (err?: string | null) => void,
     ) => void;
 }) {
-    const [name, setName] = useState("");
-    const [startDate, setStartDate] = useState(parentStart || "");
-    const [endDate, setEndDate] = useState(parentEnd || "");
+    const isEdit = !!initialData?.id;
+    const [name, setName] = useState(initialData?.name || "");
+    const [weight, setWeight] = useState<string>(
+        initialData?.weight !== undefined ? String(initialData.weight) : "",
+    );
+    const [startDate, setStartDate] = useState(
+        initialData?.startDate || parentStart || "",
+    );
+    const [endDate, setEndDate] = useState(
+        initialData?.finishDate || parentEnd || projectEnd || "",
+    );
     const [actionError, setActionError] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
+
+    const maxAllowedEnd = projectEnd || "";
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -4008,9 +4103,9 @@ function AddSubMainJobModal({
             );
             return;
         }
-        if (parentEnd && endDate && endDate > parentEnd) {
+        if (maxAllowedEnd && endDate && endDate > maxAllowedEnd) {
             setActionError(
-                `Finish date cannot exceed Main Task finish deadline (${formatDateDisplay(parentEnd)}).`,
+                `Finish date cannot exceed project target finish date (${formatDateDisplay(maxAllowedEnd)}).`,
             );
             return;
         }
@@ -4023,7 +4118,9 @@ function AddSubMainJobModal({
 
         setSubmitting(true);
         setActionError(null);
-        onSave(name.trim(), startDate, endDate, (err) => {
+        const parsedWeight =
+            isEdit && weight !== "" ? parseFloat(weight) : undefined;
+        onSave(name.trim(), startDate, endDate, parsedWeight, (err) => {
             setSubmitting(false);
             if (err) {
                 setActionError(err);
@@ -4033,8 +4130,12 @@ function AddSubMainJobModal({
 
     return (
         <Modal
-            title="Add New Sub Task"
-            subtitle={`Under WBS Group: ${mjName}`}
+            title={isEdit ? "Edit Sub Task" : "Add New Sub Task"}
+            subtitle={
+                isEdit && initialData?.code
+                    ? `Code: ${initialData.code} • Under: ${mjName}`
+                    : `Under WBS Group: ${mjName}`
+            }
             onClose={onClose}
             size="md"
         >
@@ -4043,6 +4144,39 @@ function AddSubMainJobModal({
                     <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-semibold flex items-center gap-2">
                         <AlertTriangle size={14} className="flex-shrink-0" />
                         <span>{actionError}</span>
+                    </div>
+                )}
+
+                {isEdit && (
+                    <div className="grid grid-cols-3 gap-3">
+                        <div>
+                            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                                Code
+                            </label>
+                            <input
+                                type="text"
+                                value={initialData?.code || ""}
+                                disabled
+                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-100 text-neutral-600 text-[13px] font-mono font-bold cursor-not-allowed"
+                            />
+                        </div>
+                        <div className="col-span-2">
+                            <label className="block text-[12px] font-bold text-neutral-700 mb-1">
+                                Weight (%)
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={weight}
+                                onChange={(e) => {
+                                    setWeight(e.target.value);
+                                    setActionError(null);
+                                }}
+                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white font-semibold"
+                            />
+                        </div>
                     </div>
                 )}
 
@@ -4073,11 +4207,11 @@ function AddSubMainJobModal({
                             type="date"
                             value={startDate}
                             min={parentStart || undefined}
-                            max={endDate || parentEnd || undefined}
+                            max={endDate || maxAllowedEnd || undefined}
                             onChange={(e) => {
                                 let val = e.target.value;
                                 if (parentStart && val && val < parentStart) val = parentStart;
-                                if (parentEnd && val && val > parentEnd) val = parentEnd;
+                                if (maxAllowedEnd && val && val > maxAllowedEnd) val = maxAllowedEnd;
                                 setStartDate(val);
                                 setActionError(null);
                             }}
@@ -4092,26 +4226,26 @@ function AddSubMainJobModal({
                             type="date"
                             value={endDate}
                             min={startDate || parentStart || undefined}
-                            max={parentEnd || undefined}
+                            max={maxAllowedEnd || undefined}
                             onChange={(e) => {
                                 let val = e.target.value;
-                                if (parentEnd && val && val > parentEnd) val = parentEnd;
+                                if (maxAllowedEnd && val && val > maxAllowedEnd) val = maxAllowedEnd;
                                 setEndDate(val);
                                 setActionError(null);
                             }}
                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand bg-white"
                         />
                     </div>
-                    {parentEnd && (
+                    {maxAllowedEnd && (
                         <div className="col-span-2 text-[11px] text-amber-900 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
                                 <Lock size={12} className="text-amber-700 flex-shrink-0" />
                                 <span>
                                     <span className="font-semibold text-neutral-800">
-                                        Finish Deadline:
+                                        Project Target Limit:
                                     </span>{" "}
                                     <span className="font-bold text-amber-900">
-                                        {formatDateDisplay(parentEnd)}
+                                        {formatDateDisplay(maxAllowedEnd)}
                                     </span>
                                 </span>
                             </div>
@@ -4135,7 +4269,11 @@ function AddSubMainJobModal({
                         type="submit"
                         disabled={submitting || !name.trim()}
                     >
-                        {submitting ? "Saving..." : "Save Sub Task"}
+                        {submitting
+                            ? "Saving..."
+                            : isEdit
+                              ? "Save Changes"
+                              : "Save Sub Task"}
                     </Button>
                 </div>
             </form>

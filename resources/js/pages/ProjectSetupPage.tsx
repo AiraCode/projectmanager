@@ -2229,11 +2229,7 @@ export default function ProjectSetupPage() {
                             (subModal.parentId || subModal.item?.main_wbs_id),
                     );
                     const mainStart = parentMain?.start || proj.start || "";
-                    const rawMainEnd = parentMain?.end || proj.end || "";
-                    const mainEnd =
-                        proj.end && rawMainEnd && rawMainEnd > proj.end
-                            ? proj.end
-                            : rawMainEnd;
+                    const projectEnd = proj.end || "";
 
                     return (
                         <Modal
@@ -2286,15 +2282,14 @@ export default function ProjectSetupPage() {
                                             min={mainStart || undefined}
                                             max={
                                                 subForm.end ||
-                                                mainEnd ||
+                                                projectEnd ||
                                                 undefined
                                             }
                                             onChange={(e) => {
                                                 let newStart = e.target.value;
                                                 const minBound =
                                                     mainStart || proj.start;
-                                                const maxBound =
-                                                    mainEnd || proj.end;
+                                                const maxBound = projectEnd;
                                                 if (
                                                     minBound &&
                                                     newStart &&
@@ -2342,11 +2337,10 @@ export default function ProjectSetupPage() {
                                                 mainStart ||
                                                 undefined
                                             }
-                                            max={mainEnd || undefined}
+                                            max={projectEnd || undefined}
                                             onChange={(e) => {
                                                 let newEnd = e.target.value;
-                                                const maxBound =
-                                                    mainEnd || proj.end;
+                                                const maxBound = projectEnd;
                                                 if (
                                                     maxBound &&
                                                     newEnd &&
@@ -2361,7 +2355,7 @@ export default function ProjectSetupPage() {
                                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-[13px] outline-none focus:border-brand"
                                         />
                                     </div>
-                                    {mainEnd && (
+                                    {projectEnd && (
                                         <div className="col-span-2 text-[11px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200 flex items-center justify-between">
                                             <div className="flex items-center gap-1.5">
                                                 <Lock
@@ -2370,19 +2364,15 @@ export default function ProjectSetupPage() {
                                                 />
                                                 <span>
                                                     <span className="font-semibold text-neutral-800">
-                                                        Finish Deadline:
+                                                        Project Target Finish Date:
                                                     </span>{" "}
                                                     <span className="font-bold text-amber-900">
                                                         {formatDateDisplay(
-                                                            mainEnd,
+                                                            projectEnd,
                                                         )}
                                                     </span>
                                                 </span>
                                             </div>
-                                            {/* <span className="text-[10px] font-bold text-amber-800 bg-amber-200/60 px-1.5 py-0.5 rounded border border-amber-300">
-                                                Maks.{" "}
-                                                {formatDateDisplay(mainEnd)}
-                                            </span> */}
                                         </div>
                                     )}
                                 </div>
