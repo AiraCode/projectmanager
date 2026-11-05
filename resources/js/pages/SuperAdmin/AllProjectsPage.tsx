@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
 import { ConfirmModal, Modal, Button } from '@/components/ui';
-import { Search, Lock, Globe, Trash2, ExternalLink, Building2, Calendar, Edit2, AlertTriangle, ShieldCheck, Clock } from 'lucide-react';
+import { Search, Lock, Globe, Trash2, ExternalLink, Building2, Calendar, Edit2, AlertTriangle, Clock } from 'lucide-react';
 
 interface Project {
   id: number;
@@ -61,11 +61,11 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
     e.preventDefault();
     if (!projectToEdit) return;
     if (!editStart || !editEnd) {
-      setDateError('Start Date dan Target Finish Date harus diisi.');
+      setDateError('Start Date and Target Finish Date are required.');
       return;
     }
     if (editEnd <= editStart) {
-      setDateError('Target Finish Date harus setelah Start Date (minimal 1 hari setelahnya).');
+      setDateError('Target Finish Date must be after Start Date (at least 1 day later).');
       return;
     }
 
@@ -79,7 +79,7 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
       onSuccess: () => {
         setIsUpdatingDates(false);
         setToast({
-          msg: `Jadwal proyek "${projectToEdit.title}" berhasil diperbarui.`,
+          msg: `Project schedule for "${projectToEdit.title}" updated successfully.`,
           type: 'success',
         });
         setProjectToEdit(null);
@@ -87,16 +87,16 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
       onError: (errs) => {
         setIsUpdatingDates(false);
         const firstErr = Object.values(errs)[0];
-        setDateError(typeof firstErr === 'string' ? firstErr : 'Gagal memperbarui jadwal proyek.');
+        setDateError(typeof firstErr === 'string' ? firstErr : 'Failed to update project schedule.');
       },
     });
   };
 
   const statusColor = (s: string) => {
     if (s === 'Completed') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    if (s === 'On Track')  return 'bg-blue-50 text-blue-700 border-blue-200';
-    if (s === 'At Risk')   return 'bg-amber-50 text-amber-700 border-amber-200';
-    if (s === 'Delayed')   return 'bg-red-50 text-red-700 border-red-200';
+    if (s === 'On Track') return 'bg-blue-50 text-blue-700 border-blue-200';
+    if (s === 'At Risk') return 'bg-amber-50 text-amber-700 border-amber-200';
+    if (s === 'Delayed') return 'bg-red-50 text-red-700 border-red-200';
     return 'bg-neutral-100 text-neutral-600 border-neutral-200';
   };
 
@@ -107,9 +107,8 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
 
         {/* Toast Feedback */}
         {toast && (
-          <div className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded-xl text-white text-[13px] font-semibold shadow-xl transition-all flex items-center justify-between gap-4 ${
-            toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500'
-          }`}>
+          <div className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded-xl text-white text-[13px] font-semibold shadow-xl transition-all flex items-center justify-between gap-4 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500'
+            }`}>
             <span>{toast.msg}</span>
             <button onClick={() => setToast(null)} className="opacity-75 hover:opacity-100 font-bold">✕</button>
           </div>
@@ -138,9 +137,8 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
           <div className="flex bg-neutral-100 p-1 rounded-lg gap-1">
             {(['all', 'public', 'private'] as const).map(f => (
               <button key={f} onClick={() => setFilterPrivate(f)}
-                className={`px-3 py-1.5 text-[12px] font-semibold rounded-md transition-all capitalize ${
-                  filterPrivate === f ? 'bg-white text-violet-700 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-                }`}>
+                className={`px-3 py-1.5 text-[12px] font-semibold rounded-md transition-all capitalize ${filterPrivate === f ? 'bg-white text-violet-700 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+                  }`}>
                 {f}
               </button>
             ))}
@@ -198,24 +196,23 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1.5 text-[11.5px] text-neutral-600 group">
-                      <Calendar size={12} className="text-neutral-400" />
-                      <span>{p.start_date ?? '—'} - {p.end_date ?? '—'}</span>
-                      <button
-                        onClick={() => openEditDates(p)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-neutral-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-all ml-1"
-                        title="Edit Project Duration (SuperAdmin)"
-                      >
-                        <Edit2 size={11} />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openEditDates(p)}
+                      className="inline-flex items-center gap-1.5 text-[12px] text-neutral-700 hover:text-violet-700 hover:bg-violet-50 px-2 py-1 -mx-2 rounded-lg transition-all group font-medium"
+                      title="Edit project schedule (SuperAdmin)"
+                    >
+                      <Calendar size={13} className="text-violet-500 group-hover:scale-110 transition-transform flex-shrink-0" />
+                      <span>{p.start_date ?? '—'} – {p.end_date ?? '—'}</span>
+                      <Edit2 size={11} className="text-violet-400 opacity-60 group-hover:opacity-100 transition-opacity ml-0.5" />
+                    </button>
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center justify-center gap-1.5">
                       <button
                         onClick={() => openEditDates(p)}
-                        className="p-1.5 rounded-lg text-neutral-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                        title="Edit Project Schedule / Duration (SuperAdmin)"
+                        className="p-1.5 rounded-lg text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors"
+                        title="Edit Project Schedule (SuperAdmin)"
                       >
                         <Calendar size={14} />
                       </button>
@@ -239,7 +236,7 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
             isOpen={!!projectToEdit}
             onClose={() => !isUpdatingDates && setProjectToEdit(null)}
             title="Edit Project Duration & Schedule"
-            subtitle="SuperAdmin Privilege: Sesuaikan batas tanggal keseluruhan proyek"
+            subtitle="SuperAdmin Privilege: Adjust overall project schedule boundaries"
             size="md"
           >
             <form onSubmit={handleSaveDates} className="space-y-4">
@@ -257,17 +254,6 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                   <span>Company: <strong>{projectToEdit.company ?? '—'}</strong></span>
                   <span>•</span>
                   <span>Status: <span className="font-semibold text-neutral-700">{projectToEdit.status}</span></span>
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-900 text-[12px] leading-relaxed flex items-start gap-2.5">
-                <ShieldCheck size={16} className="text-amber-700 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-amber-950">Batas Tanggal Proyek (Project Target Limit)</p>
-                  <p className="text-[11.5px] text-amber-800 mt-0.5">
-                    Start Date dan Target Finish Date ini merupakan batas acuan untuk seluruh Main Task dan Sub Task di dalam proyek.
-                    Jika proyek mengalami keterlambatan (molor), perpanjang Target Finish Date agar tugas-tugas dapat dijadwalkan lebih lanjut.
-                  </p>
                 </div>
               </div>
 
@@ -310,10 +296,10 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
                 <div className="text-[11.5px] text-neutral-600 bg-violet-50/60 p-2.5 rounded-lg border border-violet-100 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <Clock size={12} className="text-violet-600" />
-                    <span>Total Durasi Proyek Baru:</span>
+                    <span>New Total Project Duration:</span>
                   </span>
                   <span className="font-bold text-violet-900">
-                    {Math.round((new Date(editEnd).getTime() - new Date(editStart).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari kalender
+                    {Math.round((new Date(editEnd).getTime() - new Date(editStart).getTime()) / (1000 * 60 * 60 * 24)) + 1} calendar days
                   </span>
                 </div>
               )}

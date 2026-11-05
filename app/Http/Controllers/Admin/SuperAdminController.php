@@ -188,7 +188,7 @@ class SuperAdminController extends Controller
     {
         $user = $request->user();
         if (!$user || ($user->role?->name ?? '') !== 'SuperAdmin') {
-            abort(403, 'Akses Ditolak: Hanya SuperAdmin yang berhak mengubah jadwal dan durasi proyek.');
+            abort(403, 'Access Denied: Only SuperAdmin can modify project schedule and duration.');
         }
 
         $validated = $request->validate([
@@ -202,7 +202,7 @@ class SuperAdminController extends Controller
         $newEnd   = Carbon::parse($validated['end'])->startOfDay();
 
         if ($newEnd->lte($newStart)) {
-            return back()->withErrors(['end' => 'Target Finish Date proyek harus setelah Start Date (minimal 1 hari setelahnya).']);
+            return back()->withErrors(['end' => 'Target Finish Date must be after Start Date (at least 1 day later).']);
         }
 
         // Validate that new dates do not violate existing task boundaries
@@ -227,13 +227,13 @@ class SuperAdminController extends Controller
 
         if ($earliestTaskStart && $newStart->gt($earliestTaskStart)) {
             return back()->withErrors([
-                'start' => "Start Date proyek ({$newStart->format('d/m/Y')}) tidak boleh lebih lambat dari jadwal mulai tugas yang sudah ada ({$earliestTaskStart->format('d/m/Y')}).",
+                'start' => "Project Start Date ({$newStart->format('d/m/Y')}) cannot be later than existing task start date ({$earliestTaskStart->format('d/m/Y')}).",
             ]);
         }
 
         if ($latestTaskEnd && $newEnd->lt($latestTaskEnd)) {
             return back()->withErrors([
-                'end' => "Target Finish Date proyek ({$newEnd->format('d/m/Y')}) tidak boleh lebih awal dari batas selesai tugas yang sudah ada ({$latestTaskEnd->format('d/m/Y')}).",
+                'end' => "Project Target Finish Date ({$newEnd->format('d/m/Y')}) cannot be earlier than existing task finish date ({$latestTaskEnd->format('d/m/Y')}).",
             ]);
         }
 
@@ -246,7 +246,7 @@ class SuperAdminController extends Controller
 
         AuditLog::record(
             'UPDATE_PROJECT_DATES',
-            "SuperAdmin {$user->username} memperbarui durasi proyek '{$project->title}' (ID #{$project->id}): Start {$oldStartStr} -> {$newStart->format('d/m/Y')}, Finish {$oldEndStr} -> {$newEnd->format('d/m/Y')}.",
+            "SuperAdmin {$user->username} updated project schedule for '{$project->title}' (ID #{$project->id}): Start {$oldStartStr} -> {$newStart->format('d/m/Y')}, Finish {$oldEndStr} -> {$newEnd->format('d/m/Y')}.",
             $user->id,
             $request->ip(),
             [
@@ -260,7 +260,7 @@ class SuperAdminController extends Controller
 
         app(\App\Services\ProgressService::class)->recalculateProjectProgress($project->id);
 
-        return back()->with('success', "Jadwal proyek '{$project->title}' berhasil diperbarui menjadi {$newStart->format('d/m/Y')} s/d {$newEnd->format('d/m/Y')}.");
+        return back()->with('success', "Project schedule for '{$project->title}' successfully updated to {$newStart->format('d/m/Y')} - {$newEnd->format('d/m/Y')}.");
     }
     public function divisionsPage()
     {

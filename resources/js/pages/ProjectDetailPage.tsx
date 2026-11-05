@@ -328,11 +328,11 @@ export default function ProjectDetailPage() {
     e.preventDefault();
     if (!p) return;
     if (!editStart || !editEnd) {
-      setDateError('Start Date dan Target Finish Date harus diisi.');
+      setDateError('Start Date and Target Finish Date are required.');
       return;
     }
     if (editEnd <= editStart) {
-      setDateError('Target Finish Date harus setelah Start Date (minimal 1 hari setelahnya).');
+      setDateError('Target Finish Date must be after Start Date (at least 1 day later).');
       return;
     }
 
@@ -347,14 +347,14 @@ export default function ProjectDetailPage() {
         setIsUpdatingDates(false);
         setShowEditDatesModal(false);
         setToast({
-          message: `Jadwal proyek "${p.name}" berhasil diperbarui.`,
+          message: `Project schedule for "${p.name}" updated successfully.`,
           type: 'success',
         });
       },
       onError: (errs) => {
         setIsUpdatingDates(false);
         const firstErr = Object.values(errs)[0];
-        setDateError(typeof firstErr === 'string' ? firstErr : 'Gagal memperbarui jadwal proyek.');
+        setDateError(typeof firstErr === 'string' ? firstErr : 'Failed to update project schedule.');
       },
     });
   };
@@ -622,8 +622,8 @@ export default function ProjectDetailPage() {
                     )
                   }
                   className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] font-bold transition-all border ${normalizeDiv(filterDivision) === normalizeDiv(userDivision)
-                      ? 'bg-brand text-white border-brand shadow-2xs'
-                      : 'bg-white text-neutral-700 border-neutral-200 hover:border-brand/40'
+                    ? 'bg-brand text-white border-brand shadow-2xs'
+                    : 'bg-white text-neutral-700 border-neutral-200 hover:border-brand/40'
                     }`}
                   title="Quickly filter to your assigned department"
                 >
@@ -968,7 +968,7 @@ export default function ProjectDetailPage() {
           isOpen={showEditDatesModal}
           onClose={() => !isUpdatingDates && setShowEditDatesModal(false)}
           title="Edit Project Duration & Schedule"
-          subtitle="SuperAdmin Privilege: Sesuaikan batas tanggal keseluruhan proyek"
+          subtitle="SuperAdmin Privilege: Adjust overall project schedule boundaries"
           size="md"
         >
           <form onSubmit={handleSaveDates} className="space-y-4">
@@ -986,17 +986,6 @@ export default function ProjectDetailPage() {
                 <span>Company: <strong>{p.company ?? '—'}</strong></span>
                 <span>•</span>
                 <span>Status: <span className="font-semibold text-neutral-700">{p.status}</span></span>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-900 text-[12px] leading-relaxed flex items-start gap-2.5">
-              <ShieldCheck size={16} className="text-amber-700 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-amber-950">Batas Tanggal Proyek (Project Target Limit)</p>
-                <p className="text-[11.5px] text-amber-800 mt-0.5">
-                  Start Date dan Target Finish Date ini merupakan batas acuan untuk seluruh Main Task dan Sub Task di dalam proyek.
-                  Jika proyek mengalami keterlambatan (molor), perpanjang Target Finish Date agar tugas-tugas dapat dijadwalkan lebih lanjut.
-                </p>
               </div>
             </div>
 
@@ -1039,10 +1028,10 @@ export default function ProjectDetailPage() {
               <div className="text-[11.5px] text-neutral-600 bg-violet-50/60 p-2.5 rounded-lg border border-violet-100 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Clock size={12} className="text-violet-600" />
-                  <span>Total Durasi Proyek Baru:</span>
+                  <span>New Total Project Duration:</span>
                 </span>
                 <span className="font-bold text-violet-900">
-                  {Math.round((new Date(editEnd).getTime() - new Date(editStart).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari kalender
+                  {Math.round((new Date(editEnd).getTime() - new Date(editStart).getTime()) / (1000 * 60 * 60 * 24)) + 1} calendar days
                 </span>
               </div>
             )}
@@ -1268,10 +1257,10 @@ function MainJobTreeCard({
                                   {task.daysLeft !== undefined && (
                                     <span
                                       className={`inline-flex items-center gap-0.5 text-[10.5px] font-medium ${task.daysLeft <= 0
-                                          ? 'text-red-600 font-bold'
-                                          : task.daysLeft <= 3
-                                            ? 'text-amber-600 font-semibold'
-                                            : 'text-neutral-500'
+                                        ? 'text-red-600 font-bold'
+                                        : task.daysLeft <= 3
+                                          ? 'text-amber-600 font-semibold'
+                                          : 'text-neutral-500'
                                         }`}
                                       title={`Days Remaining: ${task.daysLeft} days`}
                                     >
