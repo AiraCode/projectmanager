@@ -67,6 +67,24 @@ class SuperAdminController extends Controller
             $query->where('action', $request->action);
         }
 
+        if ($request->filled('actor')) {
+            $actor = $request->actor;
+            $query->where(function ($q) use ($actor) {
+                $q->where('metadata->actor', $actor)
+                  ->orWhereHas('user', function ($uq) use ($actor) {
+                      $uq->where('username', $actor);
+                  });
+            });
+        }
+
+        if ($request->filled('start_date')) {
+            $query->whereDate('created_at', '>=', $request->start_date);
+        }
+
+        if ($request->filled('end_date')) {
+            $query->whereDate('created_at', '<=', $request->end_date);
+        }
+
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -94,10 +112,21 @@ class SuperAdminController extends Controller
 
         $actionTypes = AuditLog::select('action')->distinct()->pluck('action');
 
+        $actors = AuditLog::with('user')
+            ->latest()
+            ->take(500)
+            ->get()
+            ->map(fn($l) => $l->metadata['actor'] ?? ($l->user?->username ?? 'System'))
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
+
         return Inertia::render('SuperAdmin/AuditLogPage', [
             'logs'        => $logs,
             'actionTypes' => $actionTypes,
-            'filters'     => $request->only(['action', 'search']),
+            'actors'      => $actors,
+            'filters'     => $request->only(['action', 'search', 'actor', 'start_date', 'end_date']),
         ]);
     }
 

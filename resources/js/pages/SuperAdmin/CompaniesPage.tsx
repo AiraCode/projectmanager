@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Head, useForm } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
 import { ConfirmModal } from '@/components/ui';
-import { Plus, Edit2, Trash2, Search, X } from 'lucide-react';
+import CustomSelect from '@/components/CustomSelect';
+import { Plus, Edit2, Trash2, Search, X, Building2 } from 'lucide-react';
 
 interface Company {
   id: number;
@@ -14,12 +15,38 @@ interface Company {
 
 export default function CompaniesPage({ companies }: { companies: Company[] }) {
   const [search, setSearch] = useState('');
+  const [filterProjects, setFilterProjects] = useState('');
+  const [filterUsers, setFilterUsers] = useState('');
+  const [sortBy, setSortBy] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editCompany, setEditCompany] = useState<Company | null>(null);
   const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
   const { data, setData, post, put, delete: destroy, processing, reset, errors } = useForm({ name: '' });
 
-  const filtered = companies.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+  const hasActiveFilters = Boolean(search || filterProjects || filterUsers || sortBy);
+
+  const filtered = useMemo(() => {
+    return companies
+      .filter(c => {
+        const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase().trim());
+        const matchesProjects =
+          filterProjects === 'with' ? c.projects_count > 0 :
+          filterProjects === 'empty' ? c.projects_count === 0 : true;
+        const matchesUsers =
+          filterUsers === 'with' ? c.users_count > 0 :
+          filterUsers === 'empty' ? c.users_count === 0 : true;
+        return matchesSearch && matchesProjects && matchesUsers;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'name_asc') return a.name.localeCompare(b.name);
+        if (sortBy === 'name_desc') return b.name.localeCompare(a.name);
+        if (sortBy === 'projects_desc') return b.projects_count - a.projects_count;
+        if (sortBy === 'users_desc') return b.users_count - a.users_count;
+        if (sortBy === 'oldest') return a.id - b.id;
+        return b.id - a.id;
+      });
+  }, [companies, search, filterProjects, filterUsers, sortBy]);
+
   const openCreate = () => { setEditCompany(null); reset(); setModalOpen(true); };
   const openEdit   = (c: Company) => { setEditCompany(c); setData('name', c.name); setModalOpen(true); };
 
@@ -49,17 +76,89 @@ export default function CompaniesPage({ companies }: { companies: Company[] }) {
             <h1 className="text-xl font-black text-neutral-900 tracking-tight">Company Management</h1>
             <p className="text-[12px] text-neutral-500 mt-0.5">Manage all registered companies in the system.</p>
           </div>
-          <button onClick={openCreate}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-white text-[13px] font-semibold hover:opacity-90 transition-opacity"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}>
-             Add Company
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 font-bold text-[12px]">
+              {filtered.length} {filtered.length === companies.length ? 'companies' : `of ${companies.length} companies`}
+            </span>
+            <button onClick={openCreate}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-white text-[13px] font-semibold hover:opacity-90 transition-opacity shadow-xs"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}>
+              <Plus size={15} /> Add Company
+            </button>
+          </div>
         </div>
 
-        <div className="relative max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-          <input type="text" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 text-[13px] border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 bg-white" />
+        {/* Search and Filters */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Search companies..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 text-[13px] border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 bg-white h-[38px]"
+            />
+          </div>
+
+          <CustomSelect
+            value={filterProjects}
+            onChange={setFilterProjects}
+            placeholder="All Projects"
+            variant="filter"
+            clearable
+            className="w-full sm:w-[155px]"
+            options={[
+              { value: '', label: 'All Projects' },
+              { value: 'with', label: 'With Projects (>0)' },
+              { value: 'empty', label: 'No Projects (0)' },
+            ]}
+          />
+
+          <CustomSelect
+            value={filterUsers}
+            onChange={setFilterUsers}
+            placeholder="All Users"
+            variant="filter"
+            clearable
+            className="w-full sm:w-[155px]"
+            options={[
+              { value: '', label: 'All Users' },
+              { value: 'with', label: 'With Users (>0)' },
+              { value: 'empty', label: 'No Users (0)' },
+            ]}
+          />
+
+          <CustomSelect
+            value={sortBy}
+            onChange={setSortBy}
+            placeholder="Sort by"
+            variant="filter"
+            clearable
+            className="w-full sm:w-[165px]"
+            options={[
+              { value: '', label: 'Sort: Default (Newest)' },
+              { value: 'name_asc', label: 'Name (A – Z)' },
+              { value: 'name_desc', label: 'Name (Z – A)' },
+              { value: 'projects_desc', label: 'Most Projects' },
+              { value: 'users_desc', label: 'Most Users' },
+              { value: 'oldest', label: 'Oldest' },
+            ]}
+          />
+
+          {hasActiveFilters && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setFilterProjects('');
+                setFilterUsers('');
+                setSortBy('');
+              }}
+              className="px-3 py-1.5 text-[12px] font-semibold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors"
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
 
         <div className="bg-white border border-neutral-200 rounded-2xl overflow-hidden shadow-xs">

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Head, router } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
 import { ConfirmModal, Modal, Button, DatePicker } from '@/components/ui';
+import CustomSelect from '@/components/CustomSelect';
 import { Search, Lock, Globe, Trash2, ExternalLink, Building2, Calendar, Edit2, AlertTriangle, Clock } from 'lucide-react';
 
 interface Project {
@@ -19,7 +20,10 @@ interface Project {
 
 export default function AllProjectsPage({ projects }: { projects: Project[] }) {
   const [search, setSearch] = useState('');
-  const [filterPrivate, setFilterPrivate] = useState<'all' | 'public' | 'private'>('all');
+  const [filterCompany, setFilterCompany] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterVisibility, setFilterVisibility] = useState('');
+  const [sortBy, setSortBy] = useState('');
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -31,13 +35,42 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
   const [dateError, setDateError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
-  const filtered = projects.filter(p => {
-    const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) ||
-      (p.company ?? '').toLowerCase().includes(search.toLowerCase());
-    const matchPrivate = filterPrivate === 'all' ? true :
-      filterPrivate === 'private' ? p.is_private : !p.is_private;
-    return matchSearch && matchPrivate;
-  });
+  const companyOptions = useMemo(() => {
+    const set = new Set<string>();
+    projects.forEach(p => {
+      if (p.company) set.add(p.company);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [projects]);
+
+  const hasActiveFilters = Boolean(search || filterCompany || filterStatus || filterVisibility || sortBy);
+
+  const filtered = useMemo(() => {
+    return projects
+      .filter(p => {
+        const query = search.toLowerCase().trim();
+        const matchSearch = !query ||
+          p.title.toLowerCase().includes(query) ||
+          (p.company ?? '').toLowerCase().includes(query) ||
+          p.created_by.toLowerCase().includes(query);
+
+        const matchCompany = !filterCompany || p.company === filterCompany;
+        const matchStatus = !filterStatus || p.status.toLowerCase() === filterStatus.toLowerCase();
+        const matchVisibility =
+          !filterVisibility ? true :
+          filterVisibility === 'private' ? p.is_private : !p.is_private;
+
+        return matchSearch && matchCompany && matchStatus && matchVisibility;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'title_asc') return a.title.localeCompare(b.title);
+        if (sortBy === 'title_desc') return b.title.localeCompare(a.title);
+        if (sortBy === 'progress_desc') return b.progress - a.progress;
+        if (sortBy === 'progress_asc') return a.progress - b.progress;
+        if (sortBy === 'oldest') return a.id - b.id;
+        return b.id - a.id; // newest first
+      });
+  }, [projects, search, filterCompany, filterStatus, filterVisibility, sortBy]);
 
   const handleConfirmDelete = () => {
     if (!projectToDelete) return;
@@ -120,29 +153,104 @@ export default function AllProjectsPage({ projects }: { projects: Project[] }) {
             <p className="text-[12px] text-neutral-500 mt-0.5">View and manage all projects across companies, including private ones and schedule limits.</p>
           </div>
           <div className="flex items-center gap-2 text-[12px] text-neutral-500">
-            <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 font-bold">{projects.length} total</span>
+            <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 font-bold">
+              {filtered.length} {filtered.length === projects.length ? 'projects' : `of ${projects.length} projects`}
+            </span>
             <span className="px-2.5 py-1 rounded-full bg-neutral-100 text-neutral-600 border border-neutral-200 font-bold flex items-center gap-1">
               <Lock size={10} /> {projects.filter(p => p.is_private).length} private
             </span>
           </div>
         </div>
 
-        {/* Filters */}
+        {/* Search & Filters */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px] max-w-xs">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input type="text" placeholder="Search projects or company..." value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 text-[13px] border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 bg-white" />
+            <input
+              type="text"
+              placeholder="Search project or company..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 text-[13px] border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 bg-white h-[38px]"
+            />
           </div>
-          <div className="flex bg-neutral-100 p-1 rounded-lg gap-1">
-            {(['all', 'public', 'private'] as const).map(f => (
-              <button key={f} onClick={() => setFilterPrivate(f)}
-                className={`px-3 py-1.5 text-[12px] font-semibold rounded-md transition-all capitalize ${filterPrivate === f ? 'bg-white text-violet-700 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-                  }`}>
-                {f}
-              </button>
-            ))}
-          </div>
+
+          <CustomSelect
+            value={filterCompany}
+            onChange={setFilterCompany}
+            placeholder="All Companies"
+            variant="filter"
+            clearable
+            searchable={companyOptions.length > 5}
+            className="w-full sm:w-[165px]"
+            options={[
+              { value: '', label: 'All Companies' },
+              ...companyOptions.map(c => ({ value: c, label: c })),
+            ]}
+          />
+
+          <CustomSelect
+            value={filterStatus}
+            onChange={setFilterStatus}
+            placeholder="All Statuses"
+            variant="filter"
+            clearable
+            className="w-full sm:w-[145px]"
+            options={[
+              { value: '', label: 'All Statuses' },
+              { value: 'Open', label: 'Open' },
+              { value: 'On Track', label: 'On Track' },
+              { value: 'At Risk', label: 'At Risk' },
+              { value: 'Delayed', label: 'Delayed' },
+              { value: 'Completed', label: 'Completed' },
+            ]}
+          />
+
+          <CustomSelect
+            value={filterVisibility}
+            onChange={setFilterVisibility}
+            placeholder="All Visibility"
+            variant="filter"
+            clearable
+            className="w-full sm:w-[140px]"
+            options={[
+              { value: '', label: 'All Visibility' },
+              { value: 'public', label: 'Public' },
+              { value: 'private', label: 'Private' },
+            ]}
+          />
+
+          <CustomSelect
+            value={sortBy}
+            onChange={setSortBy}
+            placeholder="Sort by"
+            variant="filter"
+            clearable
+            className="w-full sm:w-[165px]"
+            options={[
+              { value: '', label: 'Sort: Default (Newest)' },
+              { value: 'title_asc', label: 'Title (A – Z)' },
+              { value: 'title_desc', label: 'Title (Z – A)' },
+              { value: 'progress_desc', label: 'Highest Progress' },
+              { value: 'progress_asc', label: 'Lowest Progress' },
+              { value: 'oldest', label: 'Oldest' },
+            ]}
+          />
+
+          {hasActiveFilters && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setFilterCompany('');
+                setFilterStatus('');
+                setFilterVisibility('');
+                setSortBy('');
+              }}
+              className="px-3 py-1.5 text-[12px] font-semibold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors"
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
 
         <div className="bg-white border border-neutral-200 rounded-2xl overflow-hidden shadow-xs">

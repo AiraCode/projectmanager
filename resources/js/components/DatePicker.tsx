@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 export interface DatePickerProps {
   value?: string | null; // Format: 'YYYY-MM-DD'
@@ -10,6 +10,7 @@ export interface DatePickerProps {
   max?: string | null; // Format: 'YYYY-MM-DD'
   disabled?: boolean;
   required?: boolean;
+  clearable?: boolean;
   className?: string;
   inputClassName?: string;
   accentColor?: 'brand' | 'violet';
@@ -51,6 +52,7 @@ export default function DatePicker({
   max,
   disabled = false,
   required = false,
+  clearable = false,
   className = '',
   inputClassName = '',
   accentColor = 'brand',
@@ -381,10 +383,24 @@ export default function DatePicker({
           {value ? formatDisplayDate(value) : placeholder}
         </span>
 
-        <Calendar
-          size={size === 'sm' ? 14 : 16}
-          className={`${value ? themeClasses.icon : 'text-neutral-400'} flex-shrink-0 transition-colors`}
-        />
+        {clearable && value && !disabled ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange('');
+            }}
+            className="p-0.5 rounded-full hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
+            title="Clear date"
+          >
+            <X size={size === 'sm' ? 13 : 15} />
+          </button>
+        ) : (
+          <Calendar
+            size={size === 'sm' ? 14 : 16}
+            className={`${value ? themeClasses.icon : 'text-neutral-400'} flex-shrink-0 transition-colors`}
+          />
+        )}
       </div>
 
       {/* Custom Calendar Popover: Portaled to document.body (Never clips, zero scrollbar issues) */}

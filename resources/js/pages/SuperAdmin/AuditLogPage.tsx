@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Head, router } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
 import { Modal } from '@/components/ui';
+import CustomSelect from '@/components/CustomSelect';
+import DatePicker from '@/components/DatePicker';
 import {
   ScrollText,
   Filter,
@@ -137,80 +139,91 @@ const getActionBadgeStyle = (action: string): string => {
 
 export default function AuditLogPage({
   logs,
-  actionTypes,
-  filters,
+  actionTypes = [],
+  actors = [],
+  filters = {},
 }: {
   logs: PaginatedLogs;
   actionTypes: string[];
-  filters: { action?: string; search?: string };
+  actors?: string[];
+  filters?: { action?: string; search?: string; actor?: string; start_date?: string; end_date?: string };
 }) {
-  const [selectedAction, setSelectedAction] = useState(filters.action ?? '');
-  const [search, setSearch] = useState(filters.search ?? '');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [dropdownFilter, setDropdownFilter] = useState('');
+  const [selectedAction, setSelectedAction] = useState(filters?.action ?? '');
+  const [selectedActor, setSelectedActor] = useState(filters?.actor ?? '');
+  const [startDate, setStartDate] = useState(filters?.start_date ?? '');
+  const [endDate, setEndDate] = useState(filters?.end_date ?? '');
+  const [search, setSearch] = useState(filters?.search ?? '');
   const [selectedLog, setSelectedLog] = useState<AuditEntry | null>(null);
   const [copiedDescription, setCopiedDescription] = useState(false);
   const [copiedJson, setCopiedJson] = useState(false);
   const [metadataTab, setMetadataTab] = useState<'structured' | 'json'>('structured');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
   // Sync state if backend filters prop changes (e.g. browser back/forward)
   useEffect(() => {
-    setSelectedAction(filters.action ?? '');
-    setSearch(filters.search ?? '');
-  }, [filters.action, filters.search]);
+    setSelectedAction(filters?.action ?? '');
+    setSelectedActor(filters?.actor ?? '');
+    setStartDate(filters?.start_date ?? '');
+    setEndDate(filters?.end_date ?? '');
+    setSearch(filters?.search ?? '');
+  }, [filters?.action, filters?.actor, filters?.start_date, filters?.end_date, filters?.search]);
 
-  // Dropdown outside click & Escape key listener
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setDropdownOpen(false);
-      }
-    }
-    if (dropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
+  const handleFilterChange = (updates: {
+    action?: string;
+    actor?: string;
+    search?: string;
+    start_date?: string;
+    end_date?: string;
+  }) => {
+    const nextFilters = {
+      action: updates.action !== undefined ? updates.action : selectedAction,
+      actor: updates.actor !== undefined ? updates.actor : selectedActor,
+      search: updates.search !== undefined ? updates.search : search,
+      start_date: updates.start_date !== undefined ? updates.start_date : startDate,
+      end_date: updates.end_date !== undefined ? updates.end_date : endDate,
     };
-  }, [dropdownOpen]);
 
-  const handleFilterChange = (newAction: string, newSearch: string) => {
     router.get(
       '/admin/audit-log',
       {
-        action: newAction || undefined,
-        search: newSearch.trim() || undefined,
+        action: nextFilters.action || undefined,
+        actor: nextFilters.actor || undefined,
+        search: nextFilters.search?.trim() || undefined,
+        start_date: nextFilters.start_date || undefined,
+        end_date: nextFilters.end_date || undefined,
       },
       { preserveState: true, replace: true }
     );
   };
 
-  const applyActionFilter = (action: string) => {
-    setSelectedAction(action);
-    setDropdownOpen(false);
-    handleFilterChange(action, search);
-  };
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    handleFilterChange(selectedAction, search);
-  };
-
   const handleResetFilters = () => {
     setSelectedAction('');
+    setSelectedActor('');
+    setStartDate('');
+    setEndDate('');
     setSearch('');
     router.get('/admin/audit-log', {}, { preserveState: true, replace: true });
   };
+
+  const hasActiveFilters = Boolean(
+    filters?.action || filters?.actor || filters?.start_date || filters?.end_date || filters?.search
+  );
+
+  const actionOptions = useMemo(() => [
+    { value: '', label: 'All Activities' },
+    ...actionTypes.map(a => ({
+      value: a,
+      label: a.replace(/_/g, ' '),
+    }))
+  ], [actionTypes]);
+
+  const actorOptions = useMemo(() => [
+    { value: '', label: 'All Actors' },
+    ...actors.map(a => ({
+      value: a,
+      label: a,
+    }))
+  ], [actors]);
 
   const copyToClipboard = async (text: string, type: 'desc' | 'json') => {
     try {
@@ -271,14 +284,6 @@ export default function AuditLogPage({
     );
   };
 
-  const filteredActionTypes = useMemo(() => {
-    return actionTypes.filter((a) =>
-      a.toLowerCase().replace(/_/g, ' ').includes(dropdownFilter.toLowerCase().trim())
-    );
-  }, [actionTypes, dropdownFilter]);
-
-  const hasActiveFilters = Boolean(filters.action || filters.search);
-
   return (
     <SuperAdminLayout>
       <Head title="Audit Log — PROVIS SuperAdmin" />
@@ -297,7 +302,7 @@ export default function AuditLogPage({
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black text-neutral-900 tracking-tight">System Audit Log</h1>
                 <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
-                  {logs.total} Total Records
+                  {logs.total} {hasActiveFilters ? 'matching records' : 'records'}
                 </span>
               </div>
               <p className="text-[12px] text-neutral-500 mt-0.5">
@@ -305,209 +310,127 @@ export default function AuditLogPage({
               </p>
             </div>
           </div>
-
-          {/* Quick Active Filters Summary / Reset */}
-          {hasActiveFilters && (
-            <button
-              onClick={handleResetFilters}
-              className="self-start sm:self-auto inline-flex items-center px-3 py-1.5 rounded-xl text-[12px] font-semibold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100/80 border border-violet-200 transition-colors"
-            >
-              Reset All Filters
-            </button>
-          )}
         </div>
 
-        {/* Search & Filter Bar */}
-        <div className="bg-white rounded-2xl border border-neutral-200/90 shadow-2xs p-3 sm:p-4">
-          <div className="flex flex-col md:flex-row md:items-center gap-3">
-            {/* Search Input */}
-            <form onSubmit={handleSearchSubmit} className="relative flex-1">
-              <Search
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
-              />
+        {/* Search & Filters */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[200px] max-w-xs">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search user, email, action, description, or IP..."
+                placeholder="Search user, action, IP, desc..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full text-[13px] border border-neutral-200 rounded-xl pl-9 pr-9 py-2 bg-neutral-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-400/40 focus:border-violet-400 text-neutral-800 placeholder-neutral-400 transition-all h-[38px]"
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleFilterChange({ search });
+                  }
+                }}
+                className="w-full pl-8 pr-8 py-2 text-[13px] border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 bg-white h-[38px]"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearch('');
-                    handleFilterChange(selectedAction, '');
+                    handleFilterChange({ search: '' });
                   }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors cursor-pointer"
                   title="Clear search"
                 >
-                  <X size={13} />
+                  <X size={12} />
                 </button>
               )}
-            </form>
+            </div>
 
-            {/* Action Type Dropdown */}
-            <div className="relative shrink-0" ref={dropdownRef}>
+            <CustomSelect
+              value={selectedAction}
+              onChange={(val) => {
+                setSelectedAction(val);
+                handleFilterChange({ action: val });
+              }}
+              placeholder="All Activities"
+              variant="filter"
+              clearable
+              searchable={actionTypes.length > 5}
+              className="w-full sm:w-[170px]"
+              options={actionOptions}
+            />
+
+            <CustomSelect
+              value={selectedActor}
+              onChange={(val) => {
+                setSelectedActor(val);
+                handleFilterChange({ actor: val });
+              }}
+              placeholder="All Actors"
+              variant="filter"
+              clearable
+              searchable={actors.length > 5}
+              className="w-full sm:w-[155px]"
+              options={actorOptions}
+            />
+
+            <div className="w-full sm:w-[145px]">
+              <DatePicker
+                value={startDate}
+                onChange={(val) => {
+                  setStartDate(val);
+                  handleFilterChange({ start_date: val });
+                }}
+                placeholder="From Date"
+                accentColor="violet"
+                size="sm"
+                clearable
+                inputClassName="h-[38px] text-[12.5px] rounded-xl"
+              />
+            </div>
+
+            <div className="w-full sm:w-[145px]">
+              <DatePicker
+                value={endDate}
+                onChange={(val) => {
+                  setEndDate(val);
+                  handleFilterChange({ end_date: val });
+                }}
+                placeholder="To Date"
+                accentColor="violet"
+                size="sm"
+                clearable
+                inputClassName="h-[38px] text-[12.5px] rounded-xl"
+              />
+            </div>
+
+            {hasActiveFilters && (
               <button
                 type="button"
-                onClick={() => {
-                  setDropdownOpen((prev) => !prev);
-                  setDropdownFilter('');
-                }}
-                className={`flex items-center justify-between gap-2 h-[38px] px-3.5 rounded-xl border text-[12.5px] font-medium transition-all duration-150 select-none w-full md:w-auto min-w-[200px] cursor-pointer ${
-                  selectedAction
-                    ? 'bg-violet-50/90 border-violet-300 text-violet-900 font-semibold shadow-xs ring-1 ring-violet-300/40'
-                    : 'bg-white border-neutral-200 hover:border-neutral-300 text-neutral-700 hover:bg-neutral-50/80 shadow-2xs'
-                }`}
-                aria-expanded={dropdownOpen}
-                aria-haspopup="listbox"
+                onClick={handleResetFilters}
+                className="px-3 py-1.5 text-[12px] font-semibold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors shrink-0 cursor-pointer"
               >
-                <div className="flex items-center gap-2 truncate">
-                  <span className="truncate">
-                    {selectedAction ? selectedAction.replace(/_/g, ' ') : `All Activities (${actionTypes.length})`}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0 ml-1">
-                  {selectedAction ? (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        applyActionFilter('');
-                      }}
-                      className="p-0.5 rounded-full hover:bg-violet-200/70 text-violet-600 hover:text-violet-900 transition-colors"
-                      title="Clear action filter"
-                    >
-                      <X size={12} />
-                    </span>
-                  ) : (
-                    <ChevronDown
-                      size={13}
-                      className={`text-neutral-400 transition-transform duration-200 ${
-                        dropdownOpen ? 'rotate-180 text-violet-600' : ''
-                      }`}
-                    />
-                  )}
-                </div>
+                Reset Filters
               </button>
-
-              {/* Dropdown Popover */}
-              {dropdownOpen && (
-                <div
-                  className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-violet-100 shadow-xl shadow-violet-950/10 z-50 py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-                  style={{
-                    boxShadow:
-                      '0 10px 25px -5px rgba(124, 58, 237, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
-                  }}
-                  role="listbox"
-                >
-                  {/* Quick Search inside dropdown if > 6 items */}
-                  {actionTypes.length > 6 && (
-                    <div className="px-2.5 pb-2 pt-1 border-b border-neutral-100">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="Filter actions..."
-                          value={dropdownFilter}
-                          onChange={(e) => setDropdownFilter(e.target.value)}
-                          className="w-full text-[11.5px] bg-neutral-50/90 border border-neutral-200 rounded-lg pl-7 pr-2.5 py-1 text-neutral-800 placeholder-neutral-400 focus:outline-none focus:ring-1.5 focus:ring-violet-400 focus:bg-white transition-all"
-                          autoFocus
-                        />
-                        <Search
-                          size={11}
-                          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Options List */}
-                  <div className="max-h-64 overflow-y-auto p-1 space-y-0.5 scrollbar-thin">
-                    {/* All Activities Option */}
-                    {(!dropdownFilter || 'all activities'.includes(dropdownFilter.toLowerCase())) && (
-                      <button
-                        type="button"
-                        onClick={() => applyActionFilter('')}
-                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-[12px] transition-colors ${
-                          !selectedAction
-                            ? 'bg-violet-50 text-violet-900 font-semibold'
-                            : 'text-neutral-700 hover:bg-neutral-50/80 font-medium'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-                          <span>All Activities</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-500 font-mono font-semibold">
-                            {actionTypes.length}
-                          </span>
-                          {!selectedAction && <Check size={13} className="text-violet-600" />}
-                        </div>
-                      </button>
-                    )}
-
-                    {/* Filtered Action Types */}
-                    {filteredActionTypes.map((action) => {
-                      const isSelected = selectedAction === action;
-                      const label = action.replace(/_/g, ' ');
-                      return (
-                        <button
-                          key={action}
-                          type="button"
-                          onClick={() => applyActionFilter(action)}
-                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left transition-colors ${
-                            isSelected
-                              ? 'bg-violet-50 text-violet-900 font-semibold'
-                              : 'hover:bg-neutral-50/80 text-neutral-700 font-medium'
-                          }`}
-                        >
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-semibold tracking-wide border ${getActionBadgeStyle(
-                              action
-                            )}`}
-                          >
-                            {label}
-                          </span>
-                          {isSelected && <Check size={13} className="text-violet-600 shrink-0 ml-2" />}
-                        </button>
-                      );
-                    })}
-
-                    {filteredActionTypes.length === 0 && dropdownFilter && (
-                      <div className="py-4 text-center text-[11.5px] text-neutral-400">
-                        No actions found matching "{dropdownFilter}"
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
           {/* Active Filter Chips */}
           {hasActiveFilters && (
-            <div className="flex flex-wrap items-center gap-2 pt-3 mt-3 border-t border-neutral-100 text-[12px]">
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
               <span className="text-neutral-400 text-[11px] font-medium uppercase tracking-wider">
                 Active Filters:
               </span>
 
-              {filters.search && (
+              {filters?.search && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-neutral-100 text-neutral-700 border border-neutral-200">
-                  <span>
-                    Search: <strong className="text-neutral-900 font-semibold">"{filters.search}"</strong>
-                  </span>
+                  <span>Search: <strong className="text-neutral-900 font-semibold">"{filters.search}"</strong></span>
                   <button
                     type="button"
                     onClick={() => {
                       setSearch('');
-                      handleFilterChange(selectedAction, '');
+                      handleFilterChange({ search: '' });
                     }}
-                    className="p-0.5 hover:bg-neutral-200 rounded-full transition-colors text-neutral-500 hover:text-neutral-800"
+                    className="p-0.5 hover:bg-neutral-200 rounded-full transition-colors text-neutral-500 hover:text-neutral-800 cursor-pointer"
                     title="Remove search filter"
                   >
                     <X size={11} />
@@ -515,16 +438,68 @@ export default function AuditLogPage({
                 </span>
               )}
 
-              {filters.action && (
+              {filters?.action && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-violet-50 text-violet-800 border border-violet-200">
-                  <span>
-                    Action: <strong className="font-semibold">{filters.action.replace(/_/g, ' ')}</strong>
-                  </span>
+                  <span>Action: <strong className="font-semibold">{filters.action.replace(/_/g, ' ')}</strong></span>
                   <button
                     type="button"
-                    onClick={() => applyActionFilter('')}
-                    className="p-0.5 hover:bg-violet-200/80 rounded-full transition-colors text-violet-600 hover:text-violet-900"
+                    onClick={() => {
+                      setSelectedAction('');
+                      handleFilterChange({ action: '' });
+                    }}
+                    className="p-0.5 hover:bg-violet-200/80 rounded-full transition-colors text-violet-600 hover:text-violet-900 cursor-pointer"
                     title="Remove action filter"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              )}
+
+              {filters?.actor && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-violet-50 text-violet-800 border border-violet-200">
+                  <span>Actor: <strong className="font-semibold">{filters.actor}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedActor('');
+                      handleFilterChange({ actor: '' });
+                    }}
+                    className="p-0.5 hover:bg-violet-200/80 rounded-full transition-colors text-violet-600 hover:text-violet-900 cursor-pointer"
+                    title="Remove actor filter"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              )}
+
+              {filters?.start_date && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-violet-50 text-violet-800 border border-violet-200">
+                  <span>From: <strong className="font-semibold">{filters.start_date}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStartDate('');
+                      handleFilterChange({ start_date: '' });
+                    }}
+                    className="p-0.5 hover:bg-violet-200/80 rounded-full transition-colors text-violet-600 hover:text-violet-900 cursor-pointer"
+                    title="Remove start date filter"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              )}
+
+              {filters?.end_date && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-violet-50 text-violet-800 border border-violet-200">
+                  <span>To: <strong className="font-semibold">{filters.end_date}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEndDate('');
+                      handleFilterChange({ end_date: '' });
+                    }}
+                    className="p-0.5 hover:bg-violet-200/80 rounded-full transition-colors text-violet-600 hover:text-violet-900 cursor-pointer"
+                    title="Remove end date filter"
                   >
                     <X size={11} />
                   </button>
@@ -534,7 +509,7 @@ export default function AuditLogPage({
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="text-[11px] font-semibold text-violet-600 hover:text-violet-800 hover:underline ml-1"
+                className="text-[11px] font-semibold text-violet-600 hover:text-violet-800 hover:underline ml-1 cursor-pointer"
               >
                 Clear all
               </button>
