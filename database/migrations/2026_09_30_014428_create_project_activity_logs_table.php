@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('project_activity_logs', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('project_id');
-            $table->string('wbs_id', 45)->nullable();
+            $table->string('wbs_id', 100)->nullable();
             $table->unsignedInteger('user_id')->nullable();
             $table->string('action'); // e.g., 'task_completed', 'task_updated'
             $table->text('description');

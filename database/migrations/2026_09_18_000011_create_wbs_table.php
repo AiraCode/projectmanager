@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('wbs', function (Blueprint $table) {
-            $table->string('id', 45)->primary();
+            $table->string('id', 100)->primary();
             $table->unsignedInteger('sub_wbs_id');
             $table->unsignedInteger('divisions_id');
             $table->string('name', 255)->nullable();

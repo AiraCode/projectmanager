@@ -11,7 +11,7 @@ return new class extends Migration
     {
         Schema::create('task_dependency_groups', function (Blueprint $table) {
             $table->id();
-            $table->string('successor_wbs_id', 45);
+            $table->string('successor_wbs_id', 100);
             $table->enum('dependency_type', ['FS', 'FF', 'SS', 'SF'])->default('FS');
             $table->integer('lag_days')->default(0);
             $table->timestamps();

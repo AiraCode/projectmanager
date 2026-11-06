@@ -8,8 +8,12 @@ export function addDays(dateStr: string, days: number): string {
 }
 
 export function recalculateSchedule(project: Project): Project {
+  if (!project) return project;
   // Deep clone to avoid mutating the original reference directly
   const newProject = JSON.parse(JSON.stringify(project)) as Project;
+  if (!newProject.mainJobs || !Array.isArray(newProject.mainJobs) || newProject.mainJobs.length === 0) {
+    return newProject;
+  }
   
   // 1. Build a map of all tasks and sub-tasks by code for easy lookup
   type PredTarget = { startDate: string; finishDate: string };

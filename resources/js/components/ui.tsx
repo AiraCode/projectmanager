@@ -90,19 +90,21 @@ export function formatDivisionName(div?: string | null): string {
 export function PageHeader({
   title,
   subtitle,
+  className = '',
   actions,
 }: {
   title: string;
   subtitle?: string;
+  className?: string;
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-      <div className="min-w-0 flex-1">
+    <div className={`flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6 ${className}`}>
+      <div className="min-w-0 sm:min-w-[280px]">
         <h1 className="text-[20px] lg:text-[22px] font-bold text-neutral-900 tracking-tight leading-tight">{title}</h1>
-        {subtitle && <p className="text-[13px] text-neutral-500 mt-1 break-words">{subtitle}</p>}
+        {subtitle && <p className="text-[13px] text-neutral-500 mt-1 whitespace-normal leading-relaxed">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 flex-wrap flex-shrink-0 w-full lg:w-auto justify-start lg:justify-end">{actions}</div>}
+      {actions && <div className="flex items-center gap-2 flex-wrap w-full xl:w-auto justify-start xl:justify-end">{actions}</div>}
     </div>
   );
 }

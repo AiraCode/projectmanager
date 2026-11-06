@@ -15,8 +15,8 @@ return new class extends Migration
         if (!Schema::hasTable('task_dependencies')) {
             Schema::create('task_dependencies', function (Blueprint $table) {
                 $table->id();
-                $table->string('predecessor_wbs_id', 45);
-                $table->string('successor_wbs_id', 45);
+                $table->string('predecessor_wbs_id', 100);
+                $table->string('successor_wbs_id', 100);
                 $table->enum('dependency_type', ['FS', 'FF', 'SF', 'SS'])->default('FS');
                 $table->integer('lag_days')->default(0);
                 $table->timestamps();
