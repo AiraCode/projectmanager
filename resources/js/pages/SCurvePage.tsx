@@ -7,7 +7,7 @@ import { PageHeader, Card, Button, formatDateDisplay, DatePicker } from '@/compo
 import {
   TrendingUp, BarChart2, Calendar, Eye, EyeOff, Download,
   AlertTriangle, RotateCcw, Filter, Camera, FileText, X,
-  FolderOpen, Info, CheckCircle2, Clock
+  FolderOpen, Info, CheckCircle2, Clock, ExternalLink
 } from 'lucide-react';
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -29,6 +29,7 @@ export interface ExtractedEvidence {
   url?: string;
   date: string;
   isPhoto: boolean;
+  isPdf: boolean;
 }
 
 interface ChartPoint {
@@ -349,22 +350,29 @@ export default function SCurvePage() {
           const taskDate = st.finishDate || st.startDate || smj.finishDate || mj.finishDate || '';
 
           rawItems.forEach((item, idx) => {
-            const isPhoto = /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(item.name || '') ||
-              item.type?.startsWith('image/') ||
-              !!item.previewUrl;
+            const fileName = String(item.name || '');
+            const mimeType = String(item.type || '');
+            const isPdf = /\.pdf$/i.test(fileName) || mimeType === 'application/pdf';
+            const isPhoto = !isPdf && (
+              /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(fileName) ||
+              mimeType.startsWith('image/')
+            );
+
+            const fileUrl = item.previewUrl || item.url || '';
 
             list.push({
               id: `${st.id}-ev-${idx}`,
               taskId: st.id,
               taskName: st.name,
               division: cleanDivision,
-              name: item.name,
+              name: fileName || `evidence-${idx + 1}`,
               size: item.size || 'Attached file',
-              type: item.type || (isPhoto ? 'image/jpeg' : 'application/pdf'),
-              previewUrl: item.previewUrl || item.url,
-              url: item.url || item.previewUrl,
+              type: mimeType || (isPdf ? 'application/pdf' : isPhoto ? 'image/jpeg' : 'application/octet-stream'),
+              previewUrl: fileUrl,
+              url: fileUrl,
               date: taskDate,
               isPhoto,
+              isPdf,
             });
           });
         });
@@ -396,13 +404,47 @@ export default function SCurvePage() {
       const tW = !isInvalidRange ? (Number(toWeek) || weeks.length) : weeks.length;
       const targetWeeks = weeks.filter(w => w.week >= fW && w.week <= tW);
 
+      // Check whether prediction series is active in the project
+      const anyPredictionExists = weeks.some(item => (item as any).predictionCumulative != null);
+
+      // Value of actual progress at the current timeline anchor
+      const anchorWeek = currentWeekIdx >= 0 && currentWeekIdx < weeks.length ? weeks[currentWeekIdx] : null;
+      const anchorActualVal = anchorWeek && anchorWeek.actualCumulative > 0 ? anchorWeek.actualCumulative : realisasiValue;
+      const anchorRawPred = anchorWeek ? ((anchorWeek as any).predictionCumulative ?? null) : null;
+
       return targetWeeks.map((w) => {
         const globalIdx = weeks.findIndex(item => item.week === w.week);
+        const isCurrentTimeline = globalIdx === currentWeekIdx;
         const hasActual = globalIdx <= currentWeekIdx && w.actualCumulative > 0;
 
         // Presentation Layer Ready: Only read real prediction if supplied by backend contract
         const rawPred = (w as any).predictionCumulative ?? (w as any).prediction ?? (w as any).predictedCumulative ?? null;
-        const predVal: number | null = rawPred != null && !isNaN(Number(rawPred)) ? Number(Number(rawPred).toFixed(2)) : null;
+        let predVal: number | null = null;
+
+        if (anyPredictionExists) {
+          if (globalIdx < currentWeekIdx) {
+            // Past elapsed weeks: prediction is null (covered by Actual Progress)
+            predVal = null;
+          } else if (globalIdx === currentWeekIdx) {
+            // Anchor point at Current Timeline: connects seamlessly and exactly to Actual Progress!
+            predVal = anchorActualVal;
+          } else {
+            // Future forecast weeks:
+            if (rawPred != null && !isNaN(Number(rawPred))) {
+              const numRaw = Number(rawPred);
+              if (anchorRawPred != null && !isNaN(Number(anchorRawPred))) {
+                // Seamless delta projection from current actual accomplishment
+                const deltaFromAnchor = Math.max(0, numRaw - Number(anchorRawPred));
+                predVal = Math.min(100, Number((anchorActualVal + deltaFromAnchor).toFixed(2)));
+                if (numRaw >= 100) predVal = 100;
+              } else {
+                predVal = Number(numRaw.toFixed(2));
+              }
+            } else {
+              predVal = null;
+            }
+          }
+        }
 
         const weekEvidences = allEvidences.filter(ev => {
           if (!ev.date) return false;
@@ -413,7 +455,7 @@ export default function SCurvePage() {
           name: `W${w.week}`,
           subLabel: `${formatDateDisplay(w.startDate)} - ${formatDateDisplay(w.endDate)}`,
           'Plan. Cumulative': w.plannedCumulative,
-          'Act. Cumulative': hasActual ? w.actualCumulative : null,
+          'Act. Cumulative': hasActual ? w.actualCumulative : (isCurrentTimeline && anchorActualVal > 0 ? anchorActualVal : null),
           Prediction: predVal,
           'Planned (Weekly)': w.planned,
           'Actual (Weekly)': globalIdx <= currentWeekIdx && w.actual > 0 ? w.actual : null,
@@ -578,7 +620,15 @@ export default function SCurvePage() {
 
         // Real prediction from backend if provided
         const rawYrPred = (lastWeekInYr as any).predictionCumulative ?? (lastWeekInYr as any).prediction ?? null;
-        const predCum: number | null = rawYrPred != null && !isNaN(Number(rawYrPred)) ? Number(Number(rawYrPred).toFixed(2)) : null;
+        const currentYear = new Date().getFullYear();
+        let predCum: number | null = null;
+        if (yr < currentYear) {
+          predCum = null;
+        } else if (yr === currentYear) {
+          predCum = hasActual ? lastWeekInYr.actualCumulative : realisasiValue;
+        } else {
+          predCum = rawYrPred != null && !isNaN(Number(rawYrPred)) ? Number(Number(rawYrPred).toFixed(2)) : null;
+        }
 
         const yrEvidences = allEvidences.filter(ev => ev.date.startsWith(String(yr)));
 
@@ -1282,20 +1332,22 @@ export default function SCurvePage() {
                                     className="group inline-flex items-center gap-2 p-1.5 pr-2.5 rounded-lg border border-neutral-200/90 bg-white hover:border-brand/40 hover:bg-brand-light/30 transition-all text-left max-w-[260px] shadow-2xs cursor-pointer"
                                     title={`Click to preview: ${ev.name} (${ev.division})`}
                                   >
-                                    {ev.isPhoto ? (
-                                      ev.previewUrl ? (
-                                        <img
-                                          src={ev.previewUrl}
-                                          alt={ev.name}
-                                          className="w-7 h-7 rounded-md object-cover border border-neutral-200 flex-shrink-0"
-                                        />
-                                      ) : (
-                                        <div className="w-7 h-7 rounded-md bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center flex-shrink-0">
-                                          <Camera size={13} />
-                                        </div>
-                                      )
-                                    ) : (
+                                    {ev.isPhoto && ev.previewUrl ? (
+                                      <img
+                                        src={ev.previewUrl}
+                                        alt={ev.name}
+                                        className="w-7 h-7 rounded-md object-cover border border-neutral-200 flex-shrink-0"
+                                      />
+                                    ) : ev.isPdf ? (
                                       <div className="w-7 h-7 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0">
+                                        <FileText size={13} />
+                                      </div>
+                                    ) : ev.isPhoto ? (
+                                      <div className="w-7 h-7 rounded-md bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center flex-shrink-0">
+                                        <Camera size={13} />
+                                      </div>
+                                    ) : (
+                                      <div className="w-7 h-7 rounded-md bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center flex-shrink-0">
                                         <FileText size={13} />
                                       </div>
                                     )}
@@ -1370,14 +1422,27 @@ function SCurveEvidenceModal({
 }) {
   const [selectedItem, setSelectedItem] = useState<ExtractedEvidence>(data.items[0]);
 
+  // Support ESC key to close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const isPdf = selectedItem.isPdf || selectedItem.name?.toLowerCase().endsWith('.pdf') || selectedItem.type === 'application/pdf';
+  const isImage = selectedItem.isPhoto || (!isPdf && (/\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(selectedItem.name || '') || selectedItem.type?.startsWith('image/')));
+  const displayUrl = selectedItem.previewUrl || selectedItem.url;
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-neutral-200 animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-neutral-200 animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+        <div className="p-4 sm:p-5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/70">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-brand bg-brand/10 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-bold uppercase tracking-wider text-brand bg-brand/10 px-2.5 py-0.5 rounded-full">
                 {data.period}
               </span>
               <h3 className="text-base sm:text-lg font-bold text-neutral-900">
@@ -1392,49 +1457,98 @@ function SCurveEvidenceModal({
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors cursor-pointer"
+            title="Close (Esc)"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-4">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           {/* Main preview of selected item */}
           {selectedItem && (
-            <div className="bg-neutral-50 rounded-xl border border-neutral-200 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] font-bold text-brand uppercase tracking-wider">
-                    {selectedItem.division}
-                  </span>
-                  <h4 className="text-[14px] font-bold text-neutral-800">
+            <div className="bg-neutral-50/70 rounded-xl border border-neutral-200 p-4 space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10.5px] font-bold text-brand uppercase tracking-wider bg-brand/10 px-2 py-0.5 rounded">
+                      {selectedItem.division}
+                    </span>
+                    <span className="text-xs text-neutral-400">·</span>
+                    <span className="text-xs text-neutral-500 truncate">
+                      Task: {selectedItem.taskName}
+                    </span>
+                  </div>
+                  <h4 className="text-[15px] font-bold text-neutral-900 mt-1 truncate" title={selectedItem.name}>
                     {selectedItem.name}
                   </h4>
-                  <p className="text-[12px] text-neutral-500">
-                    Task: {selectedItem.taskName} · {selectedItem.size}
+                  <p className="text-[11.5px] text-neutral-400 mt-0.5">
+                    {selectedItem.size} {selectedItem.date ? `· ${formatDateDisplay(selectedItem.date)}` : ''}
                   </p>
                 </div>
+
+                {displayUrl && (
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <a
+                      href={displayUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-neutral-200 text-neutral-700 hover:text-brand hover:border-brand shadow-2xs transition-colors"
+                    >
+                      <ExternalLink size={13} />
+                      <span>{isPdf ? 'Open PDF in New Tab' : 'Open in New Tab'}</span>
+                    </a>
+                    <a
+                      href={displayUrl}
+                      download={selectedItem.name}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-dark shadow-2xs transition-colors"
+                    >
+                      <Download size={13} />
+                      <span>Download</span>
+                    </a>
+                  </div>
+                )}
               </div>
 
-              {selectedItem.isPhoto && selectedItem.previewUrl ? (
-                <div className="rounded-lg overflow-hidden border border-neutral-200 bg-neutral-900/5 flex items-center justify-center max-h-72">
-                  <img
-                    src={selectedItem.previewUrl}
-                    alt={selectedItem.name}
-                    className="max-h-72 w-full object-contain"
+              {/* Preview Container */}
+              {isPdf && displayUrl ? (
+                <div className="rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900/5 h-[58vh] sm:h-[62vh] w-full relative">
+                  <iframe
+                    src={displayUrl}
+                    className="w-full h-full bg-white border-0"
+                    title={selectedItem.name}
                   />
                 </div>
-              ) : selectedItem.isPhoto ? (
-                <div className="py-12 flex flex-col items-center justify-center text-center bg-white rounded-lg border border-dashed border-neutral-300 text-neutral-400">
-                  <Camera size={36} className="mb-2 text-neutral-300" />
-                  <span className="text-xs font-semibold text-neutral-600">Photo Evidence Attached</span>
-                  <span className="text-[11px] text-neutral-400">{selectedItem.name}</span>
+              ) : isImage && displayUrl ? (
+                <div className="rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900/90 flex items-center justify-center max-h-[58vh] sm:max-h-[62vh] w-full p-2">
+                  <img
+                    src={displayUrl}
+                    alt={selectedItem.name}
+                    className="max-h-[56vh] sm:max-h-[60vh] max-w-full object-contain rounded-lg"
+                  />
+                </div>
+              ) : isImage ? (
+                <div className="py-16 flex flex-col items-center justify-center text-center bg-white rounded-xl border border-dashed border-neutral-300 text-neutral-400">
+                  <Camera size={42} className="mb-2 text-sky-500/70" />
+                  <span className="text-sm font-semibold text-neutral-700">Photo Evidence Attached</span>
+                  <span className="text-xs text-neutral-400 mt-1">{selectedItem.name}</span>
                 </div>
               ) : (
-                <div className="py-10 flex flex-col items-center justify-center text-center bg-white rounded-lg border border-dashed border-neutral-300 text-neutral-500 space-y-2">
-                  <FileText size={40} className="text-brand" />
-                  <span className="text-sm font-bold text-neutral-800">{selectedItem.name}</span>
-                  <span className="text-xs text-neutral-400">Document / Inspection Report ({selectedItem.size})</span>
+                <div className="py-14 flex flex-col items-center justify-center text-center bg-white rounded-xl border border-dashed border-neutral-300 text-neutral-500 space-y-2.5">
+                  <FileText size={44} className="text-brand" />
+                  <div className="font-bold text-neutral-800 text-[14px]">{selectedItem.name}</div>
+                  <div className="text-xs text-neutral-400">Document / Inspection Report ({selectedItem.size})</div>
+                  {displayUrl && (
+                    <a
+                      href={displayUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-dark shadow-2xs transition-colors mt-2"
+                    >
+                      <Download size={13} />
+                      <span>Download Document</span>
+                    </a>
+                  )}
                 </div>
               )}
             </div>
@@ -1442,56 +1556,64 @@ function SCurveEvidenceModal({
 
           {/* List of items if multiple */}
           {data.items.length > 1 && (
-            <div className="space-y-2">
+            <div className="space-y-2 pt-2 border-t border-neutral-100">
               <div className="text-xs font-bold text-neutral-600 uppercase tracking-wider">
-                All Attached Files ({data.items.length})
+                All Attached Files in this Period ({data.items.length})
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {data.items.map((it) => (
-                  <button
-                    key={it.id}
-                    type="button"
-                    onClick={() => setSelectedItem(it)}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
-                      selectedItem?.id === it.id
-                        ? 'border-brand bg-brand-light/30 ring-1 ring-brand'
-                        : 'border-neutral-200 bg-white hover:bg-neutral-50'
-                    }`}
-                  >
-                    {it.isPhoto ? (
-                      it.previewUrl ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {data.items.map((it) => {
+                  const itPdf = it.isPdf || it.name?.toLowerCase().endsWith('.pdf') || it.type === 'application/pdf';
+                  const itImg = it.isPhoto || (!itPdf && (/\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(it.name || '') || it.type?.startsWith('image/')));
+                  const itUrl = it.previewUrl || it.url;
+
+                  return (
+                    <button
+                      key={it.id}
+                      type="button"
+                      onClick={() => setSelectedItem(it)}
+                      className={`flex items-center gap-2.5 p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                        selectedItem?.id === it.id
+                          ? 'border-brand bg-brand-light/30 ring-1 ring-brand'
+                          : 'border-neutral-200 bg-white hover:bg-neutral-50'
+                      }`}
+                    >
+                      {itImg && itUrl ? (
                         <img
-                          src={it.previewUrl}
+                          src={itUrl}
                           alt={it.name}
                           className="w-9 h-9 rounded-md object-cover border border-neutral-200 flex-shrink-0"
                         />
-                      ) : (
+                      ) : itPdf ? (
+                        <div className="w-9 h-9 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0">
+                          <FileText size={16} />
+                        </div>
+                      ) : itImg ? (
                         <div className="w-9 h-9 rounded-md bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center flex-shrink-0">
                           <Camera size={16} />
                         </div>
-                      )
-                    ) : (
-                      <div className="w-9 h-9 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0">
-                        <FileText size={16} />
+                      ) : (
+                        <div className="w-9 h-9 rounded-md bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center flex-shrink-0">
+                          <FileText size={16} />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] font-bold uppercase text-neutral-400 truncate">
+                          {it.division}
+                        </div>
+                        <div className="text-[12px] font-semibold text-neutral-800 truncate" title={it.name}>
+                          {it.name}
+                        </div>
                       </div>
-                    )}
-                    <div className="min-w-0">
-                      <div className="text-[10px] font-bold uppercase text-neutral-400">
-                        {it.division}
-                      </div>
-                      <div className="text-[12px] font-semibold text-neutral-800 truncate">
-                        {it.name}
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-neutral-100 flex items-center justify-end bg-neutral-50/50">
+        <div className="p-3.5 sm:p-4 border-t border-neutral-100 flex items-center justify-end bg-neutral-50/70">
           <Button variant="outline" size="sm" onClick={onClose} className="bg-white">
             Close
           </Button>

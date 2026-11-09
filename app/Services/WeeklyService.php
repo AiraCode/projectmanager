@@ -129,6 +129,26 @@ class WeeklyService
         $currentDate = Carbon::now()->startOfDay();
         $totalWeeks = count($weeks);
 
+        // Identify current week index based on today's date
+        $currentWeekIdx = 0;
+        foreach ($weeks as $idx => $w) {
+            $wStart = $w['startDate']->copy()->startOfDay();
+            $wEnd   = $w['endDate']->copy()->endOfDay();
+            if ($currentDate->betweenIncluded($wStart, $wEnd)) {
+                $currentWeekIdx = $idx;
+                break;
+            } elseif ($currentDate->gt($wEnd)) {
+                $currentWeekIdx = $idx;
+            }
+        }
+        $currentWeekIdx = max(0, min($currentWeekIdx, $totalWeeks - 1));
+
+        $savedProgressMap = ($project->relationLoaded('weeklyProgress') || $project->weeklyProgress)
+            ? $project->weeklyProgress->pluck('actual_progress', 'week_number')->toArray()
+            : [];
+        $hasSavedActuals = !empty($savedProgressMap);
+        $overallActual = (float) ($project->progress ?? 0);
+
         foreach ($weeks as $idx => $w) {
             $weekPlannedRaw = 0;
 
@@ -152,14 +172,21 @@ class WeeklyService
             }
             $prevPlannedCum = $plannedCumulative;
 
-            // Actual progress curve (Linear interpolation up to current project progress)
-            $actualValue = 0;
-            if ($w['endDate']->lt($currentDate) || $w['startDate']->lte($currentDate)) {
-                $actualValue = $weekPlanned * (($project->progress ?? 0) / 100);
+            // Actual progress curve (Interpolate up to current project progress at current week, matching weeklyEngine)
+            $isElapsed = ($idx <= $currentWeekIdx);
+            $actualValue = 0.0;
+
+            if ($hasSavedActuals) {
+                $actualValue = isset($savedProgressMap[$w['week']]) ? (float) $savedProgressMap[$w['week']] : 0.0;
+                $actualCumulative += $actualValue;
+                $actualCumulative = min(100.0, round($actualCumulative, 2));
+            } elseif ($isElapsed && $overallActual > 0) {
+                $targetCumulative = round(min($overallActual, (($idx + 1) / ($currentWeekIdx + 1)) * $overallActual), 2);
+                $actualValue = round(max(0.0, $targetCumulative - $actualCumulative), 2);
+                $actualCumulative = $targetCumulative;
+            } else {
+                $actualValue = 0.0;
             }
-            
-            $actualCumulative += round($actualValue, 2);
-            $actualCumulative = min(round($actualCumulative, 2), (float) ($project->progress ?? 0));
 
             $weeklyData[] = [
                 'week' => $w['week'],
