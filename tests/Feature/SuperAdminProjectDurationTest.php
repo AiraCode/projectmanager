@@ -76,7 +76,7 @@ class SuperAdminProjectDurationTest extends TestCase
 
         // Verify AuditLog entry was recorded
         $log = AuditLog::where('action', 'UPDATE_PROJECT_DATES')
-            ->where('metadata->project_id', $this->testProject->id)
+            ->where('metadata', 'like', '%"project_id":' . $this->testProject->id . '%')
             ->latest()
             ->first();
 
@@ -190,5 +190,31 @@ class SuperAdminProjectDurationTest extends TestCase
         $this->assertNotNull($subWbs);
         $this->assertSame('2027-05-31', $subWbs->end->toDateString());
         $this->assertSame('2027-05-31', $mainWbs->fresh()->end->toDateString());
+    }
+
+    /**
+     * Test 6 — SuperAdmin can search and filter audit logs without database query errors.
+     */
+    public function test_superadmin_can_search_and_filter_audit_logs(): void
+    {
+        AuditLog::record(
+            'TEST_AUDIT_ACTION',
+            'Sample audit log description for searching',
+            $this->superadmin->id,
+            '127.0.0.1',
+            ['actor' => 'Provis Support System', 'extra' => 'info']
+        );
+
+        // 1. Search with keyword matching description/actor/metadata
+        $searchResponse = $this->actingAs($this->superadmin)->get('/admin/audit-log?search=Support');
+        $searchResponse->assertOk();
+
+        // 2. Filter by actor string
+        $actorResponse = $this->actingAs($this->superadmin)->get('/admin/audit-log?actor=Provis+Support+System');
+        $actorResponse->assertOk();
+
+        // 3. Filter by System actor
+        $systemResponse = $this->actingAs($this->superadmin)->get('/admin/audit-log?actor=System');
+        $systemResponse->assertOk();
     }
 }

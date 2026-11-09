@@ -70,10 +70,25 @@ class SuperAdminController extends Controller
         if ($request->filled('actor')) {
             $actor = $request->actor;
             $query->where(function ($q) use ($actor) {
-                $q->where('metadata->actor', $actor)
-                  ->orWhereHas('user', function ($uq) use ($actor) {
-                      $uq->where('username', $actor);
-                  });
+                if ($actor === 'System') {
+                    $q->where(function ($sq) {
+                        $sq->whereNull('user_id')
+                           ->where(function ($sub) {
+                               $sub->whereNull('metadata')
+                                   ->orWhere('metadata', 'not like', '%"actor"%');
+                           });
+                    })
+                    ->orWhere('metadata', 'like', '%"actor":"System"%')
+                    ->orWhere('metadata', 'like', '%"actor": "System"%');
+                } else {
+                    $q->where(function ($sq) use ($actor) {
+                        $sq->where('metadata', 'like', '%"actor":"' . $actor . '"%')
+                           ->orWhere('metadata', 'like', '%"actor": "' . $actor . '"%');
+                    })
+                    ->orWhereHas('user', function ($uq) use ($actor) {
+                        $uq->where('username', $actor);
+                    });
+                }
             });
         }
 
@@ -91,7 +106,7 @@ class SuperAdminController extends Controller
                 $q->where('description', 'like', "%{$search}%")
                   ->orWhere('ip_address', 'like', "%{$search}%")
                   ->orWhere('action', 'like', "%{$search}%")
-                  ->orWhere('metadata->actor', 'like', "%{$search}%")
+                  ->orWhere('metadata', 'like', "%{$search}%")
                   ->orWhereHas('user', function ($uq) use ($search) {
                       $uq->where('username', 'like', "%{$search}%")
                          ->orWhere('email', 'like', "%{$search}%");
