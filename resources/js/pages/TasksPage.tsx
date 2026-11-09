@@ -1569,52 +1569,138 @@ export default function TasksPage() {
         setUncheckConfirm(null);
     };
 
-    const filteredMJs = projectData.mainJobs
-        .map((mj) => {
-            if (!isWorker) return mj;
-            const workerDiv = (user?.division ?? pageProps?.division ?? "")
-                .trim()
-                .toLowerCase();
+    const getTaskEffectiveStatus = (st: SubSubtask): Status => {
+        if (
+            st.checked ||
+            (st.progress !== undefined && Number(st.progress) >= 100) ||
+            st.status === "Completed"
+        ) {
+            return "Completed";
+        }
+        return (st.status as Status) || "Open";
+    };
 
-            // Filter SMJs and STs to only show worker's own tasks
-            const filteredSmjs = mj.subMainJobs
-                .map((smj) => {
-                    const filteredSts = smj.subtasks.filter((st) => {
-                        const targetDiv = (st.division || smj.pic || "")
-                            .trim()
-                            .toLowerCase();
-                        return workerDiv !== "" && workerDiv === targetDiv;
-                    });
-                    return { ...smj, subtasks: filteredSts };
-                })
-                .filter((smj) => smj.subtasks.length > 0);
+    const getSmjEffectiveStatus = (smj: SubMainJob): Status => {
+        if (
+            (smj.progress !== undefined && Number(smj.progress) >= 100) ||
+            smj.status === "Completed"
+        ) {
+            return "Completed";
+        }
+        return (smj.status as Status) || "Open";
+    };
 
-            return { ...mj, subMainJobs: filteredSmjs };
-        })
-        .filter((mj) => {
-            if (isWorker && mj.subMainJobs.length === 0) return false;
-            if (
-                search &&
-                !mj.name.toLowerCase().includes(search.toLowerCase()) &&
-                !mj.subMainJobs.some(
-                    (smj) =>
-                        smj.name.toLowerCase().includes(search.toLowerCase()) ||
-                        smj.subtasks.some((st) =>
-                            st.name
-                                .toLowerCase()
-                                .includes(search.toLowerCase()),
-                        ),
-                )
-            )
-                return false;
-            if (
-                filterStatus &&
-                mj.status !== filterStatus &&
-                !mj.subMainJobs.some((smj) => smj.status === filterStatus)
-            )
-                return false;
-            return true;
-        });
+    const getMjEffectiveStatus = (mj: MainJob): Status => {
+        if (
+            (mj.progress !== undefined && Number(mj.progress) >= 100) ||
+            mj.status === "Completed"
+        ) {
+            return "Completed";
+        }
+        return (mj.status as Status) || "Open";
+    };
+
+    const filteredMJs = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        const workerDiv = (user?.division ?? pageProps?.division ?? "")
+            .trim()
+            .toLowerCase();
+
+        return (projectData?.mainJobs || [])
+            .map((mj) => {
+                const mjMatchesSearch = query !== "" && (
+                    mj.name.toLowerCase().includes(query) ||
+                    Boolean(mj.code && mj.code.toLowerCase().includes(query))
+                );
+
+                const filteredSmjs = (mj.subMainJobs || [])
+                    .map((smj) => {
+                        const smjMatchesSearch = query !== "" && (
+                            smj.name.toLowerCase().includes(query) ||
+                            Boolean(smj.code && smj.code.toLowerCase().includes(query))
+                        );
+
+                        const filteredSts = (smj.subtasks || []).filter((st) => {
+                            // 1. Worker division check
+                            if (isWorker) {
+                                const targetDiv = (st.division || smj.pic || "")
+                                    .trim()
+                                    .toLowerCase();
+                                if (workerDiv === "" || workerDiv !== targetDiv) {
+                                    return false;
+                                }
+                            }
+
+                            // 2. Status filter check
+                            if (filterStatus) {
+                                const stStatus = getTaskEffectiveStatus(st);
+                                if (stStatus !== filterStatus) {
+                                    return false;
+                                }
+                            }
+
+                            // 3. Search query check
+                            if (query) {
+                                const stMatchesSearch =
+                                    st.name.toLowerCase().includes(query) ||
+                                    Boolean(st.code && st.code.toLowerCase().includes(query));
+                                if (!stMatchesSearch && !smjMatchesSearch && !mjMatchesSearch) {
+                                    return false;
+                                }
+                            }
+
+                            return true;
+                        });
+
+                        // If SMJ originally had subtasks, only keep it if matching subtasks exist
+                        if ((smj.subtasks || []).length > 0) {
+                            if (filteredSts.length === 0) {
+                                return null;
+                            }
+                            return { ...smj, subtasks: filteredSts };
+                        }
+
+                        // If SMJ is a leaf item (no subtasks):
+                        if (isWorker) {
+                            const targetDiv = (smj.pic || "").trim().toLowerCase();
+                            if (workerDiv === "" || workerDiv !== targetDiv) {
+                                return null;
+                            }
+                        }
+                        if (filterStatus && getSmjEffectiveStatus(smj) !== filterStatus) {
+                            return null;
+                        }
+                        if (query && !smjMatchesSearch && !mjMatchesSearch) {
+                            return null;
+                        }
+
+                        return { ...smj, subtasks: [] };
+                    })
+                    .filter((smj): smj is SubMainJob => smj !== null);
+
+                // If MJ originally had subMainJobs, only keep it if matching subMainJobs exist
+                if ((mj.subMainJobs || []).length > 0) {
+                    if (filteredSmjs.length === 0) {
+                        return null;
+                    }
+                    return { ...mj, subMainJobs: filteredSmjs };
+                }
+
+                // If MJ is a leaf item (no subMainJobs):
+                if (isWorker) {
+                    return null;
+                }
+                if (filterStatus && getMjEffectiveStatus(mj) !== filterStatus) {
+                    return null;
+                }
+                if (query && !mjMatchesSearch) {
+                    return null;
+                }
+
+                return { ...mj, subMainJobs: [] };
+            })
+            .filter((mj): mj is MainJob => mj !== null);
+    }, [projectData?.mainJobs, isWorker, user?.division, pageProps?.division, filterStatus, search]);
 
     const hasFilter = Boolean(search.trim() || filterStatus);
     const hasProjectTasks = (projectData?.mainJobs || []).length > 0;
@@ -1911,7 +1997,7 @@ export default function TasksPage() {
                                             </div>
                                         )}
                                         <div className="text-neutral-400 flex-shrink-0 mt-1">
-                                            {expandedMJ[mj.id] ? (
+                                            {(hasFilter || expandedMJ[mj.id]) ? (
                                                 <ChevronDown size={16} />
                                             ) : (
                                                 <ChevronRight size={16} />
@@ -2021,14 +2107,14 @@ export default function TasksPage() {
                                 </div>
 
                                 {/* Level 2: Sub Tasks (Sub Main Jobs) */}
-                                {expandedMJ[mj.id] && (
+                                {(hasFilter || expandedMJ[mj.id]) && (
                                     <div className="border-t border-neutral-100 divide-y divide-neutral-100 bg-neutral-50/30">
                                         {mj.subMainJobs.map((smj) => (
                                             <SubMainJobSection
                                                 key={smj.id}
                                                 mainJobs={projectData.mainJobs}
                                                 smj={smj}
-                                                expanded={!!expandedSMJ[smj.id]}
+                                                expanded={hasFilter ? true : !!expandedSMJ[smj.id]}
                                                 onToggle={() => toggleSMJ(smj.id)}
                                                 isAuthorizedToCheck={
                                                     isAuthorizedToCheck
@@ -2260,7 +2346,7 @@ export default function TasksPage() {
                                             </td>
                                             <td className="px-4 py-3">
                                                 <StatusBadge
-                                                    status={mj.status}
+                                                    status={getMjEffectiveStatus(mj)}
                                                     size="sm"
                                                 />
                                             </td>
@@ -2310,7 +2396,7 @@ export default function TasksPage() {
                                                     </td>
                                                     <td className="px-4 py-2.5">
                                                         <StatusBadge
-                                                            status={smj.status}
+                                                            status={getSmjEffectiveStatus(smj)}
                                                             size="xs"
                                                         />
                                                     </td>
