@@ -57,11 +57,13 @@ class WeeklyService
                     $stStart = $st->start ? Carbon::parse($st->start)->startOfDay() : null;
                     $stEnd   = $st->end ? Carbon::parse($st->end)->startOfDay() : null;
                     if ($stStart && $stEnd) {
+                        $p = $st->progress > 0 ? (float)$st->progress : ($st->is_completed ? 100.0 : 0.0);
                         $taskItems[] = [
-                            'name'   => $st->name,
-                            'weight' => (float) ($st->weight ?? 0),
-                            'start'  => $stStart,
-                            'end'    => $stEnd,
+                            'name'     => $st->name,
+                            'weight'   => (float) ($st->weight ?? 0),
+                            'start'    => $stStart,
+                            'end'      => $stEnd,
+                            'progress' => $p,
                         ];
                     }
                 }
@@ -72,18 +74,21 @@ class WeeklyService
                     $norm = $rawTaskSum > 0 ? ($smjWeight / $rawTaskSum) : ($smjWeight / count($taskItems));
                     foreach ($taskItems as $t) {
                         $subItems[] = [
-                            'name'   => $t['name'],
-                            'weight' => $rawTaskSum > 0 ? ($t['weight'] * $norm) : $norm,
-                            'start'  => $t['start'],
-                            'end'    => $t['end'],
+                            'name'     => $t['name'],
+                            'weight'   => $rawTaskSum > 0 ? ($t['weight'] * $norm) : $norm,
+                            'start'    => $t['start'],
+                            'end'      => $t['end'],
+                            'progress' => $t['progress'],
                         ];
                     }
                 } elseif ($smjStart && $smjEnd) {
+                    $p = $smj->progress > 0 ? (float)$smj->progress : ($smj->status === 'Completed' ? 100.0 : 0.0);
                     $subItems[] = [
-                        'name'   => $smj->name,
-                        'weight' => (float) ($smj->weight ?: ($mjWeight / max(count($mj->subWbs), 1))),
-                        'start'  => $smjStart,
-                        'end'    => $smjEnd,
+                        'name'     => $smj->name,
+                        'weight'   => (float) ($smj->weight ?: ($mjWeight / max(count($mj->subWbs), 1))),
+                        'start'    => $smjStart,
+                        'end'      => $smjEnd,
+                        'progress' => $p,
                     ];
                 }
             }
@@ -93,18 +98,21 @@ class WeeklyService
                 $norm = $rawSubSum > 0 ? ($mjWeight / $rawSubSum) : ($mjWeight / count($subItems));
                 foreach ($subItems as $s) {
                     $schedulableItems[] = [
-                        'name'   => $s['name'],
-                        'weight' => $rawSubSum > 0 ? ($s['weight'] * $norm) : $norm,
-                        'start'  => $s['start'],
-                        'end'    => $s['end'],
+                        'name'     => $s['name'],
+                        'weight'   => $rawSubSum > 0 ? ($s['weight'] * $norm) : $norm,
+                        'start'    => $s['start'],
+                        'end'      => $s['end'],
+                        'progress' => $s['progress'],
                     ];
                 }
             } elseif ($mjStart && $mjEnd) {
+                $p = $mj->progress > 0 ? (float)$mj->progress : ($mj->status === 'Completed' ? 100.0 : 0.0);
                 $schedulableItems[] = [
-                    'name'   => $mj->name,
-                    'weight' => $mjWeight,
-                    'start'  => $mjStart,
-                    'end'    => $mjEnd,
+                    'name'     => $mj->name,
+                    'weight'   => $mjWeight,
+                    'start'    => $mjStart,
+                    'end'      => $mjEnd,
+                    'progress' => $p,
                 ];
             }
         }
@@ -113,15 +121,41 @@ class WeeklyService
         $totalRawWeight = array_sum(array_column($schedulableItems, 'weight'));
         $targetTotal = $totalRawWeight > 0 ? min(100.0, round($totalRawWeight, 2)) : 0;
         $globalNorm = $totalRawWeight > 0 ? (100.0 / $totalRawWeight) : 1.0;
+        $today = Carbon::now()->startOfDay();
 
         foreach ($schedulableItems as &$item) {
             $item['weight'] = $item['weight'] * $globalNorm;
             $durationDays = max(1, $item['start']->diffInDays($item['end']) + 1);
             $item['dailyRate'] = $item['weight'] / $durationDays; // Bobot dibagi hari
+
+            $prog = isset($item['progress']) ? max(0.0, min(100.0, (float) $item['progress'])) : 0.0;
+            $item['actualEarned'] = ($prog / 100.0) * $item['weight'];
+
+            // Actual progress window bounded up to today
+            if ($item['actualEarned'] > 0) {
+                if ($item['end']->lte($today)) {
+                    $aStart = $item['start']->copy();
+                    $aEnd = $item['end']->copy();
+                } elseif ($item['start']->lte($today)) {
+                    $aStart = $item['start']->copy();
+                    $aEnd = $today->copy();
+                } else {
+                    $aStart = $today->copy();
+                    $aEnd = $today->copy();
+                }
+                $aDur = max(1, $aStart->diffInDays($aEnd) + 1);
+                $item['dailyActualRate'] = $item['actualEarned'] / $aDur;
+                $item['actStart'] = $aStart;
+                $item['actEnd'] = $aEnd;
+            } else {
+                $item['dailyActualRate'] = 0.0;
+                $item['actStart'] = null;
+                $item['actEnd'] = null;
+            }
         }
         unset($item);
 
-        // 3. Distribute Planned Progress across weeks (Pure Daily Division + Telescoping Delta)
+        // 3. Distribute Planned and Actual Progress across weeks
         $weeklyData = [];
         $rawCumulative = 0;
         $prevPlannedCum = 0;
@@ -147,7 +181,6 @@ class WeeklyService
             ? $project->weeklyProgress->pluck('actual_progress', 'week_number')->toArray()
             : [];
         $hasSavedActuals = !empty($savedProgressMap);
-        $overallActual = (float) ($project->progress ?? 0);
 
         foreach ($weeks as $idx => $w) {
             $weekPlannedRaw = 0;
@@ -172,7 +205,7 @@ class WeeklyService
             }
             $prevPlannedCum = $plannedCumulative;
 
-            // Actual progress curve (Interpolate up to current project progress at current week, matching weeklyEngine)
+            // Actual progress curve (derived from completed leaf sub-sub tasks)
             $isElapsed = ($idx <= $currentWeekIdx);
             $actualValue = 0.0;
 
@@ -180,10 +213,27 @@ class WeeklyService
                 $actualValue = isset($savedProgressMap[$w['week']]) ? (float) $savedProgressMap[$w['week']] : 0.0;
                 $actualCumulative += $actualValue;
                 $actualCumulative = min(100.0, round($actualCumulative, 2));
-            } elseif ($isElapsed && $overallActual > 0) {
-                $targetCumulative = round(min($overallActual, (($idx + 1) / ($currentWeekIdx + 1)) * $overallActual), 2);
-                $actualValue = round(max(0.0, $targetCumulative - $actualCumulative), 2);
-                $actualCumulative = $targetCumulative;
+            } elseif ($isElapsed) {
+                $wStart = $w['startDate']->copy()->startOfDay();
+                $wEnd   = $w['endDate']->copy()->endOfDay();
+                $effectiveEnd = $today->copy()->endOfDay();
+                if ($wEnd->lt($effectiveEnd)) {
+                    $effectiveEnd = $wEnd;
+                }
+
+                $weekActualRaw = 0.0;
+                foreach ($schedulableItems as $item) {
+                    if ($item['dailyActualRate'] > 0 && $item['actStart'] && $item['actEnd']) {
+                        if ($item['actStart']->lte($effectiveEnd) && $item['actEnd']->gte($wStart)) {
+                            $overlapStart = $item['actStart']->greaterThan($wStart) ? $item['actStart'] : $wStart;
+                            $overlapEnd   = $item['actEnd']->lessThan($effectiveEnd) ? $item['actEnd'] : $effectiveEnd;
+                            $overlapDays  = max(0, $overlapStart->diffInDays($overlapEnd) + 1);
+                            $weekActualRaw += ($item['dailyActualRate'] * $overlapDays);
+                        }
+                    }
+                }
+                $actualCumulative += $weekActualRaw;
+                $actualValue = $weekActualRaw;
             } else {
                 $actualValue = 0.0;
             }
@@ -195,7 +245,7 @@ class WeeklyService
                 'planned' => $weekPlanned,
                 'actual' => round($actualValue, 2),
                 'plannedCumulative' => $plannedCumulative,
-                'actualCumulative' => $actualCumulative,
+                'actualCumulative' => round(min(100.0, $actualCumulative), 2),
             ];
         }
 

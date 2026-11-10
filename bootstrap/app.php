@@ -34,4 +34,47 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        $exceptions->respond(function (\Symfony\Component\HttpFoundation\Response $response, \Throwable $exception, Request $request) {
+            if ($response->getStatusCode() === 403) {
+                if ($request->header('X-Inertia')) {
+                    $user = auth()->user();
+                    $fallbackUrl = '/';
+                    if ($user) {
+                        if ($user->role?->name === 'SuperAdmin') {
+                            $fallbackUrl = '/admin';
+                        } elseif (is_array($user->permission_matrix) && !empty($user->permission_matrix['sidebar'])) {
+                            $firstAllowed = $user->permission_matrix['sidebar'][0];
+                            $map = [
+                                'Dashboard' => '/dashboard',
+                                'Project List' => '/projectlistpage',
+                                'Project Detail' => '/projectdetailpage',
+                                'Tasks' => '/tasks',
+                                'Timeline' => '/timeline',
+                                'Weekly Progress' => '/weekly',
+                                'S-Curve Report' => '/scurve',
+                                'Budget Management' => '/budget',
+                                'Division Progress' => '/division-progress',
+                                'User Management' => '/users',
+                            ];
+                            $fallbackUrl = $map[$firstAllowed] ?? '/';
+                        }
+                    }
+
+                    $message = $exception->getMessage() ?: 'Access Denied: You do not have permission to access this page.';
+
+                    return \Inertia\Inertia::render('Error403Page', [
+                        'message' => $message,
+                        'user' => $user ? [
+                            'username' => $user->username,
+                            'email' => $user->email,
+                            'role' => $user->role?->name ?? 'User',
+                        ] : null,
+                        'dashboardUrl' => $fallbackUrl,
+                    ])->toResponse($request)->setStatusCode(403);
+                }
+            }
+
+            return $response;
+        });
     })->create();

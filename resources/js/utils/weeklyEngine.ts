@@ -1,17 +1,17 @@
 import { Project, WeekData } from '../data/mockData';
 
-function parseUtcDate(dateStr: string): number {
+export function parseUtcDate(dateStr: string): number {
   if (!dateStr) return NaN;
   const parts = dateStr.slice(0, 10).split('-').map(Number);
   if (parts.length !== 3 || parts.some(isNaN)) return NaN;
   return Date.UTC(parts[0], parts[1] - 1, parts[2]);
 }
 
-function getDaysDiffInclusive(startMs: number, endMs: number): number {
+export function getDaysDiffInclusive(startMs: number, endMs: number): number {
   return Math.round((endMs - startMs) / 86400000) + 1;
 }
 
-function formatUtcDate(ms: number): string {
+export function formatUtcDate(ms: number): string {
   const d = new Date(ms);
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, '0');
@@ -19,18 +19,29 @@ function formatUtcDate(ms: number): string {
   return `${y}-${m}-${day}`;
 }
 
-function addDaysUtc(dateStr: string, days: number): string {
+export function addDaysUtc(dateStr: string, days: number): string {
   const ms = parseUtcDate(dateStr);
   if (isNaN(ms)) return dateStr;
   return formatUtcDate(ms + days * 86400000);
 }
 
-interface SchedulableItem {
+export interface SchedulableItem {
   id: string;
   name: string;
   weight: number;
   startDate: string;
   finishDate: string;
+  progress: number;
+  actualEarned: number;
+}
+
+export interface DailyPoint {
+  date: string;
+  week: number;
+  planned: number;
+  actual: number | null;
+  plannedCumulative: number;
+  actualCumulative: number | null;
 }
 
 export function recalculateWeeklyData(project: Project): Project {
@@ -73,7 +84,6 @@ export function recalculateWeeklyData(project: Project): Project {
   let currentStart = minDateStr;
   let weekNum = 1;
   
-  // Create weeks until we cover maxDateStr
   while (currentStart <= maxDateStr) {
     const currentEnd = addDaysUtc(currentStart, 6); // 7 days inclusive
     weeks.push({
@@ -85,7 +95,7 @@ export function recalculateWeeklyData(project: Project): Project {
     weekNum++;
   }
 
-  // 3. Extract Schedulable Leaf Items with Daily Rate ("Dibagi Hari")
+  // 3. Extract Schedulable Leaf Items with Weight and Real Progress
   const schedulableItems: SchedulableItem[] = [];
 
   newProject.mainJobs?.forEach(mj => {
@@ -101,12 +111,21 @@ export function recalculateWeeklyData(project: Project): Project {
 
       smj.subtasks?.forEach(st => {
         if (st.startDate && st.finishDate) {
+          const stProg = st.progress !== undefined && st.progress !== null
+            ? Number(st.progress)
+            : (st.checked || st.status === 'Completed' ? 100 : 0);
+          const effectiveProg = (st.checked || st.status === 'Completed' || stProg >= 100)
+            ? 100
+            : Math.max(0, Math.min(100, stProg));
+
           taskItems.push({
             id: st.id,
             name: st.name,
             weight: Number(st.weight) || 0,
             startDate: st.startDate,
             finishDate: st.finishDate,
+            progress: effectiveProg,
+            actualEarned: 0,
           });
           hasTaskItems = true;
         }
@@ -125,12 +144,21 @@ export function recalculateWeeklyData(project: Project): Project {
         });
         hasSubItems = true;
       } else if (smj.startDate && smj.finishDate) {
+        const smjProg = smj.progress !== undefined && smj.progress !== null
+          ? Number(smj.progress)
+          : (smj.status === 'Completed' ? 100 : 0);
+        const effectiveProg = (smj.status === 'Completed' || smjProg >= 100)
+          ? 100
+          : Math.max(0, Math.min(100, smjProg));
+
         subItems.push({
           id: smj.id,
           name: smj.name,
           weight: Number(smj.weight) || (mjWeight / Math.max(1, mj.subMainJobs?.length || 1)),
           startDate: smj.startDate,
           finishDate: smj.finishDate,
+          progress: effectiveProg,
+          actualEarned: 0,
         });
         hasSubItems = true;
       }
@@ -146,12 +174,21 @@ export function recalculateWeeklyData(project: Project): Project {
         });
       });
     } else if (mj.startDate && mj.finishDate) {
+      const mjProg = mj.progress !== undefined && mj.progress !== null
+        ? Number(mj.progress)
+        : (mj.status === 'Completed' ? 100 : 0);
+      const effectiveProg = (mj.status === 'Completed' || mjProg >= 100)
+        ? 100
+        : Math.max(0, Math.min(100, mjProg));
+
       schedulableItems.push({
         id: mj.id,
         name: mj.name,
         weight: mjWeight,
         startDate: mj.startDate,
         finishDate: mj.finishDate,
+        progress: effectiveProg,
+        actualEarned: 0,
       });
     }
   });
@@ -162,10 +199,27 @@ export function recalculateWeeklyData(project: Project): Project {
 
   schedulableItems.forEach(item => {
     item.weight = item.weight * globalNorm;
+    item.actualEarned = (item.progress / 100) * item.weight;
   });
+
+  const totalCalculatedActual = schedulableItems.reduce((sum, item) => sum + item.actualEarned, 0);
+
+  // Check if explicit manual weekly actual entries exist in DB
+  const savedActuals = (newProject as any).savedWeeklyActuals || {};
+  const hasSavedActuals = Object.keys(savedActuals).some(
+    k => savedActuals[k] !== undefined && savedActuals[k] !== null && Number(savedActuals[k]) > 0
+  );
+
+  const overallActual = hasSavedActuals
+    ? Number(newProject.overallProgress || 0)
+    : Math.round(totalCalculatedActual * 100) / 100;
+
+  newProject.overallProgress = overallActual;
 
   // Identify current week index based on today's date
   const todayStr = new Date().toISOString().slice(0, 10);
+  const todayMs = parseUtcDate(todayStr);
+
   let currentWeekIdx = weeks.findIndex(w => todayStr >= w.startDate && todayStr <= w.endDate);
   if (currentWeekIdx === -1) {
     if (weeks.length > 0 && todayStr < weeks[0].startDate) {
@@ -175,78 +229,116 @@ export function recalculateWeeklyData(project: Project): Project {
     }
   }
 
-  // Check if explicit weekly actual entries exist in DB
-  const savedActuals = (newProject as any).savedWeeklyActuals || {};
-  const hasSavedActuals = Object.keys(savedActuals).some(
-    k => savedActuals[k] !== undefined && savedActuals[k] !== null && Number(savedActuals[k]) > 0
-  );
+  // 4. Generate High-Resolution Daily Data
+  const dailyData: DailyPoint[] = [];
+  let curMs = parseUtcDate(minDateStr);
+  const endMs = parseUtcDate(maxDateStr);
+  let rawPlanDailyCum = 0;
+  let rawActDailyCum = 0;
 
-  const overallActual = Number(newProject.overallProgress || 0);
+  while (curMs <= endMs && dailyData.length < 2000) {
+    const curStr = formatUtcDate(curMs);
+    const wIdx = weeks.findIndex(w => curStr >= w.startDate && curStr <= w.endDate);
+    const weekNum = wIdx !== -1 ? weeks[wIdx].week : 1;
 
-  // 4. Distribute Planned Progress across weeks (Pure Daily Division + Telescoping Delta)
-  const weeklyData: WeekData[] = [];
-  let rawCumulative = 0;
-  let prevPlannedCum = 0;
-  let actualCumulative = 0;
-
-  weeks.forEach((w, idx) => {
-    let weekPlannedRaw = 0;
-    const wStartMs = parseUtcDate(w.startDate);
-    const wEndMs = parseUtcDate(w.endDate);
+    let dayPlanRaw = 0;
+    let dayActRaw = 0;
+    const isPastOrToday = curMs <= todayMs;
 
     schedulableItems.forEach(item => {
-      const itemStartMs = parseUtcDate(item.startDate);
-      const itemEndMs = parseUtcDate(item.finishDate);
-      if (isNaN(itemStartMs) || isNaN(itemEndMs) || itemStartMs > itemEndMs) return;
+      const iStartMs = parseUtcDate(item.startDate);
+      const iEndMs = parseUtcDate(item.finishDate);
+      if (curMs >= iStartMs && curMs <= iEndMs) {
+        const dur = getDaysDiffInclusive(iStartMs, iEndMs);
+        if (dur > 0) dayPlanRaw += item.weight / dur;
+      }
 
-      const itemDurationDays = getDaysDiffInclusive(itemStartMs, itemEndMs);
-      if (itemDurationDays <= 0) return;
-
-      const overlapStartMs = Math.max(itemStartMs, wStartMs);
-      const overlapEndMs = Math.min(itemEndMs, wEndMs);
-
-      if (overlapStartMs <= overlapEndMs) {
-        const overlapDays = getDaysDiffInclusive(overlapStartMs, overlapEndMs);
-        if (overlapDays > 0) {
-          // Bobot dibagi hari dikali jumlah hari aktif dalam minggu ini
-          const dailyRate = item.weight / itemDurationDays;
-          weekPlannedRaw += dailyRate * overlapDays;
+      if (isPastOrToday && item.actualEarned > 0) {
+        let aStart = iStartMs;
+        let aEnd = iEndMs;
+        if (iEndMs <= todayMs) {
+          aStart = iStartMs;
+          aEnd = iEndMs;
+        } else if (iStartMs <= todayMs) {
+          aStart = iStartMs;
+          aEnd = todayMs;
+        } else {
+          aStart = todayMs;
+          aEnd = todayMs;
+        }
+        if (curMs >= aStart && curMs <= aEnd) {
+          const aDur = getDaysDiffInclusive(aStart, aEnd);
+          if (aDur > 0) dayActRaw += item.actualEarned / aDur;
         }
       }
     });
 
-    rawCumulative += weekPlannedRaw;
+    rawPlanDailyCum += dayPlanRaw;
+    const planCum = parseFloat(Math.min(100, Math.round(rawPlanDailyCum * 100) / 100).toFixed(2));
+    const dayPlan = parseFloat(Math.round(dayPlanRaw * 100) / 100);
 
-    let plannedCumulative = 0;
+    let actCum: number | null = null;
+    let dayAct: number | null = null;
+
+    if (isPastOrToday) {
+      rawActDailyCum += dayActRaw;
+      actCum = parseFloat(Math.min(100, Math.round(rawActDailyCum * 100) / 100).toFixed(2));
+      dayAct = parseFloat(Math.round(dayActRaw * 100) / 100);
+    }
+
+    dailyData.push({
+      date: curStr,
+      week: weekNum,
+      planned: dayPlan,
+      actual: dayAct,
+      plannedCumulative: planCum,
+      actualCumulative: actCum,
+    });
+
+    curMs += 86400000;
+  }
+
+  // 5. Generate Weekly Progress Data
+  const weeklyData: WeekData[] = [];
+  let prevPlannedCum = 0;
+  let manualActCum = 0;
+
+  weeks.forEach((w, idx) => {
+    const isElapsed = idx <= currentWeekIdx;
+    const daysInWeek = dailyData.filter(d => d.date >= w.startDate && d.date <= w.endDate);
+
     let weekPlanned = 0;
+    let plannedCumulative = 0;
 
     if (idx === weeks.length - 1) {
       plannedCumulative = 100.00;
       weekPlanned = parseFloat(Math.max(0, 100.00 - prevPlannedCum).toFixed(2));
     } else {
-      plannedCumulative = parseFloat(Math.min(100.00, Math.round(rawCumulative * 100) / 100).toFixed(2));
+      const lastDay = daysInWeek[daysInWeek.length - 1];
+      plannedCumulative = lastDay ? lastDay.plannedCumulative : prevPlannedCum;
       weekPlanned = parseFloat(Math.max(0, plannedCumulative - prevPlannedCum).toFixed(2));
     }
     prevPlannedCum = plannedCumulative;
 
-    // Determine actual progress for this week:
-    let actualValue = 0;
-    const isElapsed = idx <= currentWeekIdx;
+    let weekActual = 0;
+    let actualCumulative = 0;
 
     if (hasSavedActuals) {
       const existingWeek = newProject.weeklyData?.find(ew => ew.week === w.week);
       const saved = savedActuals[w.week];
-      actualValue = saved !== undefined ? Number(saved) : (existingWeek?.actual || 0);
-      actualCumulative += actualValue;
-      actualCumulative = Math.min(100, parseFloat(actualCumulative.toFixed(2)));
-    } else if (isElapsed && overallActual > 0) {
-      const targetCumulative = parseFloat(
-        Math.min(overallActual, (((idx + 1) / (currentWeekIdx + 1)) * overallActual)).toFixed(2)
-      );
-      actualValue = parseFloat(Math.max(0, targetCumulative - actualCumulative).toFixed(2));
-      actualCumulative = targetCumulative;
+      weekActual = saved !== undefined ? Number(saved) : (existingWeek?.actual || 0);
+      manualActCum += weekActual;
+      actualCumulative = isElapsed ? Math.min(100, parseFloat(manualActCum.toFixed(2))) : 0;
+    } else if (isElapsed) {
+      const elapsedDays = daysInWeek.filter(d => d.actual !== null);
+      weekActual = parseFloat(elapsedDays.reduce((sum, d) => sum + (d.actual || 0), 0).toFixed(2));
+      const lastElapsedDay = elapsedDays[elapsedDays.length - 1];
+      actualCumulative = lastElapsedDay && lastElapsedDay.actualCumulative !== null
+        ? lastElapsedDay.actualCumulative
+        : 0;
     } else {
-      actualValue = 0;
+      weekActual = 0;
+      actualCumulative = 0;
     }
 
     weeklyData.push({
@@ -254,12 +346,13 @@ export function recalculateWeeklyData(project: Project): Project {
       startDate: w.startDate,
       endDate: w.endDate,
       planned: weekPlanned,
-      actual: isElapsed ? actualValue : 0,
+      actual: isElapsed ? weekActual : 0,
       plannedCumulative,
       actualCumulative: isElapsed ? actualCumulative : 0,
     });
   });
 
   newProject.weeklyData = weeklyData;
+  (newProject as any).dailyData = dailyData;
   return newProject;
 }

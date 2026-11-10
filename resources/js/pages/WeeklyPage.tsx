@@ -101,11 +101,10 @@ export default function WeeklyPage() {
 
 
   const totalPlanned = weeks.length > 0
-    ? Math.min(100, Math.max(0, parseFloat(weeks.reduce((a, w) => a + w.planned, 0).toFixed(1))))
+    ? Math.min(100, Math.max(0, parseFloat(weeks.reduce((a, w) => a + w.planned, 0).toFixed(2))))
     : 0;
-  const totalActual = weeks.length > 0
-    ? Math.min(100, Math.max(0, parseFloat(weeks.filter(w => w.actual > 0).reduce((a, w) => a + w.actual, 0).toFixed(1))))
-    : 0;
+  const currentWeek = currentWeekIdx >= 0 && currentWeekIdx < weeks.length ? weeks[currentWeekIdx] : null;
+  const totalActual = currentWeek ? currentWeek.actualCumulative : (weeks.length > 0 ? (projectData.overallProgress || 0) : 0);
 
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-screen-2xl space-y-5">
@@ -118,9 +117,9 @@ export default function WeeklyPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
           { label: 'Total Periods', value: `${weeks.length} Weeks`, sub: 'Total project span' },
-          { label: 'Reported Periods', value: `${weeks.filter(w => w.actual > 0).length} Weeks`, sub: 'With actual progress' },
-          { label: 'Planned Target', value: `${totalPlanned.toFixed(1)}%`, sub: 'Total scheduled weight' },
-          { label: 'Actual Progress', value: `${totalActual.toFixed(1)}%`, sub: 'Cumulative actual progress' },
+          { label: 'Reported Periods', value: `${weeks.filter((_, idx) => idx <= currentWeekIdx).length} Weeks`, sub: 'Elapsed periods up to current' },
+          { label: 'Planned Target', value: `${totalPlanned.toFixed(2)}%`, sub: 'Total scheduled weight' },
+          { label: 'Actual Progress', value: `${totalActual.toFixed(2)}%`, sub: 'Cumulative actual progress' },
         ].map(({ label, value, sub }) => (
           <Card key={label} className="p-4">
             <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide mb-1">{label}</div>
@@ -198,7 +197,8 @@ export default function WeeklyPage() {
             <tbody className="divide-y divide-neutral-100 text-[12.5px]">
               {visible.map((w) => {
                 const isCurrent = w.week === currentWeekIdx + 1;
-                const hasActual = w.actual > 0;
+                const isElapsed = w.week <= currentWeekIdx + 1;
+                const hasActual = isElapsed;
                 const deviation = hasActual ? (w.actualCumulative - w.plannedCumulative) : null;
                 const isExpanded = !!expandedWeeks[w.week];
                 const weekTasks = tasksByWeek[w.week] || [];
@@ -283,7 +283,7 @@ export default function WeeklyPage() {
 
                       {/* Actual Cumulative */}
                       <td className="px-4 py-3 text-right font-semibold text-success">
-                        {w.actualCumulative > 0 ? `${w.actualCumulative.toFixed(2)}%` : '—'}
+                        {hasActual ? `${w.actualCumulative.toFixed(2)}%` : '—'}
                       </td>
 
                       {/* Deviation */}

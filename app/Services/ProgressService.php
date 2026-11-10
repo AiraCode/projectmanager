@@ -109,12 +109,12 @@ class ProgressService
                                 $p = $t->progress > 0 ? (float)$t->progress : ($t->is_completed ? 100 : 0);
                                 return ($p / 100) * (float)$t->weight;
                             });
-                            $subWbs->progress = round(($weightedProgress / $totalTaskWeight) * 100);
+                            $subWbs->progress = round(($weightedProgress / $totalTaskWeight) * 100, 2);
                         } else {
                             $avgProgress = $wbsTasks->avg(function ($t) {
                                 return $t->progress > 0 ? (float)$t->progress : ($t->is_completed ? 100 : 0);
                             });
-                            $subWbs->progress = round($avgProgress ?? 0);
+                            $subWbs->progress = round($avgProgress ?? 0, 2);
                         }
 
                         // Update individual Wbs status
@@ -143,7 +143,7 @@ class ProgressService
 
             // 2. Calculate MainWbs Progress
             if ($totalMjWeight > 0) {
-                $mainWbs->progress = round($totalMjWeightedProgress / $totalMjWeight);
+                $mainWbs->progress = round($totalMjWeightedProgress / $totalMjWeight, 2);
             } else {
                 $mainWbs->progress = 0;
             }
@@ -161,7 +161,7 @@ class ProgressService
 
         // 3. Calculate Overall Project Progress
         if ($totalProjectWeight > 0) {
-            $project->progress = round($totalProjectWeightedProgress / $totalProjectWeight);
+            $project->progress = round($totalProjectWeightedProgress / $totalProjectWeight, 2);
         } else {
             $project->progress = 0;
         }

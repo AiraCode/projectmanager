@@ -29,6 +29,7 @@
   --color-neutral-700: #334155;
   --color-neutral-800: #1E293B;
   --color-neutral-900: #0F172A;
+  --color-body-bg: #E5E8EC;
 }
 
 * {
@@ -37,7 +38,7 @@
 }
 
 body {
-  background: #F8F9FB;
+  background: var(--color-body-bg, #E5E8EC);
   color: #111827;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

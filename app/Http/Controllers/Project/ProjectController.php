@@ -2447,10 +2447,16 @@ class ProjectController extends Controller
                 : [(int) $workerDivisionId];
         }
 
-        $mainJobs = $p->mainWbs->sortBy('order_index')->values()->map(function ($mj, $mjIdx) use ($workerDivisionIds) {
+        $allTasksMap = $p->mainWbs->flatMap(function ($mj) {
+            return $mj->subWbs ? $mj->subWbs->flatMap(function ($smj) {
+                return $smj->wbsTasks ?? collect();
+            }) : collect();
+        })->keyBy(fn($item) => (string) $item->id);
+
+        $mainJobs = $p->mainWbs->sortBy('order_index')->values()->map(function ($mj, $mjIdx) use ($workerDivisionIds, $allTasksMap) {
             $mjCode = (string) ($mjIdx + 1);
 
-            $subMainJobs = $mj->subWbs->sortBy('order_index')->values()->map(function ($smj, $smjIdx) use ($mjCode, $workerDivisionIds) {
+            $subMainJobs = $mj->subWbs->sortBy('order_index')->values()->map(function ($smj, $smjIdx) use ($mjCode, $workerDivisionIds, $allTasksMap) {
                 $smjCode = $mjCode . '.' . ($smjIdx + 1);
 
                 $tasksQuery = $smj->wbsTasks;
@@ -2464,7 +2470,7 @@ class ProjectController extends Controller
                     });
                 }
 
-                $subtasks = $tasksQuery->sortBy('order_index')->values()->map(function ($st, $stIdx) use ($smjCode) {
+                $subtasks = $tasksQuery->sortBy('order_index')->values()->map(function ($st, $stIdx) use ($smjCode, $allTasksMap) {
                     $taskDivs = $st->divisions;
                     if (($taskDivs === null || $taskDivs->isEmpty()) && $st->division) {
                         $taskDivs = collect([$st->division]);
@@ -2472,6 +2478,20 @@ class ProjectController extends Controller
                     $divNames = $taskDivs ? $taskDivs->pluck('divisi')->toArray() : [];
                     $divIds = $taskDivs ? $taskDivs->pluck('id')->toArray() : [];
                     $divNameString = !empty($divNames) ? implode(', ', $divNames) : ($st->division?->divisi ?? 'General');
+
+                    $predName = null;
+                    if (!empty($st->predecessor)) {
+                        $predWbs = $allTasksMap->get((string) $st->predecessor);
+                        if ($predWbs) {
+                            $predName = $predWbs->name;
+                        }
+                    }
+                    if (!$predName && $st->predecessorDependencies && $st->predecessorDependencies->isNotEmpty()) {
+                        $firstDep = $st->predecessorDependencies->first();
+                        if ($firstDep && $firstDep->predecessor) {
+                            $predName = $firstDep->predecessor->name;
+                        }
+                    }
 
                     return [
                         'id'          => $st->id,
@@ -2485,6 +2505,7 @@ class ProjectController extends Controller
                         'status'      => $st->status ?? 'Open',
                         'order_index' => (int) ($st->order_index ?? 0),
                         'predecessor' => $st->predecessor ?? '',
+                        'predecessor_name' => $predName ?? '',
                         'depType'     => $st->dep_type ?? 'FS',
                         'lag'         => (int) ($st->lag ?? 0),
                         'lead'        => (int) ($st->lead ?? 0),
@@ -2536,7 +2557,7 @@ class ProjectController extends Controller
                     'pic'         => $smj->wbsTasks->first()?->division?->divisi ?? 'General',
                     'startDate'   => $smj->start ? $smj->start->format('Y-m-d') : '',
                     'finishDate'  => $smj->end ? $smj->end->format('Y-m-d') : '',
-                    'progress'    => (int) $smj->progress,
+                    'progress'    => round((float) ($smj->progress ?? 0), 2),
                     'status'      => $smj->status ?? 'Open',
                     'weight'      => (float) $smj->weight,
                     'order_index' => (int) ($smj->order_index ?? 0),
@@ -2558,7 +2579,7 @@ class ProjectController extends Controller
                 'weight'      => (float) $mj->percentage,
                 'startDate'   => $mj->start ? $mj->start->format('Y-m-d') : ($mj->actual_start ? $mj->actual_start->format('Y-m-d') : ''),
                 'finishDate'  => $mj->end ? $mj->end->format('Y-m-d') : ($mj->actual_end ? $mj->actual_end->format('Y-m-d') : ''),
-                'progress'    => (int) $mj->progress,
+                'progress'    => round((float) ($mj->progress ?? 0), 2),
                 'status'      => $mj->status ?? 'Open',
                 'order_index' => (int) ($mj->order_index ?? 0),
                 'subMainJobs' => $subMainJobs->values()->toArray(),
@@ -2622,7 +2643,7 @@ class ProjectController extends Controller
             'startDate'           => $p->start ? $p->start->format('Y-m-d') : '',
             'endDate'             => $p->end ? $p->end->format('Y-m-d') : '',
             'status'              => $p->status ?? 'Open',
-            'overallProgress'     => (int) $p->progress,
+            'overallProgress'     => round((float) ($p->progress ?? 0), 2),
             'hariKe'              => (int) $hariKe,
             'sisaHari'            => (int) $sisaHari,
             'totalBudget'         => $totalBudget,

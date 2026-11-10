@@ -48,6 +48,47 @@ export default function ProjectDetailPage() {
   });
   const [expandedSubIds, setExpandedSubIds] = useState<Set<string>>(new Set());
 
+  // Map all project tasks by ID to resolve predecessor names / codes
+  const taskMap = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; code?: string }>();
+    (projectData?.mainJobs || []).forEach((mj: any) => {
+      (mj.subMainJobs || []).forEach((smj: any) => {
+        (smj.subtasks || []).forEach((st: any) => {
+          if (st.id) {
+            map.set(String(st.id), { id: String(st.id), name: st.name, code: st.code });
+          }
+        });
+      });
+    });
+    return map;
+  }, [projectData]);
+
+  const getPredecessorName = (task?: any): string | null => {
+    if (!task) return null;
+    // 1. Direct predecessor_name property if returned by API
+    if (task.predecessor_name) {
+      return task.predecessor_name;
+    }
+    // 2. From task.dependencies
+    if (task.dependencies && task.dependencies.length > 0) {
+      const names = task.dependencies
+        .map((d: any) => d.predecessor_name)
+        .filter(Boolean);
+      if (names.length > 0) {
+        return names.join(', ');
+      }
+    }
+    // 3. Lookup in taskMap
+    if (task.predecessor) {
+      const found = taskMap.get(String(task.predecessor));
+      if (found?.name) {
+        return found.name;
+      }
+      return String(task.predecessor);
+    }
+    return null;
+  };
+
   // Modal States
   const [evidencePreview, setEvidencePreview] = useState<EvidenceItem | null>(null);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<{
@@ -1271,12 +1312,13 @@ function MainJobTreeCard({
                                   )}
 
                                   {/* Predecessor */}
-                                  {task.predecessor && (
+                                  {getPredecessorName(task) && (
                                     <span
-                                      className="text-[10px] font-mono px-1 py-0.5 rounded bg-neutral-100 text-neutral-500 border border-neutral-200"
-                                      title={`Predecessor: ${task.predecessor}`}
+                                      className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200 max-w-[200px] sm:max-w-[280px]"
+                                      title={`Predecessor: ${getPredecessorName(task)}`}
                                     >
-                                      Pred: {task.predecessor}
+                                      <Link2 size={9} className="shrink-0 text-neutral-400" />
+                                      <span className="truncate">Pred: {getPredecessorName(task)}</span>
                                     </span>
                                   )}
 
@@ -1563,9 +1605,10 @@ function TaskDetailModal({
             <div>
               <span className="text-neutral-500 text-[11px] block">Predecessors</span>
               <span className="font-semibold text-neutral-800">
-                {task.predecessor ? (
-                  <span className="font-mono bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200 text-[11px]">
-                    {task.predecessor}
+                {getPredecessorName(task) ? (
+                  <span className="bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200 text-[11.5px] inline-flex items-center gap-1.5 font-medium">
+                    <Link2 size={11} className="text-neutral-400 shrink-0" />
+                    {getPredecessorName(task)}
                   </span>
                 ) : (
                   <span className="text-neutral-400">None</span>

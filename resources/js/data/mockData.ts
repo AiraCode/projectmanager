@@ -36,6 +36,7 @@ export interface SubSubtask {
   division?: string;
   divisionId?: number;
   predecessor?: string;
+  predecessor_name?: string;
   predecessors?: any[];
   depType?: DependencyType;
   lag?: number;

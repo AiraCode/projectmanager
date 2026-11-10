@@ -415,7 +415,7 @@ export default function SCurvePage() {
       return targetWeeks.map((w) => {
         const globalIdx = weeks.findIndex(item => item.week === w.week);
         const isCurrentTimeline = globalIdx === currentWeekIdx;
-        const hasActual = globalIdx <= currentWeekIdx && w.actualCumulative > 0;
+        const hasActual = globalIdx <= currentWeekIdx;
 
         // Presentation Layer Ready: Only read real prediction if supplied by backend contract
         const rawPred = (w as any).predictionCumulative ?? (w as any).prediction ?? (w as any).predictedCumulative ?? null;
@@ -458,7 +458,7 @@ export default function SCurvePage() {
           'Act. Cumulative': hasActual ? w.actualCumulative : (isCurrentTimeline && anchorActualVal > 0 ? anchorActualVal : null),
           Prediction: predVal,
           'Planned (Weekly)': w.planned,
-          'Actual (Weekly)': globalIdx <= currentWeekIdx && w.actual > 0 ? w.actual : null,
+          'Actual (Weekly)': globalIdx <= currentWeekIdx ? w.actual : null,
           deviation: hasActual ? Number((w.actualCumulative - w.plannedCumulative).toFixed(2)) : null,
           rawWeek: w,
           evidenceItems: weekEvidences,
@@ -479,6 +479,10 @@ export default function SCurvePage() {
       const startDateObj = parseDateStr(fD);
       const endDateObj = parseDateStr(tD);
 
+      const dailyList: any[] = (projectData as any).dailyData || [];
+      const dailyMap = new Map<string, any>();
+      dailyList.forEach(item => dailyMap.set(item.date, item));
+
       const points: ChartPoint[] = [];
       const curr = new Date(startDateObj);
 
@@ -489,48 +493,40 @@ export default function SCurvePage() {
         const dStr = `${y}-${m}-${d}`;
 
         const wIdx = weeks.findIndex(w => dStr >= w.startDate && dStr <= w.endDate);
+        const dayEntry = dailyMap.get(dStr);
 
-        let planCum = 0;
-        let actCum: number | null = null;
-        let dailyPlan = 0;
-        let dailyAct: number | null = null;
+        let planCum = dayEntry ? dayEntry.plannedCumulative : 0;
+        let actCum: number | null = dayEntry ? dayEntry.actualCumulative : null;
+        let dailyPlan = dayEntry ? dayEntry.planned : 0;
+        let dailyAct: number | null = dayEntry ? dayEntry.actual : null;
 
-        if (wIdx !== -1) {
-          const w = weeks[wIdx];
-          const wStart = parseDateStr(w.startDate);
-          const dayDiff = Math.max(0, Math.min(6, Math.round((curr.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24))));
-          const prevWeekPlan = wIdx > 0 ? weeks[wIdx - 1].plannedCumulative : 0;
-
-          planCum = Math.min(100, Number((prevWeekPlan + (w.planned * (dayDiff + 1) / 7)).toFixed(2)));
-          dailyPlan = Number((w.planned / 7).toFixed(2));
-
-          if (dStr <= todayStr) {
-            if (wIdx < currentWeekIdx) {
+        if (!dayEntry) {
+          if (wIdx !== -1) {
+            const w = weeks[wIdx];
+            const wStart = parseDateStr(w.startDate);
+            const dayDiff = Math.max(0, Math.min(6, Math.round((curr.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24))));
+            const prevWeekPlan = wIdx > 0 ? weeks[wIdx - 1].plannedCumulative : 0;
+            planCum = Math.min(100, Number((prevWeekPlan + (w.planned * (dayDiff + 1) / 7)).toFixed(2)));
+            dailyPlan = Number((w.planned / 7).toFixed(2));
+            if (dStr <= todayStr) {
               const prevWeekAct = wIdx > 0 ? weeks[wIdx - 1].actualCumulative : 0;
               actCum = Number((prevWeekAct + (w.actual * (dayDiff + 1) / 7)).toFixed(2));
               dailyAct = Number((w.actual / 7).toFixed(2));
-            } else if (wIdx === currentWeekIdx) {
-              const prevWeekAct = wIdx > 0 ? weeks[wIdx - 1].actualCumulative : 0;
-              const todayObj = parseDateStr(todayStr);
-              const daysElapsedInCurrWeek = Math.max(1, Math.min(7, Math.round((todayObj.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24)) + 1));
-              const actualGainedThisWeek = Math.max(0, realisasiValue - prevWeekAct);
-              actCum = Number((prevWeekAct + (actualGainedThisWeek * (dayDiff + 1) / daysElapsedInCurrWeek)).toFixed(2));
-              dailyAct = Number((actualGainedThisWeek / daysElapsedInCurrWeek).toFixed(2));
             }
-          }
-        } else if (dStr < (weeks[0]?.startDate || '')) {
-          planCum = 0;
-          dailyPlan = 0;
-          if (dStr <= todayStr) {
-            actCum = 0;
-            dailyAct = 0;
-          }
-        } else {
-          planCum = 100;
-          dailyPlan = 0;
-          if (dStr <= todayStr) {
-            actCum = realisasiValue;
-            dailyAct = 0;
+          } else if (dStr < (weeks[0]?.startDate || '')) {
+            planCum = 0;
+            dailyPlan = 0;
+            if (dStr <= todayStr) {
+              actCum = 0;
+              dailyAct = 0;
+            }
+          } else {
+            planCum = 100;
+            dailyPlan = 0;
+            if (dStr <= todayStr) {
+              actCum = realisasiValue;
+              dailyAct = 0;
+            }
           }
         }
 
@@ -540,9 +536,10 @@ export default function SCurvePage() {
         // - Days < today: null
         // - Today: realisasiValue (connects seamlessly to Actual line)
         // - Future days: smoothly interpolate prediction along the S-curve
+        const anchorVal = (dStr === todayStr && actCum !== null) ? actCum : realisasiValue;
         let predCum: number | null = null;
         if (dStr === todayStr) {
-          predCum = realisasiValue;
+          predCum = anchorVal;
         } else if (dStr > todayStr && wIdx !== -1) {
           const w = weeks[wIdx];
           const currWeekPred = (w as any).predictionCumulative ?? null;
@@ -552,10 +549,10 @@ export default function SCurvePage() {
               const todayObj = parseDateStr(todayStr);
               const daysRemaining = Math.max(1, 7 - Math.round((todayObj.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24)));
               const daysFromToday = Math.max(0, Math.round((curr.getTime() - todayObj.getTime()) / (1000 * 60 * 60 * 24)));
-              const predDiff = Math.max(0, currWeekPred - realisasiValue);
-              predCum = Number((realisasiValue + (predDiff * daysFromToday / daysRemaining)).toFixed(2));
+              const predDiff = Math.max(0, currWeekPred - anchorVal);
+              predCum = Number((anchorVal + (predDiff * daysFromToday / daysRemaining)).toFixed(2));
             } else {
-              const prevWeekPred = (weeks[wIdx - 1] as any)?.predictionCumulative ?? realisasiValue;
+              const prevWeekPred = (weeks[wIdx - 1] as any)?.predictionCumulative ?? anchorVal;
               const wStart = parseDateStr(w.startDate);
               const dayDiff = Math.max(0, Math.min(6, Math.round((curr.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24))));
               const predDiff = Math.max(0, currWeekPred - prevWeekPred);
