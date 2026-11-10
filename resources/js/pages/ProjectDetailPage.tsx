@@ -55,7 +55,12 @@ export default function ProjectDetailPage() {
       (mj.subMainJobs || []).forEach((smj: any) => {
         (smj.subtasks || []).forEach((st: any) => {
           if (st.id) {
-            map.set(String(st.id), { id: String(st.id), name: st.name, code: st.code });
+            const cleanId = String(st.id).trim();
+            map.set(cleanId, { id: cleanId, name: st.name, code: st.code });
+            map.set(cleanId.toLowerCase(), { id: cleanId, name: st.name, code: st.code });
+          }
+          if (st.code) {
+            map.set(String(st.code).trim(), { id: String(st.id), name: st.name, code: st.code });
           }
         });
       });
@@ -66,25 +71,29 @@ export default function ProjectDetailPage() {
   const getPredecessorName = (task?: any): string | null => {
     if (!task) return null;
     // 1. Direct predecessor_name property if returned by API
-    if (task.predecessor_name) {
+    if (task.predecessor_name && typeof task.predecessor_name === 'string' && !task.predecessor_name.startsWith('st-')) {
       return task.predecessor_name;
     }
     // 2. From task.dependencies
     if (task.dependencies && task.dependencies.length > 0) {
       const names = task.dependencies
         .map((d: any) => d.predecessor_name)
-        .filter(Boolean);
+        .filter((n: string) => n && !n.startsWith('st-'));
       if (names.length > 0) {
         return names.join(', ');
       }
     }
     // 3. Lookup in taskMap
-    if (task.predecessor) {
-      const found = taskMap.get(String(task.predecessor));
+    if (task.predecessor && task.predecessor !== '-') {
+      const predKey = String(task.predecessor).trim();
+      const found = taskMap.get(predKey) || taskMap.get(predKey.toLowerCase());
       if (found?.name) {
         return found.name;
       }
-      return String(task.predecessor);
+      // If task.predecessor is already a human readable title (not a technical ID like st-xxx or uuid)
+      if (!predKey.startsWith('st-') && !predKey.startsWith('wbs-') && !/^[0-9a-f-]{15,}$/i.test(predKey)) {
+        return predKey;
+      }
     }
     return null;
   };
@@ -1296,20 +1305,23 @@ function MainJobTreeCard({
                                   )}
 
                                   {/* Days Left */}
-                                  {task.daysLeft !== undefined && (
-                                    <span
-                                      className={`inline-flex items-center gap-0.5 text-[10.5px] font-medium ${task.daysLeft <= 0
-                                        ? 'text-red-600 font-bold'
-                                        : task.daysLeft <= 3
-                                          ? 'text-amber-600 font-semibold'
-                                          : 'text-neutral-500'
-                                        }`}
-                                      title={`Days Remaining: ${task.daysLeft} days`}
-                                    >
-                                      <Clock size={10} />
-                                      {task.daysLeft}d left
-                                    </span>
-                                  )}
+                                  {task.daysLeft !== undefined && (() => {
+                                    const formattedDaysLeft = Math.ceil(Number(task.daysLeft || 0));
+                                    return (
+                                      <span
+                                        className={`inline-flex items-center gap-0.5 text-[10.5px] font-medium ${formattedDaysLeft <= 0
+                                          ? 'text-red-600 font-bold'
+                                          : formattedDaysLeft <= 3
+                                            ? 'text-amber-600 font-semibold'
+                                            : 'text-neutral-500'
+                                          }`}
+                                        title={`Days Remaining: ${formattedDaysLeft} days`}
+                                      >
+                                        <Clock size={10} />
+                                        {formattedDaysLeft}d left
+                                      </span>
+                                    );
+                                  })()}
 
                                   {/* Predecessor */}
                                   {getPredecessorName(task) && (
@@ -1599,7 +1611,7 @@ function TaskDetailModal({
             <div>
               <span className="text-neutral-500 text-[11px] block">Duration / Days Left</span>
               <span className="font-semibold text-neutral-800">
-                {task.duration ?? 0} days ({task.daysLeft !== undefined ? `${task.daysLeft}d left` : '—'})
+                {Math.round(Number(task.duration || 0))} days ({task.daysLeft !== undefined ? `${Math.ceil(Number(task.daysLeft || 0))}d left` : '—'})
               </span>
             </div>
             <div>

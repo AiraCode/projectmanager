@@ -186,8 +186,17 @@ export default function PredecessorManagerPage() {
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6 h-screen flex flex-col">
       <div>
         <PageHeader 
-          title={`Tree & Predecessor Manager: ${project.title}`} 
+          title={`Tree & Predecessor Manager: ${project?.title || project?.name || ''}`} 
           subtitle="Manage tasks and their schedules."
+          actions={
+            <Link
+              href={`/tasks?project_id=${project?.id}`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50 text-[13px] font-semibold transition-colors shadow-2xs"
+            >
+              <ArrowLeft size={16} />
+              Back to Tasks
+            </Link>
+          }
         />
       </div>
 

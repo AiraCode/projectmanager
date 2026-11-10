@@ -20,7 +20,7 @@ class DivisionApprovalService
         $division = Division::findOrFail($divisionId);
 
         if ($targetUser->hasDivision($divisionId)) {
-            throw new InvalidArgumentException("User {$targetUser->username} sudah memiliki divisi {$division->divisi}.");
+            throw new InvalidArgumentException("User {$targetUser->username} already has division {$division->divisi}.");
         }
 
         // Check if there is already a pending request
@@ -30,7 +30,7 @@ class DivisionApprovalService
             ->first();
 
         if ($existing) {
-            throw new InvalidArgumentException("Pengajuan divisi {$division->divisi} untuk user ini masih berstatus pending.");
+            throw new InvalidArgumentException("Division request for {$division->divisi} for this user is still pending.");
         }
 
         $request = DivisionRequest::create([
@@ -61,7 +61,7 @@ class DivisionApprovalService
         $req = DivisionRequest::with(['user', 'division'])->findOrFail($requestId);
 
         if ($req->status !== 'pending') {
-            throw new InvalidArgumentException("Pengajuan ini sudah berstatus {$req->status}.");
+            throw new InvalidArgumentException("This request already has the status {$req->status}.");
         }
 
         DB::transaction(function () use ($req, $approverId) {
@@ -98,7 +98,7 @@ class DivisionApprovalService
         $req = DivisionRequest::with(['user', 'division'])->findOrFail($requestId);
 
         if ($req->status !== 'pending') {
-            throw new InvalidArgumentException("Pengajuan ini sudah berstatus {$req->status}.");
+            throw new InvalidArgumentException("This request already has the status {$req->status}.");
         }
 
         $req->update([

@@ -3723,7 +3723,7 @@ function SubtaskRow({
                             st.daysLeft > 0 &&
                             !isChecked && (
                                 <span className="text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px]">
-                                    {st.daysLeft} days left
+                                    {Math.ceil(Number(st.daysLeft || 0))} days left
                                 </span>
                             )}
                         {st.dependencies && st.dependencies.length > 0 ? (

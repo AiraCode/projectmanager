@@ -579,10 +579,10 @@ export default function UserManagementPage({
                     />
                     <div className="space-y-1">
                       <span className="text-[12px] font-bold text-neutral-800 block">
-                        Persetujuan Multi-Company (Lebih dari 1 Perusahaan)
+                        Multi-Company Authorization (More than 1 Company)
                       </span>
                       <p className="text-[11px] text-neutral-600 leading-relaxed">
-                        Centang persetujuan ini sebelum memberikan akses ke lebih dari 1 perusahaan kepada akun ini.
+                        Check this authorization before granting access to more than 1 company for this account.
                       </p>
                     </div>
                   </label>
@@ -612,7 +612,7 @@ export default function UserManagementPage({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="block text-[12px] font-bold text-neutral-700">
-                      Pilih Perusahaan ({data.company_ids.length} dipilih)
+                      Select Companies ({data.company_ids.length} selected)
                     </label>
                   </div>
                   <div className="border border-neutral-200 rounded-xl p-3 bg-neutral-50/50 max-h-48 overflow-y-auto space-y-2">

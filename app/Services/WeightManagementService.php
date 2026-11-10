@@ -27,7 +27,7 @@ class WeightManagementService
         $subWbsList = SubWbs::where('sub_wbs_id', $mainWbsId)->get();
 
         if ($subWbsList->isEmpty()) {
-            throw new InvalidArgumentException('Tidak ada Sub-Task di bawah Main Task ini.');
+            throw new InvalidArgumentException('There are no Sub-Tasks under this Main Task.');
         }
 
         // Validate that all sub_wbs in weightsMap belong to this main_wbs
@@ -40,10 +40,10 @@ class WeightManagementService
             $weight = (float) ($item['weight'] ?? 0);
 
             if (!in_array($id, $validIds, true)) {
-                throw new InvalidArgumentException("ID Sub-Task {$id} tidak valid untuk Main Task ini.");
+                throw new InvalidArgumentException("Sub-Task ID {$id} is not valid for this Main Task.");
             }
             if ($weight < 0) {
-                throw new InvalidArgumentException('Bobot tidak boleh bernilai negatif.');
+                throw new InvalidArgumentException('Weight cannot be negative.');
             }
 
             $cleanMap[$id] = $weight;
@@ -53,7 +53,7 @@ class WeightManagementService
         // Check if all existing items are present in the map
         foreach ($validIds as $subId) {
             if (!isset($cleanMap[$subId])) {
-                throw new InvalidArgumentException("Bobot untuk Sub-Task ID {$subId} belum ditentukan.");
+                throw new InvalidArgumentException("Weight for Sub-Task ID {$subId} is not specified.");
             }
         }
 
@@ -61,8 +61,8 @@ class WeightManagementService
         $roundedTotal = round($totalWeight, 2);
         if (abs($roundedTotal - 100.00) > 0.01) {
             throw new InvalidArgumentException(
-                "Total bobot harus tepat 100.00%. Total saat ini adalah {$roundedTotal}% (" .
-                ($roundedTotal < 100 ? 'kurang ' . round(100 - $roundedTotal, 2) . '%' : 'lebih ' . round($roundedTotal - 100, 2) . '%') . ').'
+                "Total weight must equal 100.00%. Current total is {$roundedTotal}% (" .
+                ($roundedTotal < 100 ? 'missing ' . round(100 - $roundedTotal, 2) . '%' : 'exceeding by ' . round($roundedTotal - 100, 2) . '%') . ').'
             );
         }
 
@@ -86,7 +86,7 @@ class WeightManagementService
 
         return [
             'success' => true,
-            'message' => 'Bobot Sub-Task berhasil disimpan (Total: 100.00%).',
+            'message' => 'Sub-Task weights saved successfully (Total: 100.00%).',
             'weights' => $cleanMap,
         ];
     }
@@ -108,7 +108,7 @@ class WeightManagementService
 
         $tasks = Wbs::where('sub_wbs_id', $subWbsId)->get();
         if ($tasks->isEmpty()) {
-            throw new InvalidArgumentException('Tidak ada Task di bawah Sub-Task ini.');
+            throw new InvalidArgumentException('There are no Tasks under this Sub-Task.');
         }
 
         $validIds = $tasks->pluck('id')->all();
@@ -120,10 +120,10 @@ class WeightManagementService
             $weight = (float) ($item['weight'] ?? 0);
 
             if (!in_array($id, $validIds, true)) {
-                throw new InvalidArgumentException("ID Task {$id} tidak valid untuk Sub-Task ini.");
+                throw new InvalidArgumentException("Task ID {$id} is not valid for this Sub-Task.");
             }
             if ($weight < 0) {
-                throw new InvalidArgumentException('Bobot tidak boleh bernilai negatif.');
+                throw new InvalidArgumentException('Weight cannot be negative.');
             }
 
             $cleanMap[$id] = $weight;
@@ -132,7 +132,7 @@ class WeightManagementService
 
         foreach ($validIds as $taskId) {
             if (!isset($cleanMap[$taskId])) {
-                throw new InvalidArgumentException("Bobot untuk Task {$taskId} belum ditentukan.");
+                throw new InvalidArgumentException("Weight for Task {$taskId} is not specified.");
             }
         }
 
@@ -140,8 +140,8 @@ class WeightManagementService
         $roundedTotal = round($totalWeight, 2);
         if (abs($roundedTotal - 100.00) > 0.01) {
             throw new InvalidArgumentException(
-                "Total bobot task harus tepat 100.00%. Total saat ini adalah {$roundedTotal}% (" .
-                ($roundedTotal < 100 ? 'kurang ' . round(100 - $roundedTotal, 2) . '%' : 'lebih ' . round($roundedTotal - 100, 2) . '%') . ').'
+                "Total task weight must equal 100.00%. Current total is {$roundedTotal}% (" .
+                ($roundedTotal < 100 ? 'missing ' . round(100 - $roundedTotal, 2) . '%' : 'exceeding by ' . round($roundedTotal - 100, 2) . '%') . ').'
             );
         }
 
@@ -164,7 +164,7 @@ class WeightManagementService
 
         return [
             'success' => true,
-            'message' => 'Bobot Task berhasil disimpan (Total: 100.00%).',
+            'message' => 'Task weights saved successfully (Total: 100.00%).',
             'weights' => $cleanMap,
         ];
     }

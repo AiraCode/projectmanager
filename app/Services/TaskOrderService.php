@@ -21,7 +21,7 @@ class TaskOrderService
         // Validate that all orderedIds belong to the project
         foreach ($orderedIds as $id) {
             if (!in_array((int)$id, $existing, true)) {
-                throw new InvalidArgumentException("Main Job ID {$id} tidak valid untuk proyek ini.");
+                throw new InvalidArgumentException("Main Job ID {$id} is not valid for this project.");
             }
         }
 
@@ -39,7 +39,7 @@ class TaskOrderService
             ['project_id' => $projectId, 'ordered_ids' => $orderedIds]
         );
 
-        return ['success' => true, 'message' => 'Urutan Main Job berhasil diperbarui.'];
+        return ['success' => true, 'message' => 'Main Job order updated successfully.'];
     }
 
     /**
@@ -52,7 +52,7 @@ class TaskOrderService
 
         foreach ($orderedIds as $id) {
             if (!in_array((int)$id, $existing, true)) {
-                throw new InvalidArgumentException("Sub-Task ID {$id} tidak valid untuk Main Task ini.");
+                throw new InvalidArgumentException("Sub-Task ID {$id} is not valid for this Main Task.");
             }
         }
 
@@ -70,7 +70,7 @@ class TaskOrderService
             ['main_wbs_id' => $mainWbsId, 'ordered_ids' => $orderedIds]
         );
 
-        return ['success' => true, 'message' => 'Urutan Sub-Task berhasil diperbarui.'];
+        return ['success' => true, 'message' => 'Sub-Task order updated successfully.'];
     }
 
     /**
@@ -86,7 +86,7 @@ class TaskOrderService
 
         foreach ($orderedIds as $id) {
             if (!in_array((string)$id, $existing, true)) {
-                throw new InvalidArgumentException("Task ID {$id} tidak valid untuk Sub-Task ini.");
+                throw new InvalidArgumentException("Task ID {$id} is not valid for this Sub-Task.");
             }
         }
 
@@ -104,6 +104,6 @@ class TaskOrderService
             ['sub_wbs_id' => $subWbsId, 'ordered_ids' => $orderedIds]
         );
 
-        return ['success' => true, 'message' => 'Urutan Task berhasil diperbarui.'];
+        return ['success' => true, 'message' => 'Task order updated successfully.'];
     }
 }

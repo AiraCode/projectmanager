@@ -57,7 +57,7 @@ class DivisionApprovalController extends Controller
                 $validated['notes'] ?? null
             );
 
-            return back()->with('success', "Pengajuan divisi berhasil dikirimkan ke Super Admin (Status: Pending).");
+            return back()->with('success', "Division request successfully submitted to Super Admin (Status: Pending).");
         } catch (\InvalidArgumentException $e) {
             return back()->withErrors(['message' => $e->getMessage()]);
         }
@@ -69,12 +69,12 @@ class DivisionApprovalController extends Controller
     public function approve(Request $request, int $id)
     {
         if (auth()->user()?->role?->name !== 'SuperAdmin') {
-            abort(403, 'Hanya Super Admin yang berhak menyetujui penambahan divisi.');
+            abort(403, 'Only Super Admin is authorized to approve division requests.');
         }
 
         try {
             $this->approvalService->approveRequest($id, auth()->id());
-            return back()->with('success', 'Pengajuan divisi berhasil disetujui.');
+            return back()->with('success', 'Division request approved successfully.');
         } catch (\InvalidArgumentException $e) {
             return back()->withErrors(['message' => $e->getMessage()]);
         }
@@ -86,7 +86,7 @@ class DivisionApprovalController extends Controller
     public function reject(Request $request, int $id)
     {
         if (auth()->user()?->role?->name !== 'SuperAdmin') {
-            abort(403, 'Hanya Super Admin yang berhak menolak penambahan divisi.');
+            abort(403, 'Only Super Admin is authorized to reject division requests.');
         }
 
         $validated = $request->validate([
@@ -95,7 +95,7 @@ class DivisionApprovalController extends Controller
 
         try {
             $this->approvalService->rejectRequest($id, auth()->id(), $validated['rejection_reason']);
-            return back()->with('success', 'Pengajuan divisi berhasil ditolak.');
+            return back()->with('success', 'Division request rejected successfully.');
         } catch (\InvalidArgumentException $e) {
             return back()->withErrors(['message' => $e->getMessage()]);
         }

@@ -542,7 +542,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
                   className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-100 transition-colors"
                 >
                   <Key size={14} />
-                  Ganti Password
+                  Change Password
                 </button>
                 <button
                   onClick={handleLogout}

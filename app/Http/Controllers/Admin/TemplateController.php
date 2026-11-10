@@ -107,7 +107,7 @@ class TemplateController extends Controller
 
         $template = $this->templateService->createTemplate($validated, auth()->id());
 
-        return back()->with('success', "Template '{$template->name}' berhasil dibuat.");
+        return back()->with('success', "Template '{$template->name}' created successfully.");
     }
 
     /**
@@ -123,7 +123,7 @@ class TemplateController extends Controller
 
         $template = $this->templateService->updateTemplate($id, $validated, auth()->id());
 
-        return back()->with('success', "Template '{$template->name}' berhasil diperbarui.");
+        return back()->with('success', "Template '{$template->name}' updated successfully.");
     }
 
     /**
@@ -133,12 +133,12 @@ class TemplateController extends Controller
     {
         $template = ProjectTemplate::findOrFail($id);
         if ($template->is_default) {
-            return back()->withErrors(['message' => 'Template default tidak dapat dihapus. Silakan tetapkan template lain sebagai default terlebih dahulu.']);
+            return back()->withErrors(['message' => 'Default template cannot be deleted. Please set another template as default first.']);
         }
 
         $this->templateService->deleteTemplate($id, auth()->id());
 
-        return back()->with('success', 'Template berhasil dihapus.');
+        return back()->with('success', 'Template deleted successfully.');
     }
 
     /**
@@ -153,7 +153,7 @@ class TemplateController extends Controller
 
         AuditLog::record('SET_DEFAULT_TEMPLATE', "Set template ID {$id} as default master template.", auth()->id(), $request->ip());
 
-        return back()->with('success', 'Template default berhasil diubah.');
+        return back()->with('success', 'Default template changed successfully.');
     }
 
     // ── Main Tasks (Level 1) ──
@@ -180,7 +180,7 @@ class TemplateController extends Controller
 
         AuditLog::record('CREATE_TEMPLATE_MAIN_TASK', "Added main task '{$task->name}' to template '{$template->name}'.", auth()->id(), $request->ip());
 
-        return back()->with('success', 'Main Task template berhasil ditambahkan.');
+        return back()->with('success', 'Main Task template added successfully.');
     }
 
     public function updateMainTask(Request $request, int $templateId, int $mainTaskId)
@@ -195,7 +195,7 @@ class TemplateController extends Controller
 
         $task->update($validated);
 
-        return back()->with('success', 'Main Task template berhasil diperbarui.');
+        return back()->with('success', 'Main Task template updated successfully.');
     }
 
     public function deleteMainTask(Request $request, int $templateId, int $mainTaskId)
@@ -204,7 +204,7 @@ class TemplateController extends Controller
         $task->delete();
         $this->resyncTemplateCodes($templateId);
 
-        return back()->with('success', 'Main Task template berhasil dihapus.');
+        return back()->with('success', 'Main Task template deleted successfully.');
     }
 
     public function reorderMainTasks(Request $request, int $templateId)
@@ -239,7 +239,7 @@ class TemplateController extends Controller
             }
         });
 
-        return back()->with('success', 'Urutan Main Task template berhasil diperbarui.');
+        return back()->with('success', 'Main Task template order updated successfully.');
     }
 
     // ── Sub Tasks (Level 2) ──
@@ -268,7 +268,7 @@ class TemplateController extends Controller
             'default_duration' => (int) ($validated['default_duration'] ?? 14),
         ]);
 
-        return back()->with('success', 'Sub Task template berhasil ditambahkan.');
+        return back()->with('success', 'Sub Task template added successfully.');
     }
 
     public function updateSubTask(Request $request, int $templateId, int $subTaskId)
@@ -287,7 +287,7 @@ class TemplateController extends Controller
 
         $subTask->update($validated);
 
-        return back()->with('success', 'Sub Task template berhasil diperbarui.');
+        return back()->with('success', 'Sub Task template updated successfully.');
     }
 
     public function deleteSubTask(Request $request, int $templateId, int $subTaskId)
@@ -299,7 +299,7 @@ class TemplateController extends Controller
         $subTask->delete();
         $this->resyncTemplateCodes($templateId);
 
-        return back()->with('success', 'Sub Task template berhasil dihapus.');
+        return back()->with('success', 'Sub Task template deleted successfully.');
     }
 
     public function reorderSubTasks(Request $request, int $templateId, int $mainTaskId)
@@ -321,6 +321,6 @@ class TemplateController extends Controller
             }
         });
 
-        return back()->with('success', 'Urutan Sub Task template berhasil diperbarui.');
+        return back()->with('success', 'Sub Task template order updated successfully.');
     }
 }

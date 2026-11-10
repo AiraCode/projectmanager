@@ -123,12 +123,12 @@ class UserManagementController extends Controller
         // Enforcement: Only SuperAdmin can assign multiple companies, and must tick agreement checkbox
         if (count($companyIds) > 1) {
             if ($user->role?->name !== 'SuperAdmin') {
-                abort(403, 'Hanya Super Admin yang diizinkan memberikan lebih dari 1 company.');
+                abort(403, 'Only Super Admin is allowed to assign more than 1 company.');
             }
 
             if (!$request->boolean('multi_company_agreement')) {
                 return back()->withErrors([
-                    'multi_company_agreement' => 'Persetujuan Super Admin wajib dicentang sebelum memberikan lebih dari 1 perusahaan kepada akun ini.'
+                    'multi_company_agreement' => 'Super Admin authorization must be checked before assigning more than 1 company to this account.'
                 ]);
             }
         }
@@ -143,12 +143,12 @@ class UserManagementController extends Controller
         // Multi-division agreement check for Super Admin
         if (count($divisionIds) > 1) {
             if ($user->role?->name !== 'SuperAdmin') {
-                abort(403, 'Hanya Super Admin yang diizinkan memberikan lebih dari 1 divisi.');
+                abort(403, 'Only Super Admin is allowed to assign more than 1 division.');
             }
 
             if (!$request->boolean('multi_division_agreement')) {
                 return back()->withErrors([
-                    'multi_division_agreement' => 'Persetujuan Super Admin wajib dicentang sebelum memberikan lebih dari 1 divisi kepada akun ini.'
+                    'multi_division_agreement' => 'Super Admin authorization must be checked before assigning more than 1 division to this account.'
                 ]);
             }
         }
@@ -188,7 +188,7 @@ class UserManagementController extends Controller
             }
 
             if (!$targetRole || in_array($targetRole->name, ['admin_utama', 'admin_progres', 'pic', 'SuperAdmin'])) {
-                abort(403, 'Access Denied: PIC tidak diizinkan membuat user dengan role ' . ($targetRole?->name ?? 'tersebut') . '.');
+                abort(403, 'Access Denied: PIC is not allowed to create a user with the role ' . ($targetRole?->name ?? '') . '.');
             }
 
             $companyIds = $user->companies_id ? [(int) $user->companies_id] : [];
@@ -244,7 +244,7 @@ class UserManagementController extends Controller
             }
 
             if (in_array($targetUser->role?->name, ['admin_utama', 'admin_progres', 'pic', 'SuperAdmin'])) {
-                abort(403, 'Access Denied: PIC tidak diizinkan mengubah user dengan role ' . $targetUser->role?->name . '.');
+                abort(403, 'Access Denied: PIC is not allowed to modify a user with the role ' . $targetUser->role?->name . '.');
             }
             
             $usersFeatures = $user->permission_matrix['features']['users'] ?? [];
@@ -326,12 +326,12 @@ class UserManagementController extends Controller
         // Multi-company agreement check for Super Admin
         if ($companyIds !== null && count($companyIds) > 1) {
             if ($user->role?->name !== 'SuperAdmin') {
-                abort(403, 'Hanya Super Admin yang diizinkan memberikan lebih dari 1 company.');
+                abort(403, 'Only Super Admin is allowed to assign more than 1 company.');
             }
 
             if (!$request->boolean('multi_company_agreement')) {
                 return back()->withErrors([
-                    'multi_company_agreement' => 'Persetujuan Super Admin wajib dicentang sebelum memberikan lebih dari 1 perusahaan kepada akun ini.'
+                    'multi_company_agreement' => 'Super Admin authorization must be checked before assigning more than 1 company to this account.'
                 ]);
             }
         }
@@ -347,12 +347,12 @@ class UserManagementController extends Controller
         // Multi-division agreement check for Super Admin
         if ($divisionIds !== null && count($divisionIds) > 1) {
             if ($user->role?->name !== 'SuperAdmin') {
-                abort(403, 'Hanya Super Admin yang diizinkan memberikan lebih dari 1 divisi.');
+                abort(403, 'Only Super Admin is allowed to assign more than 1 division.');
             }
 
             if (!$request->boolean('multi_division_agreement')) {
                 return back()->withErrors([
-                    'multi_division_agreement' => 'Persetujuan Super Admin wajib dicentang sebelum memberikan lebih dari 1 divisi kepada akun ini.'
+                    'multi_division_agreement' => 'Super Admin authorization must be checked before assigning more than 1 division to this account.'
                 ]);
             }
         }
@@ -390,7 +390,7 @@ class UserManagementController extends Controller
         if ($user->role?->name === 'pic') {
             if ($request->filled('roles_id')) {
                 if (!$targetRole || in_array($targetRole->name, ['admin_utama', 'admin_progres', 'pic', 'SuperAdmin'])) {
-                    abort(403, 'Access Denied: PIC tidak diizinkan menetapkan role ' . ($targetRole?->name ?? 'tersebut') . '.');
+                    abort(403, 'Access Denied: PIC is not allowed to assign the role ' . ($targetRole?->name ?? '') . '.');
                 }
             }
             // PIC retains target user's existing companies or user's company

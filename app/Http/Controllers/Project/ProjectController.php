@@ -1000,7 +1000,7 @@ class ProjectController extends Controller
 
         if ($predecessors->count() !== count($predecessorIds)) {
             return back()->withErrors([
-                'predecessor_wbs_ids' => 'Semua predecessor harus berasal dari proyek yang sama.',
+                'predecessor_wbs_ids' => 'All predecessors must belong to the same project.',
             ]);
         }
 
@@ -1008,13 +1008,13 @@ class ProjectController extends Controller
         foreach ($predecessorIds as $predecessorId) {
             if ($predecessorId === $taskId) {
                 return back()->withErrors([
-                    'predecessor_wbs_ids' => 'Tugas tidak dapat bergantung pada dirinya sendiri.',
+                    'predecessor_wbs_ids' => 'A task cannot depend on itself.',
                 ]);
             }
 
             if ($scheduler->wouldCauseCycle($predecessorId, $taskId)) {
                 return back()->withErrors([
-                    'predecessor_wbs_ids' => 'Ketergantungan tidak dapat ditambahkan: terdeteksi circular dependency (siklus tak berujung).',
+                    'predecessor_wbs_ids' => 'Dependency cannot be added: circular dependency detected.',
                 ]);
             }
         }
@@ -1158,22 +1158,22 @@ class ProjectController extends Controller
         if ($project->start) {
             $projStart = Carbon::parse($project->start)->startOfDay();
             if ($start->lt($projStart)) {
-                return back()->withErrors(['start' => "Start date Main Task ({$start->format('d/m/Y')}) tidak boleh lebih awal dari Start Date proyek ({$projStart->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Main Task start date ({$start->format('d/m/Y')}) cannot be earlier than project start date ({$projStart->format('d/m/Y')})."]);
             }
         }
 
         if ($project->end) {
             $projEnd = Carbon::parse($project->end)->startOfDay();
             if ($end->gt($projEnd)) {
-                return back()->withErrors(['end' => "End date Main Task ({$end->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+                return back()->withErrors(['end' => "Main Task end date ({$end->format('d/m/Y')}) cannot exceed project target finish date ({$projEnd->format('d/m/Y')})."]);
             }
             if ($start->gt($projEnd)) {
-                return back()->withErrors(['start' => "Start date Main Task ({$start->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Main Task start date ({$start->format('d/m/Y')}) cannot exceed project target finish date ({$projEnd->format('d/m/Y')})."]);
             }
         }
 
         if ($end->lte($start)) {
-            return back()->withErrors(['end' => 'End date Main Task harus setelah Start date (minimal 1 hari setelahnya).']);
+            return back()->withErrors(['end' => 'Main Task end date must be after start date (at least 1 day later).']);
         }
 
         MainWbs::create([
@@ -1223,22 +1223,22 @@ class ProjectController extends Controller
         if ($project->start && $newStart) {
             $projStart = Carbon::parse($project->start)->startOfDay();
             if ($newStart->lt($projStart)) {
-                return back()->withErrors(['start' => "Start date Main Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari Start Date proyek ({$projStart->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Main Task start date ({$newStart->format('d/m/Y')}) cannot be earlier than project start date ({$projStart->format('d/m/Y')})."]);
             }
         }
 
         if ($project->end) {
             $projEnd = Carbon::parse($project->end)->startOfDay();
             if ($newEnd && $newEnd->gt($projEnd)) {
-                return back()->withErrors(['end' => "End date Main Task ({$newEnd->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+                return back()->withErrors(['end' => "Main Task end date ({$newEnd->format('d/m/Y')}) cannot exceed project target finish date ({$projEnd->format('d/m/Y')})."]);
             }
             if ($newStart && $newStart->gt($projEnd)) {
-                return back()->withErrors(['start' => "Start date Main Task ({$newStart->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Main Task start date ({$newStart->format('d/m/Y')}) cannot exceed project target finish date ({$projEnd->format('d/m/Y')})."]);
             }
         }
 
         if ($newStart && $newEnd && $newEnd->lte($newStart)) {
-            return back()->withErrors(['end' => 'End date Main Task harus setelah Start date (minimal 1 hari setelahnya).']);
+            return back()->withErrors(['end' => 'Main Task end date must be after start date (at least 1 day later).']);
         }
 
         $mainWbs->name = $validated['name'];
@@ -1380,29 +1380,29 @@ class ProjectController extends Controller
         if ($project->start) {
             $projStart = Carbon::parse($project->start)->startOfDay();
             if ($start->lt($projStart)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh lebih awal dari Start Date proyek ({$projStart->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Sub Task start date ({$start->format('d/m/Y')}) cannot be earlier than project start date ({$projStart->format('d/m/Y')})."]);
             }
         }
 
         if ($mainWbs->start) {
             $mainStart = Carbon::parse($mainWbs->start)->startOfDay();
             if ($start->lt($mainStart)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh lebih awal dari Start Date Main Task ({$mainStart->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Sub Task start date ({$start->format('d/m/Y')}) cannot be earlier than Main Task start date ({$mainStart->format('d/m/Y')})."]);
             }
         }
 
         if ($project->end) {
             $projEnd = Carbon::parse($project->end)->startOfDay();
             if ($end->gt($projEnd)) {
-                return back()->withErrors(['end' => "End date Sub Task ({$end->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+                return back()->withErrors(['end' => "Sub Task end date ({$end->format('d/m/Y')}) cannot exceed project target finish date ({$projEnd->format('d/m/Y')})."]);
             }
             if ($start->gt($projEnd)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$start->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Sub Task start date ({$start->format('d/m/Y')}) cannot exceed project target finish date ({$projEnd->format('d/m/Y')})."]);
             }
         }
 
         if ($end->lte($start)) {
-            return back()->withErrors(['end' => 'End date Sub Task harus setelah Start date (minimal 1 hari setelahnya).']);
+            return back()->withErrors(['end' => 'Sub Task end date must be after start date (at least 1 day later).']);
         }
 
         $listMainId = $mainWbs->list_main_wbs_names_id;
@@ -1485,29 +1485,29 @@ class ProjectController extends Controller
         if ($project->start && $newStart) {
             $projStart = Carbon::parse($project->start)->startOfDay();
             if ($newStart->lt($projStart)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari Start Date proyek ({$projStart->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Sub Task start date ({$newStart->format('d/m/Y')}) cannot be earlier than project start date ({$projStart->format('d/m/Y')})."]);
             }
         }
 
         if ($targetMainWbs && $targetMainWbs->start && $newStart) {
             $mainStart = Carbon::parse($targetMainWbs->start)->startOfDay();
             if ($newStart->lt($mainStart)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari Start Date Main Task ({$mainStart->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Sub Task start date ({$newStart->format('d/m/Y')}) cannot be earlier than Main Task start date ({$mainStart->format('d/m/Y')})."]);
             }
         }
 
         if ($project->end) {
             $projEnd = Carbon::parse($project->end)->startOfDay();
             if ($newEnd && $newEnd->gt($projEnd)) {
-                return back()->withErrors(['end' => "End date Sub Task ({$newEnd->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+                return back()->withErrors(['end' => "Sub Task end date ({$newEnd->format('d/m/Y')}) cannot exceed project target finish date ({$projEnd->format('d/m/Y')})."]);
             }
             if ($newStart && $newStart->gt($projEnd)) {
-                return back()->withErrors(['start' => "Start date Sub Task ({$newStart->format('d/m/Y')}) tidak boleh melebihi Target Finish Date proyek ({$projEnd->format('d/m/Y')})."]);
+                return back()->withErrors(['start' => "Sub Task start date ({$newStart->format('d/m/Y')}) cannot exceed project target finish date ({$projEnd->format('d/m/Y')})."]);
             }
         }
 
         if ($newStart && $newEnd && $newEnd->lte($newStart)) {
-            return back()->withErrors(['end' => 'End date Sub Task harus setelah Start date (minimal 1 hari setelahnya).']);
+            return back()->withErrors(['end' => 'Sub Task end date must be after start date (at least 1 day later).']);
         }
 
         $oldName = $subWbs->name;
@@ -1831,19 +1831,19 @@ class ProjectController extends Controller
             : $task->predecessor;
         $hasPredecessor = !empty($effectivePredecessor) && $effectivePredecessor !== '-';
 
-        // Hanya validasi batas tanggal manual jika task TIDAK dikendalikan otomatis oleh Predecessor
+        // Only validate manual dates if task is NOT automatically controlled by Predecessor
         if (!$hasPredecessor) {
             $minLimit = $project->start ? Carbon::parse($project->start)->startOfDay() : null;
 
             if ($minLimit && $newStart && $newStart->lt($minLimit)) {
                 return back()->withErrors([
-                    'start' => "Start date Task ({$newStart->format('d/m/Y')}) tidak boleh lebih awal dari jadwal mulai Proyek ({$minLimit->format('d/m/Y')})."
+                    'start' => "Task start date ({$newStart->format('d/m/Y')}) cannot be earlier than project start date ({$minLimit->format('d/m/Y')})."
                 ]);
             }
 
             if ($newStart && $newEnd && $newEnd->lt($newStart)) {
                 return back()->withErrors([
-                    'end' => 'End date Task tidak boleh lebih awal dari Start date.'
+                    'end' => 'Task end date cannot be earlier than start date.'
                 ]);
             }
         }
@@ -1855,8 +1855,8 @@ class ProjectController extends Controller
             $task->end = $newEnd->format('Y-m-d');
         }
 
-        // Prioritaskan input duration jika ada.
-        // Jika tidak ada input duration dan task tidak punya predecessor, hitung dari selisih start & end.
+        // Prioritize duration input if provided.
+        // If no duration input and task has no predecessor, compute from difference between start and end.
         if (!empty($validated['duration'])) {
             $task->duration_days = max(1, (int) $validated['duration']);
         } elseif (!$hasPredecessor && $newStart && $newEnd) {
@@ -1886,11 +1886,11 @@ class ProjectController extends Controller
             $task->vendor = $validated['vendor'] ?: 'INTERNAL';
         }
 
-        // Cek Circular Dependency jika predecessor berubah
+        // Check Circular Dependency if predecessor changed
         if (!empty($task->predecessor) && $task->predecessor !== $oldPredecessorId) {
             if (app(DependencyScheduler::class)->wouldCauseCycle($task->predecessor, $task->id)) {
                 return back()->withErrors([
-                    'predecessor' => 'Ketergantungan tidak dapat diubah: terdeteksi circular dependency (siklus berulang).'
+                    'predecessor' => 'Dependency cannot be modified: circular dependency detected.'
                 ]);
             }
         }
@@ -2435,10 +2435,8 @@ class ProjectController extends Controller
         $start   = $p->start;
         $end     = $p->end;
         $now     = Carbon::now();
-        $hariKe  = $start ? $start->diffInDays($now, false) : 0;
-        if ($hariKe < 0) $hariKe = 0;
-        $sisaHari = $end ? $now->diffInDays($end, false) : 0;
-        if ($sisaHari < 0) $sisaHari = 0;
+        $hariKe  = $start ? (int) max(0, round($start->diffInDays($now, false))) : 0;
+        $sisaHari = $end ? (int) max(0, round($now->diffInDays($end, false))) : 0;
 
         $workerDivisionIds = [];
         if (!empty($workerDivisionId)) {
@@ -2480,10 +2478,16 @@ class ProjectController extends Controller
                     $divNameString = !empty($divNames) ? implode(', ', $divNames) : ($st->division?->divisi ?? 'General');
 
                     $predName = null;
-                    if (!empty($st->predecessor)) {
-                        $predWbs = $allTasksMap->get((string) $st->predecessor);
+                    if (!empty($st->predecessor) && $st->predecessor !== '-') {
+                        $predKey = trim((string) $st->predecessor);
+                        $predWbs = $allTasksMap->get($predKey);
                         if ($predWbs) {
                             $predName = $predWbs->name;
+                        } else {
+                            $dbPred = \App\Models\Wbs::find($predKey);
+                            if ($dbPred) {
+                                $predName = $dbPred->name;
+                            }
                         }
                     }
                     if (!$predName && $st->predecessorDependencies && $st->predecessorDependencies->isNotEmpty()) {
@@ -2497,8 +2501,8 @@ class ProjectController extends Controller
                         'id'          => $st->id,
                         'code'        => $smjCode . '.' . ($stIdx + 1),
                         'name'        => $st->name,
-                        'duration'    => $st->duration_days ?: ($st->start && $st->end ? $st->start->diffInDays($st->end) + 1 : 0),
-                        'daysLeft'    => $st->end && Carbon::now()->lessThan($st->end) ? Carbon::now()->diffInDays($st->end) : 0,
+                        'duration'    => $st->duration_days ?: ($st->start && $st->end ? (int) max(1, round($st->start->diffInDays($st->end) + 1)) : 0),
+                        'daysLeft'    => $st->end && Carbon::now()->lessThan($st->end) ? (int) ceil(Carbon::now()->diffInDays($st->end, false)) : 0,
                         'startDate'   => $st->start ? $st->start->format('Y-m-d') : '',
                         'finishDate'  => $st->end ? $st->end->format('Y-m-d') : '',
                         'progress'    => $st->progress > 0 ? (int)$st->progress : ($st->is_completed ? 100 : 0),
@@ -3270,7 +3274,7 @@ class ProjectController extends Controller
             ['project_id' => $project->id, 'member_user_id' => $validated['user_id']]
         );
 
-        return back()->with('success', "Anggota tim '{$targetUser?->username}' berhasil ditugaskan.");
+        return back()->with('success', "Team member '{$targetUser?->username}' successfully assigned.");
     }
 
     /**
@@ -3307,6 +3311,6 @@ class ProjectController extends Controller
             ['project_id' => $project->id, 'user_id' => $targetUser?->id]
         );
 
-        return back()->with('success', "Anggota tim '{$targetUser?->username}' berhasil dihapus dari proyek.");
+        return back()->with('success', "Team member '{$targetUser?->username}' successfully removed from project.");
     }
 }

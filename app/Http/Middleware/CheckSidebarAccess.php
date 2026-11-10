@@ -96,7 +96,7 @@ class CheckSidebarAccess
         if (!in_array($menuName, $sidebar)) {
             // Check if it's an AJAX/Inertia request
             if ($request->wantsJson() || $request->header('X-Inertia')) {
-                return redirect('/')->with('error', 'Anda tidak memiliki akses ke halaman ini.');
+                return redirect('/')->with('error', 'You do not have access to this page.');
             }
             abort(403, 'Access denied to ' . $menuName);
         }

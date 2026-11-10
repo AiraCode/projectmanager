@@ -920,7 +920,7 @@ function UploadEvidenceModal({
   return (
     <Modal
       isOpen={true}
-      title="Upload Bukti Penyelesaian (Evidence)"
+      title="Upload Completion Evidence"
       subtitle={`${task.code} — ${task.name}`}
       onClose={onClose}
       size="md"
