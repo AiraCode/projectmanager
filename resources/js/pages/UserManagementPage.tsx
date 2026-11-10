@@ -59,6 +59,8 @@ interface PermissionMatrix {
   features?: Record<string, string[]>;
   data_scope?: string;
   project_access?: Record<string, { view_project: boolean; view_progress: boolean }>;
+  is_unified?: boolean;
+  per_project?: Record<string, PermissionMatrix>;
 }
 interface User {
   id: number;
