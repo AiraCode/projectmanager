@@ -149,7 +149,7 @@ export default function TodayTasksPage() {
     });
 
     if (projectData.id) {
-      const payload: Record<string, unknown> = {};
+      const payload: Record<string, any> = {};
       if (completeTo100) {
         payload['progress'] = 100;
       }
