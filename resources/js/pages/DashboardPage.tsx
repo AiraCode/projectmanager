@@ -1,4 +1,4 @@
-import { Calendar, Clock, TrendingUp, DollarSign, CheckCircle2, AlertTriangle, XCircle, Layers, ArrowUpRight, Users } from 'lucide-react';
+import { Calendar, Clock, TrendingUp, DollarSign, CheckCircle2, AlertTriangle, XCircle, Layers, ArrowUpRight, Users, Package } from 'lucide-react';
 import { Link, usePage } from '@inertiajs/react';
 import { useState, useEffect, useMemo } from 'react';
 import { Project } from '@/data/mockData';
@@ -284,6 +284,7 @@ export default function DashboardPage() {
                 { s: 'On Track', icon: TrendingUp, color: 'text-brand' },
                 { s: 'At Risk', icon: AlertTriangle, color: 'text-warning' },
                 { s: 'Delayed', icon: XCircle, color: 'text-danger' },
+                { s: 'Outstanding', icon: Package, color: 'text-purple-600' },
                 { s: 'Completed', icon: CheckCircle2, color: 'text-indigo-600' },
               ] as const).map(({ s, icon: Icon, color }) => (
                 <div key={s} className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-neutral-50">

@@ -2,6 +2,7 @@ import { Project, Status } from '../data/mockData';
 
 function getStatusFromProgress(progress: number, currentStatus: Status): Status {
   if (progress === 100) return 'Completed';
+  if (currentStatus === 'Outstanding') return 'Outstanding';
   if (progress > 0 && currentStatus === 'Open') return 'On Track';
   if (progress === 0 && currentStatus === 'Completed') return 'Open';
   return currentStatus;

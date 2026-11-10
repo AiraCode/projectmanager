@@ -3,12 +3,13 @@ import { Status } from '@/data/mockData';
 import { X, Loader2, AlertTriangle, Trash2, AlertCircle, Info } from 'lucide-react';
 
 export const STATUS_CONFIG: Record<Status, { label: string; bg: string; text: string; dot: string }> = {
-  'Open':      { label: 'Open',      bg: 'bg-success-light',   text: 'text-success',       dot: 'bg-success' },
-  'On Track':  { label: 'On Track',  bg: 'bg-brand-light',     text: 'text-brand',         dot: 'bg-brand' },
-  'At Risk':   { label: 'At Risk',   bg: 'bg-warning-light',   text: 'text-warning',       dot: 'bg-warning' },
-  'Delayed':   { label: 'Delayed',   bg: 'bg-danger-light',    text: 'text-danger',        dot: 'bg-danger' },
-  'Cancelled': { label: 'Cancelled', bg: 'bg-neutral-100',     text: 'text-neutral-500',   dot: 'bg-neutral-400' },
-  'Completed': { label: 'Completed', bg: 'bg-indigo-50',       text: 'text-indigo-700',    dot: 'bg-indigo-600' },
+  'Open':        { label: 'Open',        bg: 'bg-success-light',                               text: 'text-success',       dot: 'bg-success' },
+  'On Track':    { label: 'On Track',    bg: 'bg-brand-light',                                 text: 'text-brand',         dot: 'bg-brand' },
+  'At Risk':     { label: 'At Risk',     bg: 'bg-warning-light',                               text: 'text-warning',       dot: 'bg-warning' },
+  'Delayed':     { label: 'Delayed',     bg: 'bg-danger-light',                                text: 'text-danger',        dot: 'bg-danger' },
+  'Cancelled':   { label: 'Cancelled',   bg: 'bg-neutral-100',                                 text: 'text-neutral-500',   dot: 'bg-neutral-400' },
+  'Completed':   { label: 'Completed',   bg: 'bg-indigo-50',                                   text: 'text-indigo-700',    dot: 'bg-indigo-600' },
+  'Outstanding': { label: 'Outstanding', bg: 'bg-purple-100/90 border border-purple-300 shadow-2xs', text: 'text-purple-800', dot: 'bg-purple-600' },
 };
 
 export function StatusBadge({ status, size = 'sm' }: { status: Status; size?: 'xs' | 'sm' | 'md' }) {
@@ -19,6 +20,43 @@ export function StatusBadge({ status, size = 'sm' }: { status: Status; size?: 'x
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
       {c.label}
     </span>
+  );
+}
+
+export function StatusSelectorBadge({
+  status,
+  size = 'xs',
+  disabled = false,
+  onChange,
+}: {
+  status: Status;
+  size?: 'xs' | 'sm';
+  disabled?: boolean;
+  onChange: (newStatus: Status) => void;
+}) {
+  const c = STATUS_CONFIG[status] || STATUS_CONFIG['Open'];
+  const sz = size === 'xs' ? 'text-[11px] py-0.5' : 'text-[12px] py-1';
+
+  if (disabled) {
+    return <StatusBadge status={status} size={size} />;
+  }
+
+  return (
+    <div className="relative inline-flex items-center group/badge">
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot} absolute left-2 pointer-events-none z-10`} />
+      <select
+        value={status}
+        onChange={(e) => onChange(e.target.value as Status)}
+        className={`inline-flex items-center rounded-full font-semibold ${c.bg} ${c.text} ${sz} pl-5 pr-4 border outline-none cursor-pointer appearance-none transition-shadow hover:shadow-2xs focus:ring-1 focus:ring-brand/30`}
+        title="Click to change status (e.g. Outstanding for unfulfilled PR items)"
+      >
+        {Object.keys(STATUS_CONFIG).map((s) => (
+          <option key={s} value={s} className="bg-white text-neutral-800 font-medium py-1">
+            {s === 'Outstanding' ? 'Outstanding (PR Unfulfilled)' : s}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 

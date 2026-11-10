@@ -36,6 +36,7 @@ const STATUS_COLOR_BARS: Record<string, string> = {
   'Delayed': '#DC3545',
   'Completed': '#4F46E5',
   'Cancelled': '#94A3B8',
+  'Outstanding': '#9333EA',
 };
 
 interface Milestone {

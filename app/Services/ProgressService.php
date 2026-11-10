@@ -10,6 +10,7 @@ class ProgressService
     private function getStatusFromProgress($progress, $currentStatus)
     {
         if ($progress == 100) return 'Completed';
+        if ($currentStatus === 'Outstanding') return 'Outstanding';
         if ($progress > 0 && ($currentStatus === 'Open' || $currentStatus === 'Completed')) return 'On Track';
         if ($progress == 0 && $currentStatus === 'Completed') return 'Open';
         return $currentStatus;

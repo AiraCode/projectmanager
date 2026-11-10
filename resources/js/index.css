@@ -17,6 +17,10 @@
   --color-success-light: #F0FDF4;
   --color-warning: #D97706;
   --color-warning-light: #FFFBEB;
+  --color-outstanding: #9333EA;
+  --color-outstanding-light: #F3E8FF;
+  --color-outstanding-border: #D8B4FE;
+  --color-outstanding-dark: #6B21A8;
   --color-sidebar: #0F172A;
   --color-sidebar-item: #1E293B;
   --color-neutral-50: #F8F9FB;

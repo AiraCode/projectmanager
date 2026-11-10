@@ -1626,6 +1626,7 @@ class ProjectController extends Controller
             'duration'     => 'nullable|integer|min:1',
             'start'        => 'nullable|date',
             'end'          => 'nullable|date',
+            'status'       => 'nullable|string|max:45',
             'vendor'       => 'nullable|string|max:255',
             'predecessor'  => 'nullable|string|max:50',
             'dep_type'     => 'nullable|string|in:FS,SS,FF,SF',
@@ -1705,7 +1706,7 @@ class ProjectController extends Controller
             'end'          => $endDate,
             'duration_days' => max(1, $startDate->diffInDays($endDate) + 1),
             'is_completed' => false,
-            'status'       => 'Open',
+            'status'       => !empty($validated['status']) ? $validated['status'] : 'Open',
             'predecessor'  => $primaryPredecessor,
             'dep_type'     => $primaryDepType,
             'lag'          => $primaryLag,
@@ -1792,6 +1793,7 @@ class ProjectController extends Controller
             'duration'          => 'nullable|integer|min:1',
             'start'             => 'nullable|date',
             'end'               => 'nullable|date',
+            'status'            => 'nullable|string|max:45',
             'vendor'            => 'nullable|string|max:255',
             'predecessor'       => 'nullable|string|max:50',
             'dep_type'          => 'nullable|string|in:FS,SS,FF,SF',
@@ -1897,6 +1899,21 @@ class ProjectController extends Controller
 
         if (array_key_exists('weight', $validated)) {
             $task->weight = (float) $validated['weight'];
+        }
+
+        if (array_key_exists('status', $validated) && !empty($validated['status'])) {
+            $task->status = $validated['status'];
+            if ($validated['status'] === 'Completed') {
+                $task->progress = 100;
+                $task->is_completed = true;
+            } elseif ($validated['status'] === 'Outstanding') {
+                if ($task->progress >= 100) {
+                    $task->progress = 0;
+                }
+                $task->is_completed = false;
+            } elseif ($task->progress >= 100 && $validated['status'] !== 'Completed') {
+                $task->is_completed = false;
+            }
         }
 
         $task->save();
@@ -2170,7 +2187,15 @@ class ProjectController extends Controller
             }
 
             $task->is_completed = ($task->progress == 100);
-            $task->status = $task->is_completed ? 'Completed' : ($task->progress > 0 ? 'On Track' : 'Open');
+            if ($task->is_completed) {
+                $task->status = 'Completed';
+            } elseif ($request->filled('status')) {
+                $task->status = $request->input('status');
+            } elseif ($task->status === 'Outstanding') {
+                $task->status = 'Outstanding';
+            } else {
+                $task->status = $task->progress > 0 ? 'On Track' : 'Open';
+            }
 
             if ($task->is_completed && !$task->completed_by) {
                 $task->completed_by = Auth::id();

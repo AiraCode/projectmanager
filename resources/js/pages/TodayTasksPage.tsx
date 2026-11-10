@@ -426,6 +426,7 @@ export default function TodayTasksPage() {
       if (filterStatus !== 'all') {
         const isDone = st.checked || st.progress >= 100;
         if (filterStatus === 'completed' && !isDone) return false;
+        if (filterStatus === 'outstanding' && st.status !== 'Outstanding') return false;
         if (filterStatus === 'in_progress' && (isDone || st.progress === 0)) return false;
         if (filterStatus === 'open' && (isDone || st.progress > 0)) return false;
       }
@@ -565,6 +566,7 @@ export default function TodayTasksPage() {
             >
               <option value="all">All Statuses</option>
               <option value="completed">Completed (100%)</option>
+              <option value="outstanding">Outstanding (PR Unfulfilled)</option>
               <option value="in_progress">In Progress (&gt;0%)</option>
               <option value="open">Not Started (0%)</option>
             </select>

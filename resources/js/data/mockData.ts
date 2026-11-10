@@ -1,4 +1,4 @@
-export type Status = 'Open' | 'On Track' | 'At Risk' | 'Delayed' | 'Cancelled' | 'Completed';
+export type Status = 'Open' | 'On Track' | 'At Risk' | 'Delayed' | 'Cancelled' | 'Completed' | 'Outstanding';
 export type Role = 'Admin' | 'PIC';
 export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF';
 

@@ -50,6 +50,8 @@ import { recalculateProgress } from "@/utils/progressEngine";
 import { exportToCSV } from "@/utils/exportEngine";
 import {
     StatusBadge,
+    StatusSelectorBadge,
+    STATUS_CONFIG,
     ProgressBar,
     PageHeader,
     Card,
@@ -66,10 +68,11 @@ import { useAuth } from "@/context/AuthContext";
 const STATUSES: Status[] = [
     "Open",
     "On Track",
+    "Outstanding",
+    "Completed",
     "At Risk",
     "Delayed",
     "Cancelled",
-    "Completed",
 ];
 
 function EditableProgress({
@@ -864,6 +867,7 @@ export default function TasksPage() {
             duration: taskData.duration || 1,
             start: taskData.startDate || null,
             end: taskData.finishDate || null,
+            status: taskData.status || undefined,
             predecessor: taskData.predecessor || null,
             dep_type: taskData.depType || "FS",
             lag: taskData.lag || 0,
@@ -2537,13 +2541,23 @@ export default function TasksPage() {
                                                                 )}
                                                             </td>
                                                             <td className="px-4 py-2">
-                                                                <StatusBadge
+                                                                <StatusSelectorBadge
                                                                     status={
                                                                         isDone
                                                                             ? "Completed"
-                                                                            : st.status
+                                                                            : (st.status as Status)
                                                                     }
+                                                                    disabled={!authorized}
                                                                     size="xs"
+                                                                    onChange={(newStatus) => {
+                                                                        handleSaveSubtask(
+                                                                            smj.id,
+                                                                            {
+                                                                                ...st,
+                                                                                status: newStatus,
+                                                                            },
+                                                                        );
+                                                                    }}
                                                                 />
                                                             </td>
                                                             <td className="px-4 py-2 text-right font-bold text-neutral-800 text-[13px]">
@@ -5307,6 +5321,9 @@ function AddSubtaskModal({
 
     // Initial state setup
     const [name, setName] = useState(initialData?.name || "");
+    const [status, setStatus] = useState<Status>(() => {
+        return (initialData?.status as Status) || "Open";
+    });
     const [selectedDivisionIds, setSelectedDivisionIds] = useState<number[]>(() => {
         if ((initialData as any)?.division_ids && Array.isArray((initialData as any).division_ids) && (initialData as any).division_ids.length > 0) {
             return (initialData as any).division_ids.map(Number);
@@ -5472,6 +5489,7 @@ function AddSubtaskModal({
             {
                 ...(initialData || {}),
                 name: name.trim(),
+                status,
                 duration,
                 startDate: currentStart,
                 finishDate: previewEnd,
@@ -5538,6 +5556,36 @@ function AddSubtaskModal({
                         required
                         autoFocus
                     />
+                </div>
+
+                {/* Status Selection (Including Outstanding for PR Items) */}
+                <div>
+                    <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[12px] font-bold text-neutral-700">
+                            Task / Item Status
+                        </label>
+                        {status === "Outstanding" && (
+                            <span className="text-[10.5px] font-bold text-purple-800 bg-purple-100 border border-purple-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-pulse" />
+                                PR Goods Unfulfilled (Belum Terpenuhi)
+                            </span>
+                        )}
+                    </div>
+                    <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as Status)}
+                        className={`w-full px-3 py-2 rounded-lg border text-[13px] outline-none font-semibold transition-all shadow-xs ${
+                            status === "Outstanding"
+                                ? "bg-purple-50/70 border-purple-300 text-purple-900 focus:border-purple-500 focus:ring-2 focus:ring-purple-200"
+                                : "border-neutral-200 text-neutral-800 bg-white focus:border-brand focus:ring-2 focus:ring-brand/15"
+                        }`}
+                    >
+                        {STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                                {s === "Outstanding" ? "Outstanding (PR Unfulfilled / Belum Terpenuhi)" : s}
+                            </option>
+                        ))}
+                    </select>
                 </div>
 
                 {/* Responsible Divisions (Supports Multiple) */}
