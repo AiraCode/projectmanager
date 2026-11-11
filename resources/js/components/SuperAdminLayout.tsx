@@ -25,6 +25,26 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
   const [sidebarOpen, setSidebarOpen]       = useState(false);
   const [profileOpen, setProfileOpen]       = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+
+  // Provis AI Side-by-Side Margin State
+  const [aiMargin, setAiMargin] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const open = localStorage.getItem('provis_ai_open') === 'true';
+      const docked = localStorage.getItem('provis_ai_docked') !== 'false';
+      const width = Number(localStorage.getItem('provis_ai_width')) || 440;
+      return open && docked ? width : 0;
+    }
+    return 0;
+  });
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      setAiMargin(e.detail?.effectiveMargin ?? 0);
+    };
+    window.addEventListener('provis-ai-state-change', handler);
+    return () => window.removeEventListener('provis-ai-state-change', handler);
+  }, []);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('provis_sa_sidebar_collapsed') === 'true' || localStorage.getItem('jeker_sa_sidebar_collapsed') === 'true';
@@ -185,7 +205,13 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ background: '#f8f7ff' }}>
+      <div
+        className="flex-1 flex flex-col min-w-0 overflow-hidden transition-all duration-300 ease-in-out"
+        style={{
+          background: '#f8f7ff',
+          marginRight: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${aiMargin}px` : 0,
+        }}
+      >
         {/* Topbar */}
         <header className="flex items-center gap-4 px-5 lg:px-8 py-3 bg-white flex-shrink-0"
           style={{ borderBottom: '1px solid rgba(139,92,246,0.12)', boxShadow: '0 1px 0 rgba(139,92,246,0.06)' }}

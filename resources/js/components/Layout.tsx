@@ -39,6 +39,25 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   const [showLockedModal, setShowLockedModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
+  // Provis AI Side-by-Side Margin State
+  const [aiMargin, setAiMargin] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const open = localStorage.getItem('provis_ai_open') === 'true';
+      const docked = localStorage.getItem('provis_ai_docked') !== 'false';
+      const width = Number(localStorage.getItem('provis_ai_width')) || 440;
+      return open && docked ? width : 0;
+    }
+    return 0;
+  });
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      setAiMargin(e.detail?.effectiveMargin ?? 0);
+    };
+    window.addEventListener('provis-ai-state-change', handler);
+    return () => window.removeEventListener('provis-ai-state-change', handler);
+  }, []);
+
   // Real-time 24-hour clock (jam: menit: detik, format 24 jam tanpa am/pm)
   const [currentTime, setCurrentTime] = useState<string>(() => {
     const d = new Date();
@@ -431,7 +450,10 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
       )}
 
       {/* Main app */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-body-bg">
+      <div
+        className="flex-1 flex flex-col min-w-0 overflow-hidden bg-body-bg transition-all duration-300 ease-in-out"
+        style={{ marginRight: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${aiMargin}px` : 0 }}
+      >
         {/* Topbar */}
         <header className="flex items-center gap-4 px-5 lg:px-8 py-3 bg-white border-b border-neutral-200/90 shadow-2xs flex-shrink-0 z-10">
           <button

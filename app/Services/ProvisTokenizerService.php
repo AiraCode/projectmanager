@@ -263,7 +263,7 @@ class ProvisTokenizerService
     {
         $lower = strtolower($text);
 
-        if (preg_match('/\b(buat|bikin|create|tambah)\s+(proyek|project)\b/i', $lower)) {
+        if (preg_match('/\b(buat|bikin|tambah|cipta|create|generate)(?:kan)?\s+(?:proyek|project)\b/i', $lower)) {
             return 'CREATE_PROJECT';
         }
         if (preg_match('/\b(rekonsiliasi|reconcile|singkron|sinkron)\b/i', $lower)) {

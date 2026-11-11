@@ -139,12 +139,27 @@ class ProvisAiService
     {
         $dates = $tokenized['dates'] ?? [];
         $startDate = $dates[0]['date'] ?? Carbon::today()->format('Y-m-d');
-        $endDate   = $dates[1]['date'] ?? Carbon::parse($startDate)->addMonths(6)->format('Y-m-d');
+        $endDate   = $dates[1]['date'] ?? null;
 
-        // Extract title
-        preg_match('/(?:buat|bikin|tambah)\s+(?:proyek|project)\s+([^,]+)/i', $prompt, $m);
-        $title = isset($m[1]) ? trim(preg_replace('/\b(mulai|dari|pada|tanggal|dengan|selama)\b.*$/i', '', $m[1])) : 'Proyek Baru';
-        $title = trim(preg_replace('/^(?:baru|new)\s+/i', '', $title)) ?: 'Proyek Baru';
+        // Custom duration parsing (e.g. "6 bulan", "90 hari", "4 minggu")
+        if (!$endDate) {
+            if (preg_match('/(\d+)\s*(?:bulan|month)/i', $prompt, $mDur)) {
+                $endDate = Carbon::parse($startDate)->addMonths((int) $mDur[1])->format('Y-m-d');
+            } elseif (preg_match('/(\d+)\s*(?:hari|day)/i', $prompt, $mDur)) {
+                $endDate = Carbon::parse($startDate)->addDays((int) $mDur[1])->format('Y-m-d');
+            } elseif (preg_match('/(\d+)\s*(?:minggu|week)/i', $prompt, $mDur)) {
+                $endDate = Carbon::parse($startDate)->addWeeks((int) $mDur[1])->format('Y-m-d');
+            } else {
+                $endDate = Carbon::parse($startDate)->addMonths(6)->format('Y-m-d');
+            }
+        }
+
+        // Robust title extraction
+        preg_match('/(?:buat|bikin|tambah|cipta|create)(?:kan)?\s+(?:proyek|project)\s+(?:baru\s+|new\s+)?([^,]+)/i', $prompt, $m);
+        $candidate = isset($m[1]) ? trim(preg_replace('/\b(mulai|dari|pada|tanggal|dengan|selama|memakai|menggunakan|durasi)\b.*$/i', '', $m[1])) : '';
+        $candidate = trim(preg_replace('/^(?:baru|new)\b/i', '', $candidate));
+        $title = $candidate ?: 'Proyek Baru';
+        $title = Str::limit($title, 45, '');
 
         $companyId = $user->companies_id ?: (Company::first()?->id ?? 1);
 
@@ -156,7 +171,7 @@ class ProvisAiService
             'end'             => $endDate,
             'status'          => 'Open',
             'progress'        => 0,
-            'setup_status'    => 'pending',
+            'setup_status'    => 'active',
             'created_by'      => $user->id,
         ]);
 

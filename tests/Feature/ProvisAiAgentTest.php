@@ -183,6 +183,14 @@ class ProvisAiAgentTest extends TestCase
         $this->assertDatabaseHas('projects', [
             'title' => 'Pabrik Cikarang',
         ]);
+
+        // Test with natural phrasing: "Buatkan proyek baru dengan jadwal 6 bulan memakai template wbs"
+        $resNatural = $this->actingAs($this->superAdmin)->postJson('/ai/chat', [
+            'message' => 'Buatkan proyek baru dengan jadwal 6 bulan memakai template wbs',
+        ]);
+
+        $resNatural->assertStatus(200);
+        $this->assertStringContainsString('Berhasil Dibuat', $resNatural->json('content'));
     }
 
     public function test_session_management_endpoints(): void
