@@ -22,6 +22,7 @@ class User extends Authenticatable
         'roles_id',
         'permission_matrix',
         'is_standalone',
+        'is_ai_beta_tester',
         'created_by',
         'last_modified_by',
         'must_change_password',
@@ -49,8 +50,27 @@ class User extends Authenticatable
             'password' => 'hashed',
             'permission_matrix' => 'array',
             'is_standalone' => 'boolean',
+            'is_ai_beta_tester' => 'boolean',
             'must_change_password' => 'boolean',
         ];
+    }
+
+    /**
+     * Check if user is eligible to use the AI Agent.
+     * SuperAdmin / admin_utama always has access; other roles require beta tester flag.
+     */
+    public function canAccessAi(): bool
+    {
+        $roleName = $this->role?->name ?? '';
+        if (in_array(strtolower($roleName), ['superadmin', 'admin_utama'], true)) {
+            return true;
+        }
+        return (bool) $this->is_ai_beta_tester;
+    }
+
+    public function aiChatSessions()
+    {
+        return $this->hasMany(AiChatSession::class, 'user_id');
     }
 
     public function company()

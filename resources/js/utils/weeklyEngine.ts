@@ -275,7 +275,7 @@ export function recalculateWeeklyData(project: Project): Project {
 
     rawPlanDailyCum += dayPlanRaw;
     const planCum = parseFloat(Math.min(100, Math.round(rawPlanDailyCum * 100) / 100).toFixed(2));
-    const dayPlan = parseFloat(Math.round(dayPlanRaw * 100) / 100);
+    const dayPlan = Math.round(dayPlanRaw * 100) / 100;
 
     let actCum: number | null = null;
     let dayAct: number | null = null;
@@ -283,7 +283,7 @@ export function recalculateWeeklyData(project: Project): Project {
     if (isPastOrToday) {
       rawActDailyCum += dayActRaw;
       actCum = parseFloat(Math.min(100, Math.round(rawActDailyCum * 100) / 100).toFixed(2));
-      dayAct = parseFloat(Math.round(dayActRaw * 100) / 100);
+      dayAct = Math.round(dayActRaw * 100) / 100;
     }
 
     dailyData.push({

@@ -4,6 +4,7 @@ import { usePage, router } from '@inertiajs/react';
 export interface User {
   id?: number;
   name: string;
+  username?: string;
   email: string;
   role: string; // 'admin_utama' | 'admin_progres' | 'pic' | 'worker'
   rawRole: string;
@@ -17,6 +18,9 @@ export interface User {
   company?: string | null;
   companies_id?: number | null;
   canCreateProject?: boolean;
+  can_access_ai?: boolean;
+  is_ai_beta_tester?: boolean;
+  isSuperAdmin?: boolean;
   permission_matrix?: {
     sidebar?: string[];
     [key: string]: any;

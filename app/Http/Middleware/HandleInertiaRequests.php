@@ -86,6 +86,8 @@ class HandleInertiaRequests extends Middleware
                     'canCreateProject' => $user->canCreateProject(),
                     'permission_matrix'=> $permissionMatrix,
                     'isSuperAdmin'     => ($user->role?->name ?? '') === 'SuperAdmin',
+                    'is_ai_beta_tester'=> (bool) $user->is_ai_beta_tester,
+                    'can_access_ai'    => $user->canAccessAi(),
                     'must_change_password' => $user->must_change_password ?? false,
                     'assigned_projects_count' => count($user->getAllowedProjectIds()),
                     'assigned_tasks_count'    => $user->getAssignedTasksCount(),

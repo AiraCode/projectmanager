@@ -74,6 +74,7 @@ interface User {
   role?: Role;
   company?: Company;
   division?: Division;
+  is_ai_beta_tester?: boolean;
   permission_matrix: PermissionMatrix | null;
 }
 

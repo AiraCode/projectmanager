@@ -222,6 +222,34 @@ Route::middleware('auth')->group(function () {
         Route::post('/projects/{id}/budget', [ProjectController::class, 'storeBudgetEntry'])->name('projects.budget.store');
         Route::delete('/projects/{id}/budget/{entryId}', [ProjectController::class, 'deleteBudgetEntry'])->name('projects.budget.destroy');
     });
+
+    // ── Provis AI Agent Endpoints (Guarded by ai.beta middleware) ──
+    Route::get('/projects/{id}/report-view', function (int $id) {
+        $project = \App\Models\Project::with(['company', 'manager'])->findOrFail($id);
+        $allTasks = \App\Models\Wbs::whereHas('subWbs.mainWbs', fn($q) => $q->where('projects_id', $id))->with('division')->get();
+        $completedTasks = $allTasks->where('status', 'Completed')->count();
+        $totalTasks = $allTasks->count();
+        $now = \Carbon\Carbon::now('Asia/Jakarta');
+        $overdueTasks = $allTasks->filter(fn($t) => $t->end && \Carbon\Carbon::parse($t->end)->lt($now) && $t->status !== 'Completed' && ($t->progress ?? 0) < 100);
+        $mainTasks = \App\Models\MainWbs::where('projects_id', $id)->with(['listName', 'subWbs'])->orderBy('id')->get();
+
+        return view('reports.project_summary_pdf', [
+            'project'        => $project,
+            'mainTasks'      => $mainTasks,
+            'totalTasks'     => $totalTasks,
+            'completedTasks' => $completedTasks,
+            'overdueTasks'   => $overdueTasks,
+        ]);
+    })->name('projects.report-view');
+
+    Route::middleware('ai.beta')->prefix('ai')->group(function () {
+        Route::get('/sessions', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'sessions'])->name('ai.sessions');
+        Route::post('/sessions', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'createSession'])->name('ai.sessions.store');
+        Route::get('/sessions/{id}', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'getSession'])->name('ai.sessions.show');
+        Route::post('/sessions/{id}/chat', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'chat'])->name('ai.sessions.chat');
+        Route::post('/chat', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'chat'])->name('ai.chat');
+        Route::delete('/sessions/{id}', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'deleteSession'])->name('ai.sessions.destroy');
+    });
 });
 
 // ── Public Storage File Serving (Evidence PDF & Media Preview) ──

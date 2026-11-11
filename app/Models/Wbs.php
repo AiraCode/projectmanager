@@ -63,6 +63,11 @@ class Wbs extends Model
         return $this->belongsTo(SubWbs::class, 'sub_wbs_id');
     }
 
+    public function subWbs()
+    {
+        return $this->belongsTo(SubWbs::class, 'sub_wbs_id');
+    }
+
     public function completedBy()
     {
         return $this->belongsTo(User::class, 'completed_by');

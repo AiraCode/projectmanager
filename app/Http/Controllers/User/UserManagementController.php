@@ -111,6 +111,7 @@ class UserManagementController extends Controller
             'division_ids.*' => 'integer|exists:divisions,id',
             'multi_division_agreement' => 'nullable|boolean',
             'permission_matrix' => 'nullable|array',
+            'is_ai_beta_tester' => 'nullable|boolean',
         ]);
 
         $companyIds = [];
@@ -154,6 +155,9 @@ class UserManagementController extends Controller
         }
 
         $data = $request->only(['username', 'email', 'roles_id', 'divisions_id', 'permission_matrix']);
+        if ($user->role?->name === 'SuperAdmin' && $request->has('is_ai_beta_tester')) {
+            $data['is_ai_beta_tester'] = $request->boolean('is_ai_beta_tester');
+        }
         $data['password'] = Hash::make($request->password);
 
         $targetRole = Role::find($request->roles_id);
@@ -313,6 +317,7 @@ class UserManagementController extends Controller
             'division_ids.*' => 'integer|exists:divisions,id',
             'multi_division_agreement' => 'nullable|boolean',
             'permission_matrix' => 'nullable|array',
+            'is_ai_beta_tester' => 'nullable|boolean',
         ]);
 
         $companyIds = null;
@@ -358,6 +363,9 @@ class UserManagementController extends Controller
         }
 
         $data = $request->only(['username', 'email', 'roles_id', 'divisions_id', 'permission_matrix']);
+        if ($user->role?->name === 'SuperAdmin' && $request->has('is_ai_beta_tester')) {
+            $data['is_ai_beta_tester'] = $request->boolean('is_ai_beta_tester');
+        }
         
         $targetRole = $request->filled('roles_id') ? Role::find($request->roles_id) : $targetUser->role;
         if ($targetRole?->name === 'admin_utama' && (empty($data['permission_matrix']) || empty($data['permission_matrix']['sidebar']))) {

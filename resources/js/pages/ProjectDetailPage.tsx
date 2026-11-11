@@ -19,6 +19,38 @@ interface CompanyOption {
   code: string | null;
 }
 
+function getPredecessorName(task?: any, taskMap?: Map<string, any>): string | null {
+  if (!task) return null;
+  // 1. Direct predecessor_name property if returned by API
+  if (task.predecessor_name && typeof task.predecessor_name === 'string' && !task.predecessor_name.startsWith('st-')) {
+    return task.predecessor_name;
+  }
+  // 2. From task.dependencies
+  if (task.dependencies && task.dependencies.length > 0) {
+    const names = task.dependencies
+      .map((d: any) => d.predecessor_name)
+      .filter((n: string) => n && !n.startsWith('st-'));
+    if (names.length > 0) {
+      return names.join(', ');
+    }
+  }
+  // 3. Lookup in taskMap
+  if (task.predecessor && task.predecessor !== '-') {
+    const predKey = String(task.predecessor).trim();
+    if (taskMap) {
+      const found = taskMap.get(predKey) || taskMap.get(predKey.toLowerCase());
+      if (found?.name) {
+        return found.name;
+      }
+    }
+    // If task.predecessor is already a human readable title (not a technical ID like st-xxx or uuid)
+    if (!predKey.startsWith('st-') && !predKey.startsWith('wbs-') && !/^[0-9a-f-]{15,}$/i.test(predKey)) {
+      return predKey;
+    }
+  }
+  return null;
+}
+
 export default function ProjectDetailPage() {
   const { user, refreshUser } = useAuth();
   const pageProps = usePage().props as any;
@@ -67,36 +99,6 @@ export default function ProjectDetailPage() {
     });
     return map;
   }, [projectData]);
-
-  const getPredecessorName = (task?: any): string | null => {
-    if (!task) return null;
-    // 1. Direct predecessor_name property if returned by API
-    if (task.predecessor_name && typeof task.predecessor_name === 'string' && !task.predecessor_name.startsWith('st-')) {
-      return task.predecessor_name;
-    }
-    // 2. From task.dependencies
-    if (task.dependencies && task.dependencies.length > 0) {
-      const names = task.dependencies
-        .map((d: any) => d.predecessor_name)
-        .filter((n: string) => n && !n.startsWith('st-'));
-      if (names.length > 0) {
-        return names.join(', ');
-      }
-    }
-    // 3. Lookup in taskMap
-    if (task.predecessor && task.predecessor !== '-') {
-      const predKey = String(task.predecessor).trim();
-      const found = taskMap.get(predKey) || taskMap.get(predKey.toLowerCase());
-      if (found?.name) {
-        return found.name;
-      }
-      // If task.predecessor is already a human readable title (not a technical ID like st-xxx or uuid)
-      if (!predKey.startsWith('st-') && !predKey.startsWith('wbs-') && !/^[0-9a-f-]{15,}$/i.test(predKey)) {
-        return predKey;
-      }
-    }
-    return null;
-  };
 
   // Modal States
   const [evidencePreview, setEvidencePreview] = useState<EvidenceItem | null>(null);

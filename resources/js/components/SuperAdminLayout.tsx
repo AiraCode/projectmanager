@@ -6,6 +6,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button } from '@/components/ui';
 import ChangePasswordModal from './ChangePasswordModal';
+import ProvisAiDrawer from './ProvisAiDrawer';
 
 const ADMIN_NAV = [
   { to: '/admin',              icon: LayoutDashboard, label: 'Dashboard' },
@@ -274,6 +275,8 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
         isOpen={showPasswordModal}
         onClose={() => setShowPasswordModal(false)}
       />
+
+      <ProvisAiDrawer />
     </div>
   );
 }

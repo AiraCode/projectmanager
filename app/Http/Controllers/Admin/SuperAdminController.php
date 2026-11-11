@@ -165,6 +165,7 @@ class SuperAdminController extends Controller
                 'division'    => $u->division?->divisi,
                 'created_by'  => $u->creator?->username ?? 'System',
                 'is_standalone' => $u->is_standalone,
+                'is_ai_beta_tester' => (bool) $u->is_ai_beta_tester,
                 'permission_matrix' => $u->permission_matrix,
                 'created_at'  => $u->created_at?->diffForHumans(),
             ]);

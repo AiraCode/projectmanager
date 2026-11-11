@@ -9,6 +9,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button, formatDivisionName } from '@/components/ui';
 import ChangePasswordModal from './ChangePasswordModal';
+import ProvisAiDrawer from './ProvisAiDrawer';
 
 const NAV_ITEMS = [
   { to: '/projectlistpage',   icon: LayoutDashboard, label: 'Dashboard' },
@@ -637,6 +638,8 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
         isOpen={showPasswordModal}
         onClose={() => setShowPasswordModal(false)}
       />
+
+      <ProvisAiDrawer />
     </div>
   );
 }

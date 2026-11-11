@@ -3,7 +3,7 @@ import { Head, useForm, router, usePage } from '@inertiajs/react';
 import SuperAdminLayout from '@/components/SuperAdminLayout';
 import { ConfirmModal } from '@/components/ui';
 import CustomSelect from '@/components/CustomSelect';
-import { Plus, Edit2, Trash2, Shield, FolderOpen, Search, X, ChevronDown, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Shield, FolderOpen, Search, X, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Sparkles, Bot } from 'lucide-react';
 
 interface Role { id: number; name: string; }
 interface Company { id: number; name: string; }
@@ -30,6 +30,7 @@ interface User {
   division: string | null;
   created_by: string;
   is_standalone: boolean;
+  is_ai_beta_tester?: boolean;
   permission_matrix: PermissionMatrix | null;
   created_at: string;
 }
@@ -109,6 +110,7 @@ export default function SuperAdminUserManagementPage({
     divisions_id: '',
     division_ids: [] as number[],
     multi_division_agreement: false,
+    is_ai_beta_tester: false,
     permission_matrix: {
       sidebar: [] as string[],
       features: {} as Record<string, string[]>,
@@ -136,6 +138,7 @@ export default function SuperAdminUserManagementPage({
       divisions_id: '',
       division_ids: [],
       multi_division_agreement: false,
+      is_ai_beta_tester: false,
       permission_matrix: { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} }
     });
     setModalOpen(false);
@@ -183,6 +186,7 @@ export default function SuperAdminUserManagementPage({
       divisions_id: u.divisions_id?.toString() ?? (initialDivisionIds[0]?.toString() ?? ''),
       division_ids: initialDivisionIds,
       multi_division_agreement: isMultiDiv,
+      is_ai_beta_tester: Boolean(u.is_ai_beta_tester),
       permission_matrix: u.permission_matrix ?? { sidebar: [], features: {}, data_scope: 'own_company', project_access: {} },
     });
     setModalOpen(true);
@@ -897,6 +901,58 @@ export default function SuperAdminUserManagementPage({
         )}
       </div>
 
+      {/* Provis AI Agent Beta Tester Assignment */}
+      <div className="mt-4">
+        {selectedRoleName === 'SuperAdmin' ? (
+          <div className="p-3.5 rounded-xl border border-violet-200 bg-violet-50/70 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-violet-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <Sparkles size={16} />
+            </div>
+            <div>
+              <div className="text-[12.5px] font-bold text-violet-900 flex items-center gap-1.5">
+                <span>Provis AI Agent: Akses Penuh (SuperAdmin)</span>
+                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-violet-200 text-violet-800">Otomatis Aktif</span>
+              </div>
+              <p className="text-[11px] text-violet-700 mt-0.5">
+                Semua akun dengan peran SuperAdmin otomatis memiliki akses penuh ke AI Agent tanpa perlu centang manual.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className={`p-4 rounded-xl border transition-all ${data.is_ai_beta_tester
+            ? 'bg-purple-50/90 border-purple-300 ring-2 ring-purple-400/20'
+            : 'bg-neutral-50/80 border-neutral-200 hover:border-neutral-300'
+          }`}>
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={data.is_ai_beta_tester}
+                onChange={(e) => setData('is_ai_beta_tester', e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded text-purple-600 focus:ring-purple-500 accent-purple-600 cursor-pointer shrink-0"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles size={15} className="text-purple-600" />
+                  <span className="font-bold text-[13px] text-neutral-900">Akses AI Agent (Beta Tester)</span>
+                  {data.is_ai_beta_tester ? (
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-600 text-white shadow-2xs">
+                      Beta Tester Aktif
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-neutral-200 text-neutral-600">
+                      Nonaktif
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11.5px] text-neutral-500 mt-0.5">
+                  Izinkan pengguna ini menjadi Beta Tester untuk berinteraksi dengan Provis AI Agent (membuat proyek, menjadwalkan WBS, chat assistant).
+                </p>
+              </div>
+            </label>
+          </div>
+        )}
+      </div>
+
       {/* Global Permission Matrix */}
       {selectedRoleName && selectedRoleName !== 'SuperAdmin' && !isAdminTarget && (
         <div className="border border-neutral-200 rounded-2xl overflow-hidden mt-6 bg-white/50">
@@ -1200,9 +1256,20 @@ export default function SuperAdminUserManagementPage({
                           <div className="text-[11px] text-neutral-400">{u.email}</div>
                         </td>
                         <td className="px-5 py-3">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${ROLE_COLORS[u.role] ?? 'bg-neutral-100 text-neutral-600'}`}>
-                            {u.role}
-                          </span>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${ROLE_COLORS[u.role] ?? 'bg-neutral-100 text-neutral-600'}`}>
+                              {u.role}
+                            </span>
+                            {u.role === 'SuperAdmin' ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-violet-100 text-violet-700" title="SuperAdmin memiliki akses AI otomatis">
+                                <Sparkles size={10} /> AI: Full
+                              </span>
+                            ) : u.is_ai_beta_tester ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-purple-100 text-purple-700 border border-purple-200" title="AI Beta Tester Aktif">
+                                <Sparkles size={10} /> AI Beta
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="px-5 py-3 text-neutral-600">
                           {u.companies && u.companies.length > 1 ? (
