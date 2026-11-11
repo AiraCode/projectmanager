@@ -256,4 +256,185 @@ class ProvisAiAgentTest extends TestCase
         $this->assertStringContainsString('Tindakan Berisiko Tinggi Dibatasi', $json['content']);
         $this->assertStringContainsString('Human-in-the-Loop', $json['content']);
     }
+
+    public function test_ai_sets_predecessor_and_updates_schedule_with_audit_trail(): void
+    {
+        $project = Project::create([
+            'title' => 'Project Tower',
+            'companies_id' => $this->company->id,
+            'project_manager' => $this->superAdmin->id,
+            'start' => '2026-11-01',
+            'end' => '2027-04-30',
+            'status' => 'Open',
+        ]);
+
+        $listMain = \App\Models\ListMainWbsName::firstOrCreate(['name' => 'Struktur Utama']);
+
+        $main = \App\Models\MainWbs::create([
+            'projects_id' => $project->id,
+            'list_main_wbs_names_id' => $listMain->id,
+            'name' => 'Struktur Utama',
+            'percentage' => 50.0,
+        ]);
+
+        $listSub = \App\Models\ListSubWbsName::firstOrCreate([
+            'name' => 'Pondasi',
+            'list_main_wbs_names_copy1_id' => $listMain->id,
+        ]);
+
+        $sub = \App\Models\SubWbs::create([
+            'sub_wbs_id' => $main->id,
+            'list_sub_wbs_names_id' => $listSub->id,
+            'name' => 'Pondasi',
+            'predecessor' => 'None',
+            'predecessor_type' => 'FS',
+            'start' => '2026-11-01',
+            'end' => '2026-11-30',
+        ]);
+
+        $div = \App\Models\Division::firstOrCreate(['id' => 1], ['divisi' => 'Sipil']);
+
+        $task1 = \App\Models\Wbs::create([
+            'id' => 'WBS-01',
+            'sub_wbs_id' => $sub->id,
+            'divisions_id' => $div->id,
+            'vendor' => 'Internal',
+            'name' => 'Galian Tanah',
+            'start' => '2026-11-01',
+            'end' => '2026-11-10',
+            'status' => 'Completed',
+            'progress' => 100,
+            'weight' => 50,
+            'order_index' => 1,
+        ]);
+
+        $task2 = \App\Models\Wbs::create([
+            'id' => 'WBS-02',
+            'sub_wbs_id' => $sub->id,
+            'divisions_id' => $div->id,
+            'vendor' => 'Internal',
+            'name' => 'Pengecoran Pondasi',
+            'start' => '2026-11-11',
+            'end' => '2026-11-20',
+            'status' => 'Pending',
+            'progress' => 0,
+            'weight' => 50,
+            'order_index' => 2,
+        ]);
+
+        $response = $this->actingAs($this->superAdmin)->postJson('/ai/chat', [
+            'message' => "Hubungkan task WBS-02 dengan predecessor WBS-01 FS lag 3 hari",
+            'project_id' => $project->id,
+        ]);
+
+        $response->assertStatus(200);
+        $json = $response->json();
+
+        $this->assertStringContainsString('Diperbarui', $json['content']);
+
+        $task2->refresh();
+        $this->assertEquals($task1->id, $task2->predecessor);
+        $this->assertEquals('FS', $task2->dep_type);
+        $this->assertEquals(3, $task2->lag);
+
+        // Check AuditLog
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'UPDATE_TASK_SCHEDULE',
+        ]);
+    }
+
+    public function test_ai_recaps_off_plan_and_overdue_tasks_for_superadmin(): void
+    {
+        $project = Project::create([
+            'title' => 'Project Ketinggalan Jadwal',
+            'companies_id' => $this->company->id,
+            'project_manager' => $this->superAdmin->id,
+            'start' => '2026-08-01',
+            'end' => '2026-10-01',
+            'status' => 'In Progress',
+            'progress' => 40,
+        ]);
+
+        $listMain2 = \App\Models\ListMainWbsName::firstOrCreate(['name' => 'Arsitektur']);
+
+        $main = \App\Models\MainWbs::create([
+            'projects_id' => $project->id,
+            'list_main_wbs_names_id' => $listMain2->id,
+            'name' => 'Arsitektur',
+            'percentage' => 50.0,
+        ]);
+
+        $listSub2 = \App\Models\ListSubWbsName::firstOrCreate([
+            'name' => 'Dinding',
+            'list_main_wbs_names_copy1_id' => $listMain2->id,
+        ]);
+
+        $sub = \App\Models\SubWbs::create([
+            'sub_wbs_id' => $main->id,
+            'list_sub_wbs_names_id' => $listSub2->id,
+            'name' => 'Dinding',
+            'predecessor' => 'None',
+            'predecessor_type' => 'FS',
+            'start' => '2026-08-01',
+            'end' => '2026-09-30',
+        ]);
+
+        $div = \App\Models\Division::firstOrCreate(['id' => 1], ['divisi' => 'Sipil']);
+
+        \App\Models\Wbs::create([
+            'id' => 'TASK-OVERDUE',
+            'sub_wbs_id' => $sub->id,
+            'divisions_id' => $div->id,
+            'vendor' => 'Internal',
+            'name' => 'Pemasangan Bata Ringan',
+            'start' => '2026-08-05',
+            'end' => '2026-09-01',
+            'status' => 'In Progress',
+            'progress' => 30,
+            'weight' => 50,
+            'order_index' => 1,
+        ]);
+
+        $response = $this->actingAs($this->superAdmin)->postJson('/ai/chat', [
+            'message' => 'Tolong berikan rekap proyek mana saja yang terlambat atau off-plan',
+        ]);
+
+        $response->assertStatus(200);
+        $json = $response->json();
+
+        $this->assertStringContainsString('Laporan Rekap Deviasi Proyek', $json['content']);
+        $this->assertStringContainsString('Project Ketinggalan Jadwal', $json['content']);
+        $this->assertStringContainsString('Pemasangan Bata Ringan', $json['content']);
+    }
+
+    public function test_ai_queries_user_stats_and_audit_logs(): void
+    {
+        // 1. User stats query
+        $resUsers = $this->actingAs($this->superAdmin)->postJson('/ai/chat', [
+            'message' => 'Siapa saja daftar user dan beta tester?',
+        ]);
+        $resUsers->assertStatus(200);
+        $this->assertStringContainsString('Statistik Pengguna', $resUsers->json('content'));
+
+        // 2. Audit log query
+        $resAudit = $this->actingAs($this->superAdmin)->postJson('/ai/chat', [
+            'message' => 'Tampilkan riwayat aktivitas di audit log sistem',
+        ]);
+        $resAudit->assertStatus(200);
+        $this->assertStringContainsString('Aktivitas Audit Log', $resAudit->json('content'));
+    }
+
+    public function test_ai_general_conversational_guidance(): void
+    {
+        $response = $this->actingAs($this->betaUser)->postJson('/ai/chat', [
+            'message' => 'Halo Provis AI, kamu bisa bantu apa saja?',
+        ]);
+
+        $response->assertStatus(200);
+        $content = $response->json('content');
+
+        $this->assertStringContainsString('Provis Support Assistant', $content);
+        $this->assertStringContainsString('100% On-Premise', $content);
+        $this->assertStringContainsString('Buat Proyek', $content);
+    }
 }

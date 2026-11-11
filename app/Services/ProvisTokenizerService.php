@@ -147,45 +147,42 @@ class ProvisTokenizerService
 
     /**
      * Extract predecessor notations like:
-     * FS, SS, FF, SF, FS+2, SS-1d, lag 3 hari, lead 2 hari
+     * FS, SS, FF, SF, FS+2, SS-1d, FS lag 3 hari, lead 2 hari
      */
     public function extractPredecessorSyntax(string $text): array
     {
-        $results = [];
+        $depType = 'FS';
+        $lag     = 0;
+        $lead    = 0;
+        $matched = false;
 
-        // Pattern: (FS|SS|FF|SF)([+-]\d+)?
-        if (preg_match_all('/\b(FS|SS|FF|SF)(?:\s*([+-])\s*(\d+)(?:d|hari)?)?\b/i', $text, $matches, PREG_SET_ORDER)) {
-            foreach ($matches as $m) {
-                $depType = strtoupper($m[1]);
-                $sign    = $m[2] ?? '+';
-                $val     = isset($m[3]) ? (int) $m[3] : 0;
-                $lag     = ($sign === '+' && $val > 0) ? $val : 0;
-                $lead    = ($sign === '-' && $val > 0) ? $val : 0;
+        // 1. Check explicit type
+        if (preg_match('/\b(FS|SS|FF|SF)\b/i', $text, $mType)) {
+            $depType = strtoupper($mType[1]);
+            $matched = true;
+        }
 
-                $results[] = [
+        // 2. Check lag/lead notation: +3d, -2d, lag 3 hari, lead 2 hari
+        if (preg_match('/\b(?:lag|\+)\s*(\d+)(?:\s*d|\s*hari)?\b/i', $text, $mLag)) {
+            $lag = (int) $mLag[1];
+            $matched = true;
+        } elseif (preg_match('/\b(?:lead|-)\s*(\d+)(?:\s*d|\s*hari)?\b/i', $text, $mLead)) {
+            $lead = (int) $mLead[1];
+            $matched = true;
+        }
+
+        if ($matched) {
+            return [
+                [
                     'dep_type' => $depType,
                     'lag'      => $lag,
                     'lead'     => $lead,
-                    'raw'      => $m[0],
-                ];
-            }
+                    'raw'      => $text,
+                ]
+            ];
         }
 
-        // Pattern: lag X hari / lead X hari
-        if (preg_match_all('/\b(lag|lead)\s*(\d+)(?:\s*hari|\s*days)?\b/i', $text, $matches, PREG_SET_ORDER)) {
-            foreach ($matches as $m) {
-                $type = strtolower($m[1]);
-                $val  = (int) $m[2];
-                $results[] = [
-                    'dep_type' => 'FS', // default fallback
-                    'lag'      => $type === 'lag' ? $val : 0,
-                    'lead'     => $type === 'lead' ? $val : 0,
-                    'raw'      => $m[0],
-                ];
-            }
-        }
-
-        return $results;
+        return [];
     }
 
     /**
