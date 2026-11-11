@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePage } from '@inertiajs/react';
 import {
-  Sparkles,
   Bot,
   X,
   Send,
@@ -9,17 +8,11 @@ import {
   Trash2,
   ExternalLink,
   FileText,
-  AlertCircle,
-  Clock,
   History,
-  CheckCircle2,
   RefreshCw,
   Maximize2,
   Minimize2,
   Columns2,
-  ShieldCheck,
-  ChevronRight,
-  SplitSquareVertical,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -96,7 +89,7 @@ function formatInlineStyles(text: string): React.ReactNode {
       );
     } else if (type === 'code') {
       parts.push(
-        <code key={key++} className="px-1.5 py-0.5 rounded bg-violet-100/70 text-violet-800 font-mono text-[11px] border border-violet-200">
+        <code key={key++} className="px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-800 font-mono text-[11px] border border-neutral-200">
           {earliest[1]}
         </code>
       );
@@ -132,7 +125,7 @@ function renderFormattedContent(text: string) {
         if (trimmed.startsWith('### ') || trimmed.startsWith('#### ')) {
           const headerText = trimmed.replace(/^#{3,4}\s+/, '');
           return (
-            <h4 key={idx} className="font-bold text-[13.5px] text-neutral-900 mt-2 mb-1">
+            <h4 key={idx} className="font-bold text-[13px] text-neutral-900 mt-2 mb-1">
               {formatInlineStyles(headerText)}
             </h4>
           );
@@ -142,7 +135,7 @@ function renderFormattedContent(text: string) {
           const itemText = trimmed.replace(/^[-*]\s+/, '');
           return (
             <div key={idx} className="flex items-start gap-2 pl-1 my-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-600 mt-1.5 flex-shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full bg-neutral-400 mt-1.5 flex-shrink-0" />
               <div className="flex-1">{formatInlineStyles(itemText)}</div>
             </div>
           );
@@ -152,7 +145,7 @@ function renderFormattedContent(text: string) {
           const match = trimmed.match(/^(\d+)\.\s+(.*)/);
           return (
             <div key={idx} className="flex items-start gap-2 pl-1 my-0.5">
-              <span className="font-bold text-[10.5px] text-violet-700 bg-violet-100/70 border border-violet-200 rounded px-1.5 py-0.2 flex-shrink-0">
+              <span className="font-semibold text-[10.5px] text-neutral-600 bg-neutral-100 border border-neutral-200 rounded px-1.5 py-0.2 flex-shrink-0">
                 {match?.[1]}.
               </span>
               <div className="flex-1">{formatInlineStyles(match?.[2] || '')}</div>
@@ -163,7 +156,7 @@ function renderFormattedContent(text: string) {
         if (trimmed.startsWith('>')) {
           const quoteText = trimmed.replace(/^>\s*/, '');
           return (
-            <div key={idx} className="border-l-2 border-violet-500 bg-violet-50/60 rounded-r-lg px-2.5 py-1 text-[12px] italic text-neutral-600 my-1">
+            <div key={idx} className="border-l-2 border-neutral-400 bg-neutral-50 rounded-r-lg px-2.5 py-1 text-[12px] italic text-neutral-600 my-1">
               {formatInlineStyles(quoteText)}
             </div>
           );
@@ -193,7 +186,7 @@ export default function ProvisAiDrawer() {
 
   const canAccess = Boolean(user?.can_access_ai || user?.isSuperAdmin || user?.is_ai_beta_tester);
 
-  // Side-by-side Antigravity panel states
+  // Side-by-side panel states
   const [isOpen, setIsOpen] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('provis_ai_open') === 'true';
@@ -431,156 +424,126 @@ export default function ProvisAiDrawer() {
   const quickPrompts = user?.isSuperAdmin
     ? [
         { label: '📊 Rekap Proyek Off-Plan & Deviasi', prompt: 'Tampilkan rekap proyek mana saja yang terlambat atau berjalan tidak sesuai plan' },
-        { label: '🛠️ Rekonsiliasi Tanggal Otomatis', prompt: activeProjectId ? `Tolong rekonsiliasi tanggal proyek ID #${activeProjectId}` : 'Tolong jalankan rekonsiliasi tanggal untuk semua proyek' },
-        { label: '📝 Update Codingan & Git Commit', prompt: 'Apa saja update kodingan dan commit terakhir dari git?' },
-        { label: '📄 Buat Laporan Eksekutif PDF', prompt: activeProjectId ? `Buatkan laporan eksekutif PDF proyek ID #${activeProjectId}` : 'Buatkan laporan proyek dalam bentuk PDF' },
-        { label: '👥 Statistik User & Beta Tester', prompt: 'Siapa saja user yang memiliki akses beta tester?' },
+        { label: '🛠️ Rekonsiliasi Tanggal Jadwal', prompt: activeProjectId ? `Tolong rekonsiliasi tanggal proyek ID #${activeProjectId}` : 'Tolong jalankan rekonsiliasi tanggal untuk semua proyek' },
+        { label: '📝 Ringkasan Update Commit Git', prompt: 'Apa saja update kodingan dan commit terakhir dari git?' },
+        { label: '📄 Buat Laporan Ringkasan PDF', prompt: activeProjectId ? `Buatkan laporan eksekutif PDF proyek ID #${activeProjectId}` : 'Buatkan laporan proyek dalam bentuk PDF' },
+        { label: '👥 Statistik User & Akses', prompt: 'Siapa saja user yang memiliki akses beta tester?' },
       ]
     : [
-        { label: '🚀 Buat Proyek Baru (WBS Template)', prompt: 'Buatkan proyek baru dengan jadwal 6 bulan memakai template wbs' },
-        { label: '📄 Buat Laporan Eksekutif PDF', prompt: activeProjectId ? `Buatkan laporan eksekutif PDF proyek ini` : 'Buatkan laporan PDF proyek' },
-        { label: '🔗 Atur Predecessor Task', prompt: 'Bagaimana cara mengatur predecessor dependensi antar pekerjaan?' },
-        { label: '📊 Ringkasan Status & Progres', prompt: activeProjectId ? `Berapa progres dan sisa waktu proyek ini?` : 'Bagaimana status proyek aktif saat ini?' },
+        { label: '🚀 Buat Proyek Baru (WBS)', prompt: 'Buatkan proyek baru dengan jadwal 6 bulan memakai template wbs' },
+        { label: '📄 Buat Laporan PDF Proyek', prompt: activeProjectId ? `Buatkan laporan eksekutif PDF proyek ini` : 'Buatkan laporan PDF proyek' },
+        { label: '🔗 Atur Predecessor Pekerjaan', prompt: 'Bagaimana cara mengatur predecessor dependensi antar pekerjaan?' },
+        { label: '📊 Status & Progres Proyek', prompt: activeProjectId ? `Berapa progres dan sisa waktu proyek ini?` : 'Bagaimana status proyek aktif saat ini?' },
       ];
 
   return (
     <>
-      {/* Floating Trigger Button (when panel is collapsed) */}
-      {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-full text-white font-bold text-[13px] shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-          style={{
-            background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)',
-            boxShadow: '0 8px 24px rgba(124, 58, 237, 0.4)',
-          }}
-          title="Buka Provis AI Assistant (Side by Side)"
-        >
-          <div className="relative">
-            <Sparkles size={18} className="animate-pulse text-amber-300" />
-          </div>
-          <span>Provis AI</span>
-          <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-white/20 border border-white/30 tracking-wider">
-            Beta
-          </span>
-          <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-200 border border-emerald-300/30">
-            Side by Side
-          </span>
-        </button>
-      )}
-
-      {/* Persistent Antigravity-Style Side-by-Side Panel (No dark blocking backdrop!) */}
+      {/* Persistent Side-by-Side Panel (No floating button, clean integration) */}
       {isOpen && (
         <div
-          className="fixed top-0 right-0 bottom-0 z-40 bg-white border-l border-neutral-200 flex flex-col shadow-2xl transition-all duration-300 ease-in-out"
+          className="fixed top-0 right-0 bottom-0 z-40 bg-white border-l border-neutral-200/90 flex flex-col shadow-xl transition-all duration-300 ease-in-out font-sans"
           style={{ width: `${panelWidth}px`, maxWidth: '100vw' }}
         >
           {/* Header */}
-          <div className="p-3.5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/80 backdrop-blur-xs flex-shrink-0">
+          <div className="px-4 py-3 border-b border-neutral-200/80 flex items-center justify-between bg-neutral-50/70 flex-shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-xs shrink-0"
-                style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
-              >
-                <Bot size={18} />
+              <div className="w-7 h-7 rounded-lg bg-neutral-900 text-white flex items-center justify-center shrink-0">
+                <Bot size={16} />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h3 className="font-extrabold text-[13.5px] text-neutral-900 truncate">Provis AI Assistant</h3>
-                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-bold text-[13px] text-neutral-900 truncate">Provis Assistant</h3>
+                  <span className="text-[9.5px] font-medium px-1.5 py-0.2 rounded bg-neutral-200/70 text-neutral-600">
                     Beta
-                  </span>
-                  <span className="text-[8.5px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-0.5">
-                    <ShieldCheck size={10} /> 100% Private
                   </span>
                 </div>
                 <p className="text-[10.5px] text-neutral-500 truncate">
-                  {user?.isSuperAdmin ? 'SuperAdmin Copilot • 100% On-Premise' : 'Asisten Operasional Proyek • On-Premise'}
+                  {user?.isSuperAdmin ? 'SuperAdmin Copilot' : 'Project Copilot'}
                 </p>
               </div>
             </div>
 
-            {/* Header Action Toolbar (Antigravity-style) */}
+            {/* Header Toolbar */}
             <div className="flex items-center gap-1 shrink-0 ml-2">
-              {/* Width Toggle (Standard 440px vs Wide 620px) */}
               <button
-                onClick={() => setPanelWidth(w => (w >= 580 ? 440 : 620))}
-                className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/60 transition-colors"
-                title={panelWidth >= 580 ? 'Kecilkan Lebar Panel (440px)' : 'Perlebar Split View (620px)'}
+                onClick={() => setPanelWidth(w => (w >= 560 ? 440 : 600))}
+                className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/60 transition-colors cursor-pointer"
+                title={panelWidth >= 560 ? 'Ukuran Standar (440px)' : 'Perlebar Panel (600px)'}
               >
-                {panelWidth >= 580 ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                {panelWidth >= 560 ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
 
-              {/* History button */}
               <button
                 onClick={() => setShowHistory(!showHistory)}
-                className={`p-1.5 rounded-lg transition-colors ${showHistory ? 'bg-violet-100 text-violet-700 font-bold' : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/60'}`}
-                title="Riwayat Percakapan"
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${showHistory ? 'bg-neutral-200 text-neutral-900 font-bold' : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/60'}`}
+                title="Riwayat Sesi"
               >
-                <History size={15} />
+                <History size={14} />
               </button>
 
-              {/* New session */}
               <button
                 onClick={startNewSession}
-                className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/60 transition-colors"
-                title="Percakapan Baru"
+                className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/60 transition-colors cursor-pointer"
+                title="Sesi Baru"
               >
-                <Plus size={15} />
+                <Plus size={14} />
               </button>
 
-              {/* Close / Collapse button */}
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/60 transition-colors"
-                title="Tutup Panel AI"
+                className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/60 transition-colors cursor-pointer"
+                title="Tutup Panel"
               >
-                <ChevronRight size={17} />
+                <X size={15} />
               </button>
             </div>
           </div>
 
-          {/* Session History Sidebar Overlay */}
+          {/* Session History View */}
           {showHistory ? (
-            <div className="flex-1 overflow-y-auto p-4 bg-neutral-50/50">
+            <div className="flex-1 overflow-y-auto p-4 bg-neutral-50/40">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[12px] font-bold text-neutral-600 uppercase tracking-wider">Riwayat Obrolan</span>
+                <span className="text-[11.5px] font-bold text-neutral-500 uppercase tracking-wider">Riwayat Sesi</span>
                 <button
                   onClick={startNewSession}
-                  className="flex items-center gap-1 text-[11.5px] font-bold text-violet-600 hover:text-violet-700 cursor-pointer"
+                  className="flex items-center gap-1 text-[11px] font-semibold text-neutral-800 hover:text-neutral-950 cursor-pointer"
                 >
-                  <Plus size={13} /> Sesi Baru
+                  <Plus size={12} /> Sesi Baru
                 </button>
               </div>
 
               <div className="space-y-1.5">
                 {sessions.length === 0 ? (
                   <div className="p-4 text-center text-neutral-400 text-[12px] italic">
-                    Belum ada riwayat percakapan.
+                    Belum ada riwayat sesi.
                   </div>
                 ) : (
                   sessions.map(s => (
                     <div
                       key={s.id}
                       onClick={() => loadSession(s.id)}
-                      className={`flex items-center justify-between p-2.5 rounded-xl border text-[12.5px] cursor-pointer transition-all ${
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-[12px] cursor-pointer transition-all ${
                         currentSessionId === s.id
-                          ? 'bg-violet-50 border-violet-200 text-violet-900 font-bold shadow-2xs'
-                          : 'bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-700'
+                          ? 'bg-neutral-900 text-white font-medium border-neutral-900 shadow-2xs'
+                          : 'bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-800'
                       }`}
                     >
                       <div className="truncate flex-1 pr-2">
                         <div className="truncate">{s.title}</div>
-                        <span className="text-[10px] text-neutral-400 font-normal">
+                        <span className={`text-[10px] font-normal ${currentSessionId === s.id ? 'text-neutral-300' : 'text-neutral-400'}`}>
                           {new Date(s.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       <button
                         onClick={(e) => deleteSession(s.id, e)}
-                        className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                          currentSessionId === s.id
+                            ? 'text-neutral-400 hover:text-white'
+                            : 'text-neutral-400 hover:text-red-600 hover:bg-red-50'
+                        }`}
                         title="Hapus Sesi"
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={12} />
                       </button>
                     </div>
                   ))
@@ -589,31 +552,28 @@ export default function ProvisAiDrawer() {
             </div>
           ) : (
             /* Chat Messages View */
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white/50">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-neutral-50/20">
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col justify-center items-center text-center px-4 py-8">
-                  <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center text-white mb-3 shadow-md"
-                    style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
-                  >
-                    <Sparkles size={24} />
+                  <div className="w-10 h-10 rounded-xl bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-700 mb-3 shadow-2xs">
+                    <Bot size={20} />
                   </div>
-                  <h4 className="font-extrabold text-[15px] text-neutral-900">
+                  <h4 className="font-bold text-[14px] text-neutral-900">
                     Halo, {user?.name || user?.username}!
                   </h4>
-                  <p className="text-[12px] text-neutral-500 max-w-sm mt-1 mb-5 leading-relaxed">
-                    Asisten privat lokal 100% On-Premise beroperasi berdampingan (side by side). Siap membuat proyek otomatis, menjadwalkan WBS, sinkronisasi tanggal, rekap keterlambatan, hingga menyusun laporan eksekutif PDF.
+                  <p className="text-[12px] text-neutral-500 max-w-xs mt-1 mb-5 leading-relaxed">
+                    Asisten operasional PROVIS siap membantu Anda mengelola proyek, menyusun jadwal WBS, rekonsiliasi tanggal, hingga menyiapkan laporan PDF.
                   </p>
 
                   <div className="w-full space-y-1.5 text-left">
-                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">
-                      Saran Perintah Cepat:
+                    <span className="text-[10.5px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">
+                      Pilihan Aksi Cepat:
                     </span>
                     {quickPrompts.map((qp, idx) => (
                       <button
                         key={idx}
                         onClick={() => sendMessage(qp.prompt)}
-                        className="w-full p-2.5 text-left text-[12px] font-semibold text-neutral-700 bg-neutral-50 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-200 border border-neutral-200 rounded-xl transition-all cursor-pointer"
+                        className="w-full p-2.5 text-left text-[12px] font-medium text-neutral-700 bg-white hover:bg-neutral-50 hover:border-neutral-300 border border-neutral-200 rounded-xl transition-all cursor-pointer shadow-2xs"
                       >
                         {qp.label}
                       </button>
@@ -627,31 +587,28 @@ export default function ProvisAiDrawer() {
                     className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
                   >
                     <div
-                      className={`max-w-[92%] rounded-2xl px-4 py-3 text-[12.5px] leading-relaxed shadow-2xs ${
+                      className={`max-w-[92%] rounded-2xl px-4 py-2.5 text-[12.5px] leading-relaxed shadow-2xs ${
                         msg.role === 'user'
-                          ? 'text-white font-medium rounded-br-xs'
-                          : 'bg-neutral-50/90 border border-neutral-200/90 text-neutral-900 rounded-bl-xs'
+                          ? 'bg-neutral-900 text-white rounded-br-xs'
+                          : 'bg-white border border-neutral-200/90 text-neutral-800 rounded-bl-xs'
                       }`}
-                      style={msg.role === 'user' ? { background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' } : {}}
                     >
-                      {/* Rich formatted rendering */}
                       {msg.role === 'user' ? (
                         <div className="whitespace-pre-wrap">{msg.content}</div>
                       ) : (
                         renderFormattedContent(msg.content)
                       )}
 
-                      {/* Interactive Action Cards & PDF Links */}
+                      {/* Action Links & Download Buttons */}
                       {msg.actions && msg.actions.length > 0 && (
-                        <div className="mt-3 pt-2.5 border-t border-neutral-200/80 flex flex-wrap gap-2">
+                        <div className="mt-3 pt-2.5 border-t border-neutral-100 flex flex-wrap gap-2">
                           {msg.actions.map((act, actIdx) => (
                             <a
                               key={actIdx}
                               href={act.url}
                               target={act.url.startsWith('http') || act.url.includes('/storage/') || act.url.includes('/report-view') ? '_blank' : '_self'}
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11.5px] font-bold text-white transition-all hover:opacity-90 active:scale-95 shadow-2xs cursor-pointer"
-                              style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11.5px] font-semibold bg-neutral-900 hover:bg-neutral-800 text-white transition-all shadow-2xs cursor-pointer"
                             >
                               {act.url.endsWith('.pdf') || act.url.includes('report') ? <FileText size={12} /> : <ExternalLink size={12} />}
                               <span>{act.label}</span>
@@ -666,9 +623,9 @@ export default function ProvisAiDrawer() {
 
               {isLoading && (
                 <div className="flex items-start gap-2">
-                  <div className="bg-neutral-50 border border-neutral-200 rounded-2xl rounded-bl-xs px-3.5 py-2.5 text-[12px] text-neutral-600 flex items-center gap-2 shadow-2xs">
-                    <RefreshCw size={14} className="animate-spin text-violet-600" />
-                    <span>Sedang memproses instruksi Anda secara lokal…</span>
+                  <div className="bg-white border border-neutral-200 rounded-2xl rounded-bl-xs px-3.5 py-2 text-[12px] text-neutral-500 flex items-center gap-2 shadow-2xs">
+                    <RefreshCw size={13} className="animate-spin text-neutral-600" />
+                    <span>Memproses instruksi…</span>
                   </div>
                 </div>
               )}
@@ -676,14 +633,14 @@ export default function ProvisAiDrawer() {
             </div>
           )}
 
-          {/* Sticky Input Bar at Bottom */}
-          <div className="p-3 border-t border-neutral-100 bg-white flex-shrink-0">
-            <div className="flex items-end gap-2 bg-neutral-50 border border-neutral-200 rounded-2xl p-2 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/20 transition-all">
+          {/* Input Bar */}
+          <div className="p-3 border-t border-neutral-200/80 bg-white flex-shrink-0">
+            <div className="flex items-end gap-2 bg-neutral-50/80 border border-neutral-200 rounded-2xl p-2 focus-within:border-neutral-400 focus-within:bg-white focus-within:ring-1 focus-within:ring-neutral-300 transition-all">
               <textarea
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ketik instruksi atau pertanyaan Anda… (Enter untuk kirim)"
+                placeholder="Ketik instruksi atau pertanyaan… (Enter untuk kirim)"
                 rows={2}
                 disabled={isLoading}
                 className="flex-1 bg-transparent border-0 resize-none text-[12.5px] text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-0 px-1 py-0.5"
@@ -691,15 +648,14 @@ export default function ProvisAiDrawer() {
               <button
                 onClick={() => sendMessage()}
                 disabled={!inputText.trim() || isLoading}
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0 transition-all disabled:opacity-40 hover:opacity-90 active:scale-95 cursor-pointer shadow-2xs"
-                style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
-                title="Kirim Pesan"
+                className="w-8 h-8 rounded-xl bg-neutral-900 hover:bg-neutral-800 disabled:opacity-40 text-white flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-2xs"
+                title="Kirim"
               >
-                <Send size={14} />
+                <Send size={13} />
               </button>
             </div>
             <div className="flex items-center justify-between text-[10px] text-neutral-400 px-2 mt-1.5">
-              <span>Shift + Enter untuk baris baru • Split Screen</span>
+              <span>Shift + Enter untuk baris baru</span>
               {activeProjectId && <span>Proyek Aktif: #{activeProjectId}</span>}
             </div>
           </div>

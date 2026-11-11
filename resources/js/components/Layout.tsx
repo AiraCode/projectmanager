@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FolderOpen, CheckSquare, GitBranch,
   BarChart2, TrendingUp, DollarSign, Menu, X, LogOut,
   ChevronRight, ChevronLeft, Shield, User, Users, Clock, CalendarDays,
-  Lock, Layers, Key, Network, Sparkles
+  Lock, Layers, Key, Network, Bot
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button, formatDivisionName } from '@/components/ui';
@@ -492,21 +492,18 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
             <div className="flex-1" />
           )}
 
-          {/* Provis AI Header Trigger Button (Fase 4) */}
+          {/* Provis Assistant Header Trigger */}
           {Boolean(user?.can_access_ai || user?.isSuperAdmin || user?.is_ai_beta_tester) && (
             <button
               onClick={() => {
                 window.dispatchEvent(new CustomEvent('provis-ai-toggle-request'));
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-bold text-[12px] shadow-xs hover:opacity-95 active:scale-95 transition-all cursor-pointer shrink-0"
-              style={{
-                background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)',
-              }}
-              title="Buka / Tutup Provis AI Assistant (Side-by-Side)"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300 text-neutral-800 transition-all text-[12px] font-semibold cursor-pointer shrink-0 shadow-2xs"
+              title="Buka / Tutup Provis Assistant"
             >
-              <Sparkles size={13} className="text-amber-300 animate-pulse" />
-              <span className="hidden sm:inline">Provis AI</span>
-              <span className="text-[9px] font-extrabold uppercase px-1 py-0.2 rounded bg-white/20">
+              <Bot size={15} className="text-neutral-600" />
+              <span className="hidden sm:inline">Provis Assistant</span>
+              <span className="text-[9.5px] font-medium px-1.5 py-0.2 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
                 Beta
               </span>
             </button>

@@ -901,42 +901,41 @@ export default function SuperAdminUserManagementPage({
         )}
       </div>
 
-      {/* Provis AI Agent Beta Tester Assignment */}
+      {/* Provis Assistant Beta Tester Assignment */}
       <div className="mt-4">
         {selectedRoleName === 'SuperAdmin' ? (
-          <div className="p-3.5 rounded-xl border border-violet-200 bg-violet-50/70 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-violet-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-              <Sparkles size={16} />
+          <div className="p-3.5 rounded-xl border border-neutral-200 bg-neutral-50/70 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-neutral-800 text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <Bot size={16} />
             </div>
             <div>
-              <div className="text-[12.5px] font-bold text-violet-900 flex items-center gap-1.5">
-                <span>Provis AI Agent: Akses Penuh (SuperAdmin)</span>
-                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-violet-200 text-violet-800">Otomatis Aktif</span>
+              <div className="text-[12.5px] font-bold text-neutral-900 flex items-center gap-1.5">
+                <span>Provis Assistant: Akses Penuh (SuperAdmin)</span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-200 text-neutral-700">Otomatis Aktif</span>
               </div>
-              <p className="text-[11px] text-violet-700 mt-0.5">
-                Semua akun dengan peran SuperAdmin otomatis memiliki akses penuh ke AI Agent tanpa perlu centang manual.
+              <p className="text-[11px] text-neutral-500 mt-0.5">
+                Akun dengan peran SuperAdmin memiliki akses asisten secara otomatis tanpa perlu konfigurasi tambahan.
               </p>
             </div>
           </div>
         ) : (
           <div className={`p-4 rounded-xl border transition-all ${data.is_ai_beta_tester
-            ? 'bg-purple-50/90 border-purple-300 ring-2 ring-purple-400/20'
-            : 'bg-neutral-50/80 border-neutral-200 hover:border-neutral-300'
+            ? 'bg-neutral-50 border-neutral-400/80 ring-1 ring-neutral-400/30'
+            : 'bg-neutral-50/70 border-neutral-200 hover:border-neutral-300'
           }`}>
             <label className="flex items-start gap-3 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={data.is_ai_beta_tester}
                 onChange={(e) => setData('is_ai_beta_tester', e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded text-purple-600 focus:ring-purple-500 accent-purple-600 cursor-pointer shrink-0"
+                className="mt-0.5 w-4 h-4 rounded text-neutral-900 focus:ring-neutral-800 accent-neutral-900 cursor-pointer shrink-0"
               />
               <div className="flex-1">
                 <div className="flex items-center gap-1.5">
-                  <Sparkles size={15} className="text-purple-600" />
-                  <span className="font-bold text-[13px] text-neutral-900">Akses AI Agent (Beta Tester)</span>
+                  <span className="font-bold text-[13px] text-neutral-900">Akses Provis Assistant (Beta)</span>
                   {data.is_ai_beta_tester ? (
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-600 text-white shadow-2xs">
-                      Beta Tester Aktif
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-900 text-white">
+                      Aktif
                     </span>
                   ) : (
                     <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-neutral-200 text-neutral-600">
@@ -945,7 +944,7 @@ export default function SuperAdminUserManagementPage({
                   )}
                 </div>
                 <p className="text-[11.5px] text-neutral-500 mt-0.5">
-                  Izinkan pengguna ini menjadi Beta Tester untuk berinteraksi dengan Provis AI Agent (membuat proyek, menjadwalkan WBS, chat assistant).
+                  Memberikan hak akses kepada pengguna ini untuk menggunakan fitur Provis Assistant (membuat proyek, menjadwalkan WBS, dan laporan).
                 </p>
               </div>
             </label>
@@ -1261,12 +1260,12 @@ export default function SuperAdminUserManagementPage({
                               {u.role}
                             </span>
                             {u.role === 'SuperAdmin' ? (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-violet-100 text-violet-700" title="SuperAdmin memiliki akses AI otomatis">
-                                <Sparkles size={10} /> AI: Full
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-neutral-100 text-neutral-600 border border-neutral-200" title="SuperAdmin memiliki akses asisten secara otomatis">
+                                AI: Full
                               </span>
                             ) : u.is_ai_beta_tester ? (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-purple-100 text-purple-700 border border-purple-200" title="AI Beta Tester Aktif">
-                                <Sparkles size={10} /> AI Beta
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-neutral-100 text-neutral-600 border border-neutral-200" title="Akses AI Beta Aktif">
+                                AI Access
                               </span>
                             ) : null}
                           </div>

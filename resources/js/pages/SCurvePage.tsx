@@ -806,45 +806,6 @@ export default function SCurvePage() {
         }
       />
 
-      {/* ─── 2. EVM Prediction Insights (Backend SCurvePredictionService) ─── */}
-      {predictionMetrics && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-purple-50/70 border border-purple-200/80 shadow-2xs">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-bold text-purple-950">EVM Prediction Model</span>
-              <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                predictionMetrics.is_delayed
-                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                  : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-              }`}>
-                {predictionMetrics.is_delayed
-                  ? (predictionMetrics.delay_days > 0 ? `Delayed by ~${predictionMetrics.delay_days} days` : 'Behind scheduled pace')
-                  : 'On Track'}
-              </span>
-            </div>
-            <div className="text-[11.5px] text-purple-800/80 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span>SPI: <strong className="font-mono text-purple-950">{Number(predictionMetrics.spi).toFixed(2)}</strong></span>
-              <span>•</span>
-              <span>Velocity: <strong className="font-mono text-purple-950">{predictionMetrics.weekly_velocity}%/week</strong></span>
-              {predictionMetrics.overdue_tasks_count > 0 && (
-                <>
-                  <span>•</span>
-                  <span className="text-amber-800 font-semibold">{predictionMetrics.overdue_tasks_count} overdue task{predictionMetrics.overdue_tasks_count > 1 ? 's' : ''}</span>
-                </>
-              )}
-            </div>
-          </div>
-          {predictionMetrics.forecast_end_date && (
-            <div className="text-left sm:text-right flex-shrink-0">
-              <div className="text-[10.5px] uppercase font-semibold text-purple-700 tracking-wider">Forecast Completion</div>
-              <div className="text-[14px] font-bold text-purple-950 font-mono">
-                {formatDateDisplay(predictionMetrics.forecast_end_date)}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ─── 3. KPI Summary Cards ───────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
