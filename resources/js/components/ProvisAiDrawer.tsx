@@ -240,6 +240,15 @@ export default function ProvisAiDrawer() {
     }
   }, [isOpen, panelWidth, isDocked]);
 
+  // Listen for toggle requests from Navbar/Header trigger buttons
+  useEffect(() => {
+    const handleToggle = () => {
+      setIsOpen(prev => !prev);
+    };
+    window.addEventListener('provis-ai-toggle-request', handleToggle);
+    return () => window.removeEventListener('provis-ai-toggle-request', handleToggle);
+  }, []);
+
   // Auto-scroll messages to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

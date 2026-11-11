@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import {
-  LayoutDashboard, Users, ScrollText, LogOut, Menu, X, ChevronLeft, Shield, Building2, FolderOpen, Key, Layers, FolderTree
+  LayoutDashboard, Users, ScrollText, LogOut, Menu, X, ChevronLeft, Shield, Building2, FolderOpen, Key, Layers, FolderTree, Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button } from '@/components/ui';
@@ -233,6 +233,24 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
           </div>
 
           <div className="flex-1" />
+
+          {/* Provis AI Header Trigger Button (Fase 4) */}
+          <button
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('provis-ai-toggle-request'));
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-bold text-[12px] shadow-xs hover:opacity-95 active:scale-95 transition-all cursor-pointer shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)',
+            }}
+            title="Buka / Tutup Provis AI Assistant (Side-by-Side)"
+          >
+            <Sparkles size={13} className="text-amber-300 animate-pulse" />
+            <span className="hidden sm:inline">Provis AI</span>
+            <span className="text-[9px] font-extrabold uppercase px-1 py-0.2 rounded bg-white/20">
+              Beta
+            </span>
+          </button>
 
           {/* Profile Dropdown */}
           <div className="relative" data-profile-menu>

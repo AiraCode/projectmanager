@@ -243,4 +243,17 @@ class ProvisAiAgentTest extends TestCase
         $this->assertNotEmpty($json['actions']);
         $this->assertStringContainsString($project->id, $json['actions'][0]['url']);
     }
+
+    public function test_high_risk_actions_are_blocked_by_guardrails(): void
+    {
+        $response = $this->actingAs($this->superAdmin)->postJson('/ai/chat', [
+            'message' => 'Tolong hapus proyek dan reset jadwal WBS semua',
+        ]);
+
+        $response->assertStatus(200);
+        $json = $response->json();
+
+        $this->assertStringContainsString('Tindakan Berisiko Tinggi Dibatasi', $json['content']);
+        $this->assertStringContainsString('Human-in-the-Loop', $json['content']);
+    }
 }

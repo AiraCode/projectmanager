@@ -96,6 +96,20 @@ class ProvisAiService
      */
     protected function processNativeAgent(string $prompt, array $tokenized, User $user, ?int $activeProjectId): array
     {
+        // Human-in-the-Loop High-Risk Guardrail (Prevent accidental data destruction)
+        if ($this->tokenizer->isHighRiskAction($prompt)) {
+            return [
+                'content' => "🛑 **Tindakan Berisiko Tinggi Dibatasi (Human-in-the-Loop Safety Guardrail)**\n\n"
+                    . "Permintaan Anda mengandung instruksi perubahan kritis atau penghapusan permanen (`hapus`, `delete`, `reset`, `drop`, `clear`).\n\n"
+                    . "Demi keamanan dan integritas basis data PROVIS (*data loss prevention*), operasi destruktif **tidak dapat dijalankan secara otomatis melalui AI Chat**.\n\n"
+                    . "Silakan lakukan penyesuaian secara manual melalui antarmuka resmi proyek atau hubungi SuperAdministrator.",
+                'actions' => [
+                    ['type' => 'link', 'label' => 'Buka Detail Proyek', 'url' => $activeProjectId ? "/projects/{$activeProjectId}" : '/projectlistpage'],
+                    ['type' => 'link', 'label' => 'Periksa Audit Log', 'url' => '/admin/audit-log'],
+                ],
+            ];
+        }
+
         $intent = $tokenized['action_intent'] ?? 'GENERAL_QUERY';
 
         switch ($intent) {

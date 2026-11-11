@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FolderOpen, CheckSquare, GitBranch,
   BarChart2, TrendingUp, DollarSign, Menu, X, LogOut,
   ChevronRight, ChevronLeft, Shield, User, Users, Clock, CalendarDays,
-  Lock, Layers, Key, Network
+  Lock, Layers, Key, Network, Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button, formatDivisionName } from '@/components/ui';
@@ -490,6 +490,26 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
             </div>
           ) : (
             <div className="flex-1" />
+          )}
+
+          {/* Provis AI Header Trigger Button (Fase 4) */}
+          {Boolean(user?.can_access_ai || user?.isSuperAdmin || user?.is_ai_beta_tester) && (
+            <button
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('provis-ai-toggle-request'));
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-bold text-[12px] shadow-xs hover:opacity-95 active:scale-95 transition-all cursor-pointer shrink-0"
+              style={{
+                background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)',
+              }}
+              title="Buka / Tutup Provis AI Assistant (Side-by-Side)"
+            >
+              <Sparkles size={13} className="text-amber-300 animate-pulse" />
+              <span className="hidden sm:inline">Provis AI</span>
+              <span className="text-[9px] font-extrabold uppercase px-1 py-0.2 rounded bg-white/20">
+                Beta
+              </span>
+            </button>
           )}
 
           {/* Real-time 24-hour clock (jam: menit: detik) immediately to the left of profile */}
