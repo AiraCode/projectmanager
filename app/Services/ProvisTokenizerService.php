@@ -266,12 +266,6 @@ class ProvisTokenizerService
         if (preg_match('/\b(buat|bikin|create|tambah)\s+(proyek|project)\b/i', $lower)) {
             return 'CREATE_PROJECT';
         }
-        if (preg_match('/\b(predecessor|dependensi|urutan|sambungkan|hubungkan)\b/i', $lower)) {
-            return 'SET_PREDECESSOR';
-        }
-        if (preg_match('/\b(jadwal|schedule|tanggal|start|finish|undur|majukan)\b/i', $lower)) {
-            return 'UPDATE_SCHEDULE';
-        }
         if (preg_match('/\b(rekonsiliasi|reconcile|singkron|sinkron)\b/i', $lower)) {
             return 'RECONCILE_DATES';
         }
@@ -281,8 +275,23 @@ class ProvisTokenizerService
         if (preg_match('/\b(pdf|laporan|report|unduh|cetak)\b/i', $lower)) {
             return 'GENERATE_PDF';
         }
-        if (preg_match('/\b(update|koding|commit|git|changelog|perubahan kode)\b/i', $lower)) {
+        if (preg_match('/\b(update|koding|coding|commit|git|changelog|perubahan kode)\b/i', $lower)) {
             return 'GET_CODE_UPDATES';
+        }
+        if (preg_match('/\b(audit|riwayat\s+aktivitas|log\s+aktivitas|siapa\s+yang\s+(?:ubah|login|ganti))\b/i', $lower)) {
+            return 'QUERY_AUDIT_LOG';
+        }
+        if (preg_match('/\b(daftar\s+user|siapa\s+saja\s+user|daftar\s+pengguna|beta\s+tester)\b/i', $lower)) {
+            return 'QUERY_USERS';
+        }
+        if (preg_match('/\b(status|ringkasan|summary|berapa\s+progres|progress|kabar\s+proyek)\b/i', $lower)) {
+            return 'QUERY_SUMMARY';
+        }
+        if (preg_match('/\b(predecessor|dependensi|urutan|sambungkan|hubungkan)\b/i', $lower)) {
+            return 'SET_PREDECESSOR';
+        }
+        if (preg_match('/\b(jadwal|schedule|tanggal|start|finish|undur|majukan)\b/i', $lower)) {
+            return 'UPDATE_SCHEDULE';
         }
 
         return 'GENERAL_QUERY';
@@ -297,3 +306,4 @@ class ProvisTokenizerService
         return (bool) preg_match('/\b(hapus|delete|drop|truncate|reset\s+jadwal|clear[\s-]wbs)\b/i', $lower);
     }
 }
+

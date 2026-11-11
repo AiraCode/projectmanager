@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'sidebar' => \App\Http\Middleware\CheckSidebarAccess::class,
+            'ai.beta' => \App\Http\Middleware\EnsureAiBetaAccess::class,
         ]);
         $middleware->api(prepend: [
             \Illuminate\Cookie\Middleware\EncryptCookies::class,

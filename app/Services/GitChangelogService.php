@@ -90,3 +90,4 @@ class GitChangelogService
         return $md;
     }
 }
+

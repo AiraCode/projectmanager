@@ -306,6 +306,9 @@ export default function ProvisAiDrawer() {
                     <span className="text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">
                       Beta
                     </span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      100% Private
+                    </span>
                   </div>
                   <p className="text-[11px] text-neutral-500">
                     {user?.isSuperAdmin ? 'SuperAdmin Copilot & Provis Support System' : 'Asisten Operasional Proyek'}
@@ -399,7 +402,7 @@ export default function ProvisAiDrawer() {
                       Halo, {user?.name || user?.username}!
                     </h4>
                     <p className="text-[12px] text-neutral-500 max-w-xs mt-1 mb-5">
-                      Saya dapat membantu membuat proyek baru, mengatur predecessor/jadwal, merekonsiliasi tanggal, rekap keterlambatan, hingga laporan PDF.
+                      Asisten privat lokal 100% On-Premise (tanpa API eksternal). Saya dapat membantu membuat proyek baru, mengatur predecessor/jadwal, merekonsiliasi tanggal, rekap keterlambatan, hingga menyusun laporan PDF.
                     </p>
 
                     <div className="w-full space-y-1.5 text-left">
@@ -502,3 +505,4 @@ export default function ProvisAiDrawer() {
     </>
   );
 }
+
