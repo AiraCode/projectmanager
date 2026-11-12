@@ -12,7 +12,9 @@ use App\Models\Wbs;
 use App\Services\DivisionApprovalService;
 use App\Services\SCurvePredictionService;
 use App\Services\TaskOrderService;
+use App\Services\WeeklyService;
 use App\Services\WeightManagementService;
+use Carbon\Carbon;
 use Tests\TestCase;
 
 class IntegrationServicesTest extends TestCase
@@ -361,14 +363,157 @@ class IntegrationServicesTest extends TestCase
                 $this->assertNull($points[$i]['prediction_cumulative'], "Prediction at week index {$i} before lastActualIdx must be null");
             }
 
-            // At lastActualIdx, prediction must connect seamlessly to lastActualVal
-            $this->assertEquals($lastActualVal, $points[$lastActualIdx]['prediction_cumulative'], 'Prediction must connect seamlessly at lastActualIdx');
+            $this->assertEquals(
+                $lastActualVal,
+                $points[$lastActualIdx]['prediction_cumulative'],
+                'Prediction must connect to actual at the current timeline',
+            );
 
             // Prediction should eventually reach 100%
             $lastPoint = end($points);
             $this->assertNotNull($lastPoint['prediction_cumulative']);
             $this->assertEquals(100.0, (float) $lastPoint['prediction_cumulative'], 'Prediction must reach 100% on the final period');
         }
+    }
+
+    public function test_scurve_prediction_starts_at_next_plan_level_and_ends_with_forecast(): void
+    {
+        $today = Carbon::today();
+        $startDate = $today->copy()->subDays(35);
+        $plannedValues = [0, 10, 20, 50, 80.63, 90, 100, 100, 100, 100];
+        $weeklyData = [];
+
+        foreach ($plannedValues as $idx => $plannedValue) {
+            $weekStart = $startDate->copy()->addDays($idx * 7);
+            $weeklyData[] = [
+                'week' => $idx + 1,
+                'start_date' => $weekStart->format('Y-m-d'),
+                'end_date' => $weekStart->copy()->addDays(6)->format('Y-m-d'),
+                'planned_cumulative' => $plannedValue,
+                'actual_cumulative' => $idx === 5 ? 80.54 : 0,
+            ];
+        }
+
+        $task = (object) [
+            'is_completed' => false,
+            'end' => $today->copy()->addDays(30),
+        ];
+        $subWbs = (object) ['wbsTasks' => [$task]];
+        $mainWbs = (object) ['subWbs' => [$subWbs]];
+        $project = new Project([
+            'start' => $startDate,
+            'end' => $startDate->copy()->addDays((count($plannedValues) * 7) - 1),
+            'progress' => 80.54,
+        ]);
+        $project->setRelation('mainWbs', collect([$mainWbs]));
+
+        $this->mock(WeeklyService::class)
+            ->shouldReceive('recalculate')
+            ->once()
+            ->with($project->id)
+            ->andReturn(['weekly_data' => $weeklyData]);
+
+        $points = app(SCurvePredictionService::class)->calculate($project)['points'];
+
+        $this->assertSame(80.54, $points[5]['prediction_cumulative']);
+        $this->assertSame(80.63, $points[6]['prediction_cumulative']);
+        $this->assertSame(90.0, $points[7]['prediction_cumulative']);
+        $this->assertSame(100.0, $points[8]['prediction_cumulative']);
+        $this->assertCount(9, $points, 'The chart should stop at the forecast completion period, not the planned tail');
+    }
+
+    public function test_scurve_prediction_connects_actual_before_following_next_plan_level(): void
+    {
+        $today = Carbon::today();
+        $startDate = $today->copy()->subDays(35);
+        $plannedValues = [0, 10, 20, 50, 58.67, 60, 67.93, 90, 100, 100];
+        $weeklyData = [];
+
+        foreach ($plannedValues as $idx => $plannedValue) {
+            $weekStart = $startDate->copy()->addDays($idx * 7);
+            $weeklyData[] = [
+                'week' => $idx + 1,
+                'start_date' => $weekStart->format('Y-m-d'),
+                'end_date' => $weekStart->copy()->addDays(6)->format('Y-m-d'),
+                'planned_cumulative' => $plannedValue,
+                'actual_cumulative' => $idx === 5 ? 66.67 : 0,
+            ];
+        }
+
+        $task = (object) [
+            'is_completed' => false,
+            'end' => $today->copy()->addDays(30),
+        ];
+        $subWbs = (object) ['wbsTasks' => [$task]];
+        $mainWbs = (object) ['subWbs' => [$subWbs]];
+        $project = new Project([
+            'start' => $startDate,
+            'end' => $startDate->copy()->addDays((count($plannedValues) * 7) - 1),
+            'progress' => 66.67,
+        ]);
+        $project->setRelation('mainWbs', collect([$mainWbs]));
+
+        $this->mock(WeeklyService::class)
+            ->shouldReceive('recalculate')
+            ->once()
+            ->with($project->id)
+            ->andReturn(['weekly_data' => $weeklyData]);
+
+        $points = app(SCurvePredictionService::class)->calculate($project)['points'];
+
+        $this->assertSame(66.67, $points[5]['prediction_cumulative']);
+        $this->assertSame(67.93, $points[6]['prediction_cumulative']);
+    }
+
+    public function test_scurve_timeline_ends_at_latest_plan_or_prediction_completion_unless_actual_is_complete(): void
+    {
+        $today = Carbon::today();
+        $startDate = $today->copy()->subDays(2);
+        $makeWeeklyData = static function (array $plannedValues, float $actualValue) use ($startDate): array {
+            return array_map(function (float $plannedValue, int $idx) use ($startDate, $actualValue): array {
+                $weekStart = $startDate->copy()->addDays($idx * 7);
+                return [
+                    'week' => $idx + 1,
+                    'start_date' => $weekStart->format('Y-m-d'),
+                    'end_date' => $weekStart->copy()->addDays(6)->format('Y-m-d'),
+                    'planned_cumulative' => $plannedValue,
+                    'actual_cumulative' => $idx === 0 ? $actualValue : 0,
+                ];
+            }, $plannedValues, array_keys($plannedValues));
+        };
+        $makeProject = static function (float $progress) use ($startDate, $today): Project {
+            $project = new Project([
+                'start' => $startDate,
+                'end' => $startDate->copy()->addDays(69),
+                'progress' => $progress,
+            ]);
+            $task = (object) ['is_completed' => false, 'end' => $today->copy()->addDays(30)];
+            $project->setRelation('mainWbs', collect([(object) [
+                'subWbs' => [(object) ['wbsTasks' => [$task]]],
+            ]]));
+            return $project;
+        };
+
+        $plannedCompletesLast = $makeWeeklyData([0, 0, 0, 0, 50, 60, 70, 80, 90, 100], 0);
+        $actualCompletesNow = $makeWeeklyData([0, 20, 40, 60, 80, 90, 100, 100, 100, 100], 100);
+        $this->mock(WeeklyService::class)
+            ->shouldReceive('recalculate')
+            ->twice()
+            ->with(null)
+            ->andReturn(
+                ['weekly_data' => $plannedCompletesLast],
+                ['weekly_data' => $actualCompletesNow],
+            );
+
+        $service = app(SCurvePredictionService::class);
+        $planLastPoints = $service->calculate($makeProject(0))['points'];
+        $this->assertCount(10, $planLastPoints);
+        $this->assertSame(100.0, $planLastPoints[6]['prediction_cumulative']);
+        $this->assertSame(100.0, $planLastPoints[9]['planned_cumulative']);
+
+        $actualCompletePoints = $service->calculate($makeProject(100))['points'];
+        $this->assertCount(1, $actualCompletePoints);
+        $this->assertSame(100.0, $actualCompletePoints[0]['prediction_cumulative']);
     }
 
     /**
@@ -533,4 +678,3 @@ class IntegrationServicesTest extends TestCase
         );
     }
 }
-

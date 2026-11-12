@@ -103,19 +103,7 @@ export default function SCurvePage() {
       const overallProg = projectData.overallProgress ? Number(projectData.overallProgress) : 0;
       const lastActualVal = currWeek.actualCumulative > 0 ? currWeek.actualCumulative : overallProg;
 
-      // Find closest planned point
-      let eqPlanIndex = 0;
-      let minDiff = Infinity;
-      baseWeeks.forEach((w: any, idx: number) => {
-        const diff = Math.abs(Number(w.plannedCumulative || 0) - lastActualVal);
-        if (diff < minDiff) {
-          minDiff = diff;
-          eqPlanIndex = idx;
-        }
-      });
-
-      // Extract increments
-      const rawIncrements: number[] = [];
+      // Find the first planned point that reaches or exceeds actual progress.
       let first100Idx = baseWeeks.length - 1;
       for (let i = 0; i < baseWeeks.length; i++) {
         if (Number(baseWeeks[i].plannedCumulative || 0) >= 99.99) {
@@ -123,21 +111,11 @@ export default function SCurvePage() {
           break;
         }
       }
-      for (let i = eqPlanIndex + 1; i <= first100Idx; i++) {
-        const prev = Number(baseWeeks[i - 1].plannedCumulative || 0);
-        const curr = Number(baseWeeks[i].plannedCumulative || 0);
-        rawIncrements.push(Math.max(0, curr - prev));
-      }
-
-      const remainingWork = Math.max(0, 100 - lastActualVal);
-      const sumRaw = rawIncrements.reduce((a, b) => a + b, 0);
-      const scaledIncrements: number[] = [];
-      if (remainingWork > 0) {
-        if (sumRaw > 0) {
-          const factor = remainingWork / sumRaw;
-          rawIncrements.forEach(inc => scaledIncrements.push(inc * factor));
-        } else {
-          scaledIncrements.push(remainingWork);
+      let eqPlanIndex = first100Idx;
+      for (let i = 0; i <= first100Idx; i++) {
+        if (Number(baseWeeks[i].plannedCumulative || 0) > lastActualVal) {
+          eqPlanIndex = i;
+          break;
         }
       }
 
@@ -145,16 +123,17 @@ export default function SCurvePage() {
       for (let i = 0; i < lastActualIdx; i++) predMap[i] = null;
       predMap[lastActualIdx] = lastActualVal;
 
-      let cum = lastActualVal;
-      for (let k = 0; k < scaledIncrements.length && cum < 100; k++) {
-        const targetIdx = lastActualIdx + 1 + k;
-        cum = Math.min(100, Number((cum + scaledIncrements[k]).toFixed(2)));
-        if (k === scaledIncrements.length - 1) cum = 100;
-        predMap[targetIdx] = cum;
+      for (let planIdx = eqPlanIndex; planIdx <= first100Idx; planIdx++) {
+        const targetIdx = lastActualIdx + 1 + (planIdx - eqPlanIndex);
+        const previousPrediction = predMap[targetIdx - 1] ?? lastActualVal;
+        const plannedValue = Number(baseWeeks[planIdx].plannedCumulative || 0);
+        predMap[targetIdx] = planIdx === first100Idx
+          ? 100
+          : Number(Math.max(previousPrediction, Math.min(100, plannedValue)).toFixed(2));
       }
 
-      const maxPredIdx = Math.max(...Object.keys(predMap).map(Number), baseWeeks.length - 1);
-      const totalWeeks = Math.max(baseWeeks.length, maxPredIdx + 1);
+      const maxPredIdx = Math.max(...Object.keys(predMap).map(Number));
+      const totalWeeks = maxPredIdx + 1;
 
       effectivePoints = [];
       for (let i = 0; i < totalWeeks; i++) {
@@ -213,7 +192,78 @@ export default function SCurvePage() {
       });
     }
 
-    return merged;
+    if (merged.length === 0) return merged;
+    const hasForecast = merged.some((w: any) => w.predictionCumulative != null);
+
+    const today = new Date().toISOString().slice(0, 10);
+    let anchorIndex = merged.findIndex((w: any) => today >= w.startDate && today <= w.endDate);
+    if (anchorIndex === -1) {
+      anchorIndex = today < merged[0].startDate ? 0 : merged.length - 1;
+    }
+
+    const anchorWeek = merged[anchorIndex];
+    const actualAtAnchor = Math.min(100, Math.max(
+      0,
+      Number(anchorWeek.actualCumulative) > 0
+        ? Number(anchorWeek.actualCumulative)
+        : Number(projectData.overallProgress || 0),
+    ));
+    const recordedActualCompletionIndex = merged.findIndex(
+      (w: any, idx: number) => idx <= anchorIndex && Number(w.actualCumulative) >= 99.99,
+    );
+    const actualCompletionIndex = recordedActualCompletionIndex !== -1
+      ? recordedActualCompletionIndex
+      : actualAtAnchor >= 99.99
+        ? anchorIndex
+        : -1;
+
+    if (actualCompletionIndex !== -1) {
+      merged[actualCompletionIndex] = { ...merged[actualCompletionIndex], predictionCumulative: 100 };
+      return merged.slice(0, actualCompletionIndex + 1);
+    }
+    if (!hasForecast) return merged;
+
+    const rawPlanCompletionIndex = merged.findIndex((w: any) => Number(w.plannedCumulative) >= 99.99);
+    const planCompletionIndex = rawPlanCompletionIndex === -1 ? merged.length - 1 : rawPlanCompletionIndex;
+    const rawForecastPlanIndex = merged.findIndex((w: any) => Number(w.plannedCumulative) > actualAtAnchor);
+    const forecastPlanIndex = rawForecastPlanIndex === -1 ? planCompletionIndex : rawForecastPlanIndex;
+    const predictionCompletionIndex = anchorIndex + 1 + Math.max(0, planCompletionIndex - forecastPlanIndex);
+    const chartEndIndex = Math.max(planCompletionIndex, predictionCompletionIndex);
+
+    const formatDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    while (merged.length <= chartEndIndex) {
+      const previous = merged[merged.length - 1];
+      const nextStart = new Date(`${previous.endDate}T00:00:00`);
+      nextStart.setDate(nextStart.getDate() + 1);
+      const nextEnd = new Date(nextStart);
+      nextEnd.setDate(nextEnd.getDate() + 6);
+      merged.push({
+        week: previous.week + 1,
+        startDate: formatDate(nextStart),
+        endDate: formatDate(nextEnd),
+        planned: 0,
+        actual: 0,
+        plannedCumulative: 100,
+        actualCumulative: 0,
+        predictionCumulative: null,
+        isExtendedForecast: true,
+      });
+    }
+
+    for (let idx = 0; idx <= chartEndIndex; idx++) {
+      let prediction: number | null = null;
+      if (idx === anchorIndex) {
+        prediction = actualAtAnchor;
+      } else if (idx > anchorIndex) {
+        const sourcePlanIndex = forecastPlanIndex + idx - anchorIndex - 1;
+        prediction = idx >= predictionCompletionIndex
+          ? 100
+          : Math.min(100, Number(merged[sourcePlanIndex]?.plannedCumulative ?? 100));
+      }
+      merged[idx] = { ...merged[idx], predictionCumulative: prediction };
+    }
+
+    return merged.slice(0, chartEndIndex + 1);
   }, [projectData.weeklyData, projectData.overallProgress, predictionPoints]);
 
   // Granularity & Range State (100% Data-Driven)
@@ -410,8 +460,6 @@ export default function SCurvePage() {
       // Value of actual progress at the current timeline anchor
       const anchorWeek = currentWeekIdx >= 0 && currentWeekIdx < weeks.length ? weeks[currentWeekIdx] : null;
       const anchorActualVal = anchorWeek && anchorWeek.actualCumulative > 0 ? anchorWeek.actualCumulative : realisasiValue;
-      const anchorRawPred = anchorWeek ? ((anchorWeek as any).predictionCumulative ?? null) : null;
-
       return targetWeeks.map((w) => {
         const globalIdx = weeks.findIndex(item => item.week === w.week);
         const isCurrentTimeline = globalIdx === currentWeekIdx;
@@ -425,24 +473,8 @@ export default function SCurvePage() {
           if (globalIdx < currentWeekIdx) {
             // Past elapsed weeks: prediction is null (covered by Actual Progress)
             predVal = null;
-          } else if (globalIdx === currentWeekIdx) {
-            // Anchor point at Current Timeline: connects seamlessly and exactly to Actual Progress!
-            predVal = anchorActualVal;
-          } else {
-            // Future forecast weeks:
-            if (rawPred != null && !isNaN(Number(rawPred))) {
-              const numRaw = Number(rawPred);
-              if (anchorRawPred != null && !isNaN(Number(anchorRawPred))) {
-                // Seamless delta projection from current actual accomplishment
-                const deltaFromAnchor = Math.max(0, numRaw - Number(anchorRawPred));
-                predVal = Math.min(100, Number((anchorActualVal + deltaFromAnchor).toFixed(2)));
-                if (numRaw >= 100) predVal = 100;
-              } else {
-                predVal = Number(numRaw.toFixed(2));
-              }
-            } else {
-              predVal = null;
-            }
+          } else if (rawPred != null && !isNaN(Number(rawPred))) {
+            predVal = Math.min(100, Number(Number(rawPred).toFixed(2)));
           }
         }
 
@@ -482,6 +514,13 @@ export default function SCurvePage() {
       const dailyList: any[] = (projectData as any).dailyData || [];
       const dailyMap = new Map<string, any>();
       dailyList.forEach(item => dailyMap.set(item.date, item));
+      const forecastAnchorValue = Math.min(100, Math.max(0, realisasiValue));
+      const matchingForecastPlanIdx = dailyList.findIndex(
+        item => Number(item.plannedCumulative || 0) > forecastAnchorValue,
+      );
+      const forecastPlanStartIdx = matchingForecastPlanIdx === -1
+        ? Math.max(0, dailyList.length - 1)
+        : matchingForecastPlanIdx;
 
       const points: ChartPoint[] = [];
       const curr = new Date(startDateObj);
@@ -532,38 +571,16 @@ export default function SCurvePage() {
 
         const dev = actCum !== null ? Number((actCum - planCum).toFixed(2)) : null;
 
-        // Prediction line for Day granularity:
-        // - Days < today: null
-        // - Today: realisasiValue (connects seamlessly to Actual line)
-        // - Future days: smoothly interpolate prediction along the S-curve
-        const anchorVal = (dStr === todayStr && actCum !== null) ? actCum : realisasiValue;
         let predCum: number | null = null;
         if (dStr === todayStr) {
-          predCum = anchorVal;
-        } else if (dStr > todayStr && wIdx !== -1) {
-          const w = weeks[wIdx];
-          const currWeekPred = (w as any).predictionCumulative ?? null;
-          if (currWeekPred != null) {
-            if (wIdx === currentWeekIdx) {
-              const wStart = parseDateStr(w.startDate);
-              const todayObj = parseDateStr(todayStr);
-              const daysRemaining = Math.max(1, 7 - Math.round((todayObj.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24)));
-              const daysFromToday = Math.max(0, Math.round((curr.getTime() - todayObj.getTime()) / (1000 * 60 * 60 * 24)));
-              const predDiff = Math.max(0, currWeekPred - anchorVal);
-              predCum = Number((anchorVal + (predDiff * daysFromToday / daysRemaining)).toFixed(2));
-            } else {
-              const prevWeekPred = (weeks[wIdx - 1] as any)?.predictionCumulative ?? anchorVal;
-              const wStart = parseDateStr(w.startDate);
-              const dayDiff = Math.max(0, Math.min(6, Math.round((curr.getTime() - wStart.getTime()) / (1000 * 60 * 60 * 24))));
-              const predDiff = Math.max(0, currWeekPred - prevWeekPred);
-              predCum = Number((prevWeekPred + (predDiff * (dayDiff + 1) / 7)).toFixed(2));
-            }
-          }
-        } else if (dStr > todayStr && wIdx === -1 && dStr > (weeks[weeks.length - 1]?.endDate || '')) {
-          const lastWeekPred = (weeks[weeks.length - 1] as any)?.predictionCumulative;
-          if (lastWeekPred != null && lastWeekPred >= 99.99) {
-            predCum = 100;
-          }
+          predCum = forecastAnchorValue;
+        } else if (dStr > todayStr && dailyList.length > 0) {
+          const todayObj = parseDateStr(todayStr);
+          const daysAfterToday = Math.round((curr.getTime() - todayObj.getTime()) / (1000 * 60 * 60 * 24));
+          const forecastPlanPoint = dailyList[forecastPlanStartIdx + daysAfterToday - 1];
+          predCum = forecastPlanPoint
+            ? Math.min(100, Number(Number(forecastPlanPoint.plannedCumulative || 0).toFixed(2)))
+            : 100;
         }
 
         const dayEvidences = allEvidences.filter(ev => ev.date === dStr);

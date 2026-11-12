@@ -140,25 +140,8 @@ class SCurvePredictionService
             : ($currentPlanned / $elapsedWeeksCount);
         $weeklyVelocity = max(0.1, round($weeklyVelocity, 2));
 
-        // 2. Find Equivalent Plan Point:
-        // Find the period index (eqPlanIndex) in Planned Cumulative closest to lastActualValue
-        $eqPlanIndex = 0;
-        $minDiff = PHP_FLOAT_MAX;
-        foreach ($weeks as $idx => $w) {
-            $diff = abs((float) $w['planned_cumulative'] - $lastActualValue);
-            if ($diff < $minDiff) {
-                $minDiff = $diff;
-                $eqPlanIndex = $idx;
-            }
-        }
-
-        // 3. Extract Remaining Plan Increments:
-        // Calculate period-over-period increments (Delta Plan_i = Plan_i - Plan_{i-1})
-        // starting from eqPlanIndex + 1 until Planned Cumulative first hits 100%.
-        $rawIncrements = [];
+        // 2. Find the first planned point that reaches or exceeds actual progress.
         $planTotalWeeks = count($weeks);
-
-        // Find index where planned first hits 100%
         $first100Index = $planTotalWeeks - 1;
         foreach ($weeks as $idx => $w) {
             if ((float) $w['planned_cumulative'] >= 99.99) {
@@ -167,65 +150,38 @@ class SCurvePredictionService
             }
         }
 
-        for ($i = $eqPlanIndex + 1; $i <= $first100Index; $i++) {
-            $prevPlan = (float) $weeks[$i - 1]['planned_cumulative'];
-            $currPlan = (float) $weeks[$i]['planned_cumulative'];
-            $delta = max(0.0, $currPlan - $prevPlan);
-            $rawIncrements[] = $delta;
-        }
-
-        // Remaining work to reach 100%
-        $remainingWork = max(0.0, 100.0 - $lastActualValue);
-
-        // Scale increments so they cumulatively add up to remainingWork,
-        // preserving the exact S-curve curvature and ending on 100.00%
-        $scaledIncrements = [];
-        $sumRaw = array_sum($rawIncrements);
-
-        if ($remainingWork > 0) {
-            if ($sumRaw > 0) {
-                $scaleFactor = $remainingWork / $sumRaw;
-                foreach ($rawIncrements as $delta) {
-                    $scaledIncrements[] = $delta * $scaleFactor;
-                }
-            } else {
-                // Fallback if eqPlanIndex was at 100% or plan has no increments
-                $weeksNeeded = (int) ceil($remainingWork / $weeklyVelocity);
-                $step = $remainingWork / max(1, $weeksNeeded);
-                for ($k = 0; $k < $weeksNeeded; $k++) {
-                    $scaledIncrements[] = $step;
-                }
+        $eqPlanIndex = $first100Index;
+        for ($idx = 0; $idx <= $first100Index; $idx++) {
+            if ((float) $weeks[$idx]['planned_cumulative'] > $lastActualValue) {
+                $eqPlanIndex = $idx;
+                break;
             }
         }
 
-        // 4. Generate Prediction Series:
-        // - Periods < lastActualIndex: null
-        // - At lastActualIndex: lastActualValue (seamless connection to Actual line)
-        // - Subsequent periods: cumulatively add increments until 100% (capped at 100%)
+        // 3. Keep the forecast joined to actual at the current period, then shift the plan.
         $predictionByWeekIndex = [];
         for ($i = 0; $i < $lastActualIndex; $i++) {
             $predictionByWeekIndex[$i] = null;
         }
         $predictionByWeekIndex[$lastActualIndex] = $lastActualValue;
 
-        $cumPred = $lastActualValue;
-        $incIdx = 0;
-        $totalIncrements = count($scaledIncrements);
-
-        while ($incIdx < $totalIncrements && $cumPred < 100.0) {
-            $weekIdx = $lastActualIndex + 1 + $incIdx;
-            $cumPred = min(100.0, round($cumPred + $scaledIncrements[$incIdx], 2));
-            if ($incIdx === $totalIncrements - 1) {
-                $cumPred = 100.0;
+        if ($lastActualValue < 99.99) {
+            for ($planIdx = $eqPlanIndex; $planIdx <= $first100Index; $planIdx++) {
+                $weekIdx = $lastActualIndex + 1 + ($planIdx - $eqPlanIndex);
+                $previousPrediction = $predictionByWeekIndex[$weekIdx - 1];
+                $plannedValue = (float) $weeks[$planIdx]['planned_cumulative'];
+                $predictionByWeekIndex[$weekIdx] = $planIdx === $first100Index
+                    ? 100.0
+                    : round(max($previousPrediction, min(100.0, $plannedValue)), 2);
             }
-            $predictionByWeekIndex[$weekIdx] = $cumPred;
-            $incIdx++;
         }
 
-        // 5. Dynamic Timeline Extension (X-Axis & Date Ranges):
-        // Total periods required = max(original planned weeks, latest week index where prediction exists + 1)
-        $maxPredictedWeekIndex = !empty($predictionByWeekIndex) ? max(array_keys($predictionByWeekIndex)) : ($planTotalWeeks - 1);
-        $totalTimelineWeeks = max($planTotalWeeks, $maxPredictedWeekIndex + 1);
+        // 4. Keep the chart through whichever scheduled or forecast completion is latest.
+        $maxPredictedWeekIndex = max(array_keys($predictionByWeekIndex));
+        $actualCompleted = $lastActualValue >= 99.99;
+        $totalTimelineWeeks = $actualCompleted
+            ? $lastActualIndex + 1
+            : max($first100Index, $maxPredictedWeekIndex) + 1;
 
         $chartPoints = [];
         for ($i = 0; $i < $totalTimelineWeeks; $i++) {
@@ -255,7 +211,7 @@ class SCurvePredictionService
 
             // Assign prediction value
             $predVal = $predictionByWeekIndex[$i] ?? null;
-            if ($predVal === null && $i > $lastActualIndex && isset($predictionByWeekIndex[$i - 1]) && $predictionByWeekIndex[$i - 1] >= 100.0) {
+            if ($predVal === null && $i > $lastActualIndex && !empty($chartPoints) && $chartPoints[$i - 1]['prediction_cumulative'] >= 99.99) {
                 $predVal = 100.0;
             }
 
@@ -306,4 +262,3 @@ class SCurvePredictionService
         ];
     }
 }
-
