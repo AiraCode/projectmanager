@@ -184,11 +184,11 @@ export function KpiCard({
   accent?: boolean;
 }) {
   return (
-    <Card className="p-4 lg:p-5">
+    <Card className="p-4 lg:p-5 overflow-hidden">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] lg:text-[12px] font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">{label}</div>
-          <div className={`text-[22px] lg:text-[26px] font-bold tracking-tight leading-none ${accent ? 'text-brand' : 'text-neutral-900'}`}>{value}</div>
+          <div className="text-[11px] lg:text-[12px] font-semibold text-neutral-400 uppercase tracking-wide mb-1.5 truncate" title={label}>{label}</div>
+          <div className={`text-[22px] lg:text-[26px] font-bold tracking-tight leading-none truncate ${accent ? 'text-brand' : 'text-neutral-900'}`}>{value}</div>
           {sub && <div className="text-[11px] lg:text-[12px] text-neutral-500 mt-1.5 truncate">{sub}</div>}
         </div>
         {Icon && (

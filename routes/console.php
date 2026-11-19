@@ -2,6 +2,7 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -72,4 +73,21 @@ Artisan::command('provis:reconcile-dates', function () {
 
     $this->info("Reconciliation complete! Total repairs made: {$totalRepairs}. All logged under 'Provis Support System'.");
 })->purpose('Scan and reconcile all project dates to match child task bounds, logging changes to audit log');
+
+Artisan::command('provis:prune-ai-chats {--days=7 : Retention period in days (default H+7)}', function () {
+    $days = max(1, (int) $this->option('days'));
+    $result = app(\App\Services\ProvisAiService::class)->ensureTablesAndPruneExpiredChats($days);
+
+    $this->info("Provis AI H+{$days} retention cleanup completed: deleted {$result['deleted_messages']} expired message(s) and {$result['deleted_sessions']} expired session(s).");
+})->purpose('Auto-delete Provis AI chat messages and sessions older than H+7 (1 week)');
+
+Schedule::command('provis:prune-ai-chats')->daily();
+
+Artisan::command('provis:ai-learn {taskId : The AiLearningTask ID to process locally}', function () {
+    $taskId = (int) $this->argument('taskId');
+    app(\App\Services\ProvisAiService::class)->processLearningTask($taskId);
+    $this->info("Completed local AI learning task #{$taskId}.");
+})->purpose('Process an asynchronous local self-learning AI reasoning task in the background');
+
+
 

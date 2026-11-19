@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import {
-  LayoutDashboard, Users, ScrollText, LogOut, Menu, X, ChevronLeft, Shield, Building2, FolderOpen, Key, Layers, FolderTree, Bot
+  LayoutDashboard, Users, ScrollText, LogOut, Menu, X, ChevronLeft, Shield, Building2, FolderOpen, Key, Layers, FolderTree, Bot, Loader2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Modal, Button } from '@/components/ui';
@@ -37,12 +37,27 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
     return 0;
   });
 
+  const [aiBgStatus, setAiBgStatus] = useState<{ isThinking: boolean; hasUnreadReady: boolean }>({
+    isThinking: false,
+    hasUnreadReady: false,
+  });
+
   useEffect(() => {
     const handler = (e: any) => {
       setAiMargin(e.detail?.effectiveMargin ?? 0);
     };
+    const bgHandler = (e: any) => {
+      setAiBgStatus({
+        isThinking: Boolean(e.detail?.isThinking),
+        hasUnreadReady: Boolean(e.detail?.hasUnreadReady),
+      });
+    };
     window.addEventListener('provis-ai-state-change', handler);
-    return () => window.removeEventListener('provis-ai-state-change', handler);
+    window.addEventListener('provis-ai-bg-status', bgHandler);
+    return () => {
+      window.removeEventListener('provis-ai-state-change', handler);
+      window.removeEventListener('provis-ai-bg-status', bgHandler);
+    };
   }, []);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -239,14 +254,41 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
             onClick={() => {
               window.dispatchEvent(new CustomEvent('provis-ai-toggle-request'));
             }}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300 text-neutral-800 transition-all text-[12px] font-semibold cursor-pointer shrink-0 shadow-2xs"
-            title="Buka / Tutup Provis Assistant"
+            className={`relative flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all text-[12px] font-semibold cursor-pointer shrink-0 shadow-2xs ${
+              aiBgStatus.isThinking
+                ? 'border-indigo-300 bg-indigo-50/70 hover:bg-indigo-50 text-indigo-900'
+                : aiBgStatus.hasUnreadReady
+                ? 'border-emerald-300 bg-emerald-50/70 hover:bg-emerald-50 text-emerald-900'
+                : 'border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300 text-neutral-800'
+            }`}
+            title={
+              aiBgStatus.isThinking
+                ? 'Provis Assistant sedang mempelajari pertanyaanmu di latar belakang…'
+                : aiBgStatus.hasUnreadReady
+                ? 'Jawaban Provis Assistant sudah siap! Klik untuk membuka'
+                : 'Buka / Tutup Provis Assistant'
+            }
           >
-            <Bot size={15} className="text-neutral-600" />
+            {aiBgStatus.isThinking ? (
+              <Loader2 size={15} className="text-indigo-600 animate-spin" />
+            ) : (
+              <Bot size={15} className={aiBgStatus.hasUnreadReady ? 'text-emerald-600' : 'text-neutral-600'} />
+            )}
             <span className="hidden sm:inline">Provis Assistant</span>
-            <span className="text-[9.5px] font-medium px-1.5 py-0.2 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
-              Beta
-            </span>
+            {aiBgStatus.isThinking ? (
+              <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">
+                Mempelajari…
+              </span>
+            ) : aiBgStatus.hasUnreadReady ? (
+              <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Siap
+              </span>
+            ) : (
+              <span className="text-[9.5px] font-medium px-1.5 py-0.2 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
+                Beta
+              </span>
+            )}
           </button>
 
           {/* Profile Dropdown */}

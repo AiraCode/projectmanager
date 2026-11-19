@@ -249,6 +249,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/sessions/{id}/chat', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'chat'])->name('ai.sessions.chat');
         Route::post('/chat', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'chat'])->name('ai.chat');
         Route::delete('/sessions/{id}', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'deleteSession'])->name('ai.sessions.destroy');
+        Route::get('/tasks/active', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'activeTasks'])->name('ai.tasks.active');
+        Route::get('/tasks/{taskId}', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'taskStatus'])->name('ai.tasks.status');
     });
 });
 

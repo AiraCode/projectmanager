@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { usePage } from '@inertiajs/react';
 import {
   Bot,
@@ -12,7 +12,10 @@ import {
   RefreshCw,
   Maximize2,
   Minimize2,
-  Columns2,
+  Brain,
+  Sparkles,
+  Zap,
+  Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -21,6 +24,12 @@ interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   metadata?: {
+    status?: 'thinking' | 'completed' | string;
+    thinking_stage?: string | null;
+    learning_task_id?: number;
+    learned_from_memory?: boolean;
+    newly_learned?: boolean;
+    learned_knowledge_id?: number | null;
     actions?: Array<{ type: string; label: string; url: string }>;
     tokens_used?: number;
     mode?: string;
@@ -35,6 +44,14 @@ interface ChatSession {
   title: string;
   created_at: string;
   messages_count?: number;
+}
+
+interface ActiveTaskInfo {
+  id: number;
+  session_id: number;
+  assistant_message_id: number;
+  status: string;
+  stage_label?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -209,13 +226,105 @@ export default function ProvisAiDrawer() {
     return true;
   });
 
+  const sessionStorageKey = user?.id ? `provis_ai_active_session_${user.id}` : 'provis_ai_active_session';
+  const getMsgCacheKey = useCallback(
+    (sid: number | null) => (user?.id && sid ? `provis_ai_cached_msgs_${user.id}_${sid}` : null),
+    [user?.id]
+  );
+
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [processingSessionIds, setProcessingSessionIds] = useState<number[]>([]);
+  const [activeTasks, setActiveTasks] = useState<ActiveTaskInfo[]>([]);
+  const [hasUnreadReady, setHasUnreadReady] = useState<boolean>(false);
+  const [currentSessionId, setCurrentSessionId] = useState<number | null>(() => {
+    if (typeof window !== 'undefined' && user?.id) {
+      const saved = localStorage.getItem(`provis_ai_active_session_${user.id}`);
+      return saved ? Number(saved) : null;
+    }
+    return null;
+  });
+  // Synchronously hydrate last messages from sessionStorage so page navigation / refresh NEVER flashes
+  // the welcome screen or triggers a dizzying top-to-bottom fast scroll!
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window !== 'undefined' && user?.id) {
+      try {
+        const savedSid = localStorage.getItem(`provis_ai_active_session_${user.id}`);
+        if (savedSid) {
+          const cached = sessionStorage.getItem(`provis_ai_cached_msgs_${user.id}_${savedSid}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) return parsed;
+          }
+        }
+      } catch {
+        // Ignore storage parse error
+      }
+    }
+    return [];
+  });
+  const [isHydrating, setIsHydrating] = useState<boolean>(() => {
+    // Only show subtle hydrating state if a saved session exists but has no cached messages yet
+    if (typeof window !== 'undefined' && user?.id) {
+      const savedSid = localStorage.getItem(`provis_ai_active_session_${user.id}`);
+      if (savedSid) {
+        try {
+          const cached = sessionStorage.getItem(`provis_ai_cached_msgs_${user.id}_${savedSid}`);
+          return !cached;
+        } catch {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollModeRef = useRef<'instant' | 'smooth' | 'preserve'>('instant');
+  const prevMsgCountRef = useRef<number>(messages.length);
+  const isOpenRef = useRef<boolean>(isOpen);
+  const currentSessionIdRef = useRef<number | null>(currentSessionId);
+  const prevThinkingCountRef = useRef<number>(0);
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+    if (isOpen) {
+      setHasUnreadReady(false);
+      // When reopening panel, snap directly to bottom without flying scroll animation
+      scrollModeRef.current = 'instant';
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+    if (typeof window !== 'undefined' && user?.id) {
+      if (currentSessionId) {
+        localStorage.setItem(sessionStorageKey, String(currentSessionId));
+      } else {
+        localStorage.removeItem(sessionStorageKey);
+      }
+    }
+  }, [currentSessionId, sessionStorageKey, user?.id]);
+
+  // Keep sessionStorage snapshot synced so navigating pages / pressing F5 stays pinned at the last chat seamlessly
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = getMsgCacheKey(currentSessionId);
+    if (!key) return;
+    try {
+      sessionStorage.setItem(key, JSON.stringify(messages.slice(-60)));
+    } catch {
+      // Ignore quota errors
+    }
+  }, [messages, currentSessionId, getMsgCacheKey]);
+
+  // Derived thinking state (true if current messages have a thinking bubble OR any background task is active)
+  const hasThinkingMessage = messages.some(m => m.metadata?.status === 'thinking');
+  const hasThinkingMsgRef = useRef<boolean>(hasThinkingMessage);
+  hasThinkingMsgRef.current = hasThinkingMessage;
+  const isThinkingInBackground = hasThinkingMessage || activeTasks.length > 0;
 
   // Broadcast layout state so Layout.tsx & SuperAdminLayout.tsx can adjust side-by-side margins
   useEffect(() => {
@@ -233,6 +342,21 @@ export default function ProvisAiDrawer() {
     }
   }, [isOpen, panelWidth, isDocked]);
 
+  // Broadcast live background thinking / answer-ready status to Header trigger buttons
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('provis-ai-bg-status', {
+          detail: {
+            isThinking: isThinkingInBackground,
+            hasUnreadReady: !isOpen && hasUnreadReady,
+            activeCount: activeTasks.length || (hasThinkingMessage ? 1 : 0),
+          },
+        })
+      );
+    }
+  }, [isThinkingInBackground, hasUnreadReady, isOpen, activeTasks.length, hasThinkingMessage]);
+
   // Listen for toggle requests from Navbar/Header trigger buttons
   useEffect(() => {
     const handleToggle = () => {
@@ -242,56 +366,171 @@ export default function ProvisAiDrawer() {
     return () => window.removeEventListener('provis-ai-toggle-request', handleToggle);
   }, []);
 
-  // Auto-scroll messages to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  // Smart zero-motion-sickness scroll positioning:
+  // - On page navigation, F5 refresh, drawer open, or session switch: snaps INSTANTLY to the bottom
+  //   BEFORE the browser paints (useLayoutEffect) so the user NEVER sees a fast top-to-bottom scroll!
+  // - On active new message send/receive: gently scrolls smoothly only if near bottom.
+  useLayoutEffect(() => {
+    if (!isOpen || showHistory) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-  useEffect(() => {
-    if (isOpen) {
-      scrollToBottom();
+    const mode = scrollModeRef.current;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 140;
+    const grew = messages.length > prevMsgCountRef.current;
+    prevMsgCountRef.current = messages.length;
+
+    if (mode === 'instant') {
+      container.scrollTop = container.scrollHeight;
+      scrollModeRef.current = 'preserve';
+    } else if (mode === 'smooth') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      scrollModeRef.current = 'preserve';
+    } else if (isNearBottom && (grew || isLoading)) {
+      container.scrollTop = container.scrollHeight;
     }
-  }, [messages, isOpen, isLoading]);
+  }, [messages, isOpen, showHistory, isLoading]);
 
-  // Fetch sessions on open
-  useEffect(() => {
-    if (isOpen && canAccess) {
-      fetchSessions();
-    }
-  }, [isOpen, canAccess]);
-
-  const fetchSessions = async () => {
-    try {
-      const res = await fetch('/ai/sessions', {
-        headers: { Accept: 'application/json' },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(data.sessions || []);
-        if (!currentSessionId && data.sessions?.length > 0) {
-          loadSession(data.sessions[0].id);
-        }
-      }
-    } catch (e) {
-      console.error('Error fetching AI sessions', e);
-    }
-  };
-
-  const loadSession = async (sessionId: number) => {
+  const loadSession = useCallback(async (sessionId: number, hideHistory = true) => {
+    const switchingSession = currentSessionIdRef.current !== sessionId;
     setCurrentSessionId(sessionId);
-    setShowHistory(false);
+    if (hideHistory) {
+      setShowHistory(false);
+    }
     try {
       const res = await fetch(`/ai/sessions/${sessionId}`, {
         headers: { Accept: 'application/json' },
       });
       if (res.ok) {
         const data = await res.json();
+        if (switchingSession || scrollModeRef.current === 'instant') {
+          scrollModeRef.current = 'instant';
+        }
         setMessages(data.messages || []);
+      } else if (res.status === 404) {
+        // Session may have been pruned after H+7 or deleted
+        const oldKey = getMsgCacheKey(sessionId);
+        if (oldKey) {
+          try { sessionStorage.removeItem(oldKey); } catch { /* ignore */ }
+        }
+        setCurrentSessionId(null);
+        setMessages([]);
       }
     } catch (e) {
       console.error('Error loading session', e);
+    } finally {
+      setIsHydrating(false);
     }
-  };
+  }, [getMsgCacheKey]);
+
+  const fetchSessions = useCallback(async (autoLoadSaved = false) => {
+    try {
+      const res = await fetch('/ai/sessions', {
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list: ChatSession[] = data.sessions || [];
+        const procIds: number[] = data.processing_session_ids || [];
+        setSessions(list);
+        setProcessingSessionIds(procIds);
+
+        if (autoLoadSaved && list.length > 0) {
+          const savedRaw = typeof window !== 'undefined' ? localStorage.getItem(sessionStorageKey) : null;
+          const savedId = savedRaw ? Number(savedRaw) : null;
+          const targetId =
+            (savedId && list.some(s => s.id === savedId) ? savedId : null) ??
+            (procIds.length > 0 ? procIds[0] : null) ??
+            list[0].id;
+
+          if (targetId) {
+            await loadSession(targetId, false);
+          } else {
+            setIsHydrating(false);
+          }
+        } else if (autoLoadSaved) {
+          setIsHydrating(false);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching AI sessions', e);
+      setIsHydrating(false);
+    }
+  }, [loadSession, sessionStorageKey]);
+
+  const syncActiveBackgroundTasks = useCallback(async () => {
+    try {
+      const res = await fetch('/ai/tasks/active', {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const proc: ActiveTaskInfo[] = data.processing_tasks || [];
+      const recentDone: ActiveTaskInfo[] = data.recently_completed || [];
+
+      setActiveTasks(proc);
+      setProcessingSessionIds(Array.from(new Set(proc.map(t => t.session_id))));
+
+      // Detect transition from thinking -> finished while sidebar is closed!
+      if (prevThinkingCountRef.current > 0 && proc.length === 0 && !isOpenRef.current) {
+        setHasUnreadReady(true);
+      }
+      prevThinkingCountRef.current = proc.length;
+
+      // Keep current session messages synced if active or recently finished in current session
+      const curSid = currentSessionIdRef.current;
+      const affectsCurrent =
+        curSid &&
+        (proc.some(t => t.session_id === curSid) || recentDone.some(t => t.session_id === curSid));
+
+      if (curSid && (affectsCurrent || hasThinkingMsgRef.current)) {
+        const sRes = await fetch(`/ai/sessions/${curSid}`, {
+          headers: { Accept: 'application/json' },
+        });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          setMessages(sData.messages || []);
+        }
+      } else if (!curSid && proc.length > 0) {
+        await loadSession(proc[0].session_id, false);
+      }
+    } catch (e) {
+      // Silent retry on transient network hiccup
+    }
+  }, [loadSession]);
+
+  // Initial hydration on mount — runs REGARDLESS of whether sidebar is open or closed,
+  // so closing sidebar, changing PROVIS pages, or refreshing (F5) immediately restores
+  // the active conversation and resumes any in-flight local AI thinking process!
+  useEffect(() => {
+    if (!canAccess) return;
+    fetchSessions(true);
+    syncActiveBackgroundTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAccess, user?.id]);
+
+  // When sidebar opens again, immediately refresh active session so completed answers show up right away
+  useEffect(() => {
+    if (isOpen && canAccess) {
+      fetchSessions(false);
+      if (currentSessionIdRef.current) {
+        loadSession(currentSessionIdRef.current, false);
+      }
+    }
+  }, [isOpen, canAccess, fetchSessions, loadSession]);
+
+  // Continuous lightweight background polling while any local self-learning task is thinking
+  // (stays alive even when the user closes the sidebar!)
+  useEffect(() => {
+    if (!canAccess || !isThinkingInBackground) return;
+
+    const intervalId = window.setInterval(() => {
+      syncActiveBackgroundTasks();
+    }, 600);
+
+    return () => window.clearInterval(intervalId);
+  }, [canAccess, isThinkingInBackground, syncActiveBackgroundTasks]);
 
   const startNewSession = async () => {
     try {
@@ -330,6 +569,10 @@ export default function ProvisAiDrawer() {
         },
       });
       if (res.ok) {
+        const oldKey = getMsgCacheKey(sessionId);
+        if (oldKey) {
+          try { sessionStorage.removeItem(oldKey); } catch { /* ignore */ }
+        }
         setSessions(prev => prev.filter(s => s.id !== sessionId));
         if (currentSessionId === sessionId) {
           setCurrentSessionId(null);
@@ -350,6 +593,7 @@ export default function ProvisAiDrawer() {
       content: textToSend,
     };
 
+    scrollModeRef.current = 'smooth';
     setMessages(prev => [...prev, userMessage]);
     if (!overrideText) setInputText('');
     setIsLoading(true);
@@ -375,18 +619,40 @@ export default function ProvisAiDrawer() {
       if (res.ok) {
         const data = await res.json();
         if (data.session_id && !currentSessionId) {
+          currentSessionIdRef.current = data.session_id;
           setCurrentSessionId(data.session_id);
-          fetchSessions();
+          fetchSessions(false);
         }
-        setMessages(prev => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: data.content,
-            actions: data.actions || [],
-            metadata: data.metadata,
-          },
-        ]);
+
+        const assistantEntry: ChatMessage = {
+          id: data.message_id,
+          role: 'assistant',
+          content: data.content,
+          actions: data.actions || data.metadata?.actions || [],
+          metadata: data.metadata,
+        };
+
+        scrollModeRef.current = 'smooth';
+        setMessages(prev => [...prev, assistantEntry]);
+
+        // If backend started an async local self-learning task, immediately register it
+        // so polling stays active even if the user closes the sidebar or refreshes!
+        if (data.metadata?.status === 'thinking' && data.learning_task_id) {
+          prevThinkingCountRef.current = Math.max(1, prevThinkingCountRef.current + 1);
+          setActiveTasks(prev => [
+            ...prev.filter(t => t.id !== data.learning_task_id),
+            {
+              id: data.learning_task_id,
+              session_id: data.session_id,
+              assistant_message_id: data.message_id,
+              status: 'processing',
+              stage_label: data.metadata?.thinking_stage || null,
+            },
+          ]);
+          setProcessingSessionIds(prev =>
+            prev.includes(data.session_id) ? prev : [...prev, data.session_id]
+          );
+        }
       } else {
         const errData = await res.json().catch(() => ({}));
         setMessages(prev => [
@@ -474,7 +740,10 @@ export default function ProvisAiDrawer() {
               </button>
 
               <button
-                onClick={() => setShowHistory(!showHistory)}
+                onClick={() => {
+                  if (showHistory) scrollModeRef.current = 'instant';
+                  setShowHistory(!showHistory);
+                }}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${showHistory ? 'bg-neutral-200 text-neutral-900 font-bold' : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/60'}`}
                 title="Riwayat Sesi"
               >
@@ -529,7 +798,15 @@ export default function ProvisAiDrawer() {
                       }`}
                     >
                       <div className="truncate flex-1 pr-2">
-                        <div className="truncate">{s.title}</div>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="truncate">{s.title}</span>
+                          {processingSessionIds.includes(s.id) && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-semibold bg-indigo-100 text-indigo-700 shrink-0">
+                              <Loader2 size={9} className="animate-spin" />
+                              Mempelajari
+                            </span>
+                          )}
+                        </div>
                         <span className={`text-[10px] font-normal ${currentSessionId === s.id ? 'text-neutral-300' : 'text-neutral-400'}`}>
                           {new Date(s.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -552,8 +829,13 @@ export default function ProvisAiDrawer() {
             </div>
           ) : (
             /* Chat Messages View */
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-neutral-50/20">
-              {messages.length === 0 ? (
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-neutral-50/20">
+              {isHydrating && messages.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-neutral-400 text-[12px] gap-2">
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Memuat percakapan terakhir…</span>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="h-full flex flex-col justify-center items-center text-center px-4 py-8">
                   <div className="w-10 h-10 rounded-xl bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-700 mb-3 shadow-2xs">
                     <Bot size={20} />
@@ -581,44 +863,105 @@ export default function ProvisAiDrawer() {
                   </div>
                 </div>
               ) : (
-                messages.map((msg, index) => (
-                  <div
-                    key={index}
-                    className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
-                  >
-                    <div
-                      className={`max-w-[92%] rounded-2xl px-4 py-2.5 text-[12.5px] leading-relaxed shadow-2xs ${
-                        msg.role === 'user'
-                          ? 'bg-neutral-900 text-white rounded-br-xs'
-                          : 'bg-white border border-neutral-200/90 text-neutral-800 rounded-bl-xs'
-                      }`}
-                    >
-                      {msg.role === 'user' ? (
-                        <div className="whitespace-pre-wrap">{msg.content}</div>
-                      ) : (
-                        renderFormattedContent(msg.content)
-                      )}
+                messages.map((msg, index) => {
+                  const isThinkingMsg = msg.role === 'assistant' && msg.metadata?.status === 'thinking';
+                  const msgActions = msg.actions && msg.actions.length > 0
+                    ? msg.actions
+                    : (msg.metadata?.actions || []);
 
-                      {/* Action Links & Download Buttons */}
-                      {msg.actions && msg.actions.length > 0 && (
-                        <div className="mt-3 pt-2.5 border-t border-neutral-100 flex flex-wrap gap-2">
-                          {msg.actions.map((act, actIdx) => (
-                            <a
-                              key={actIdx}
-                              href={act.url}
-                              target={act.url.startsWith('http') || act.url.includes('/storage/') || act.url.includes('/report-view') ? '_blank' : '_self'}
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11.5px] font-semibold bg-neutral-900 hover:bg-neutral-800 text-white transition-all shadow-2xs cursor-pointer"
-                            >
-                              {act.url.endsWith('.pdf') || act.url.includes('report') ? <FileText size={12} /> : <ExternalLink size={12} />}
-                              <span>{act.label}</span>
-                            </a>
-                          ))}
-                        </div>
-                      )}
+                  return (
+                    <div
+                      key={msg.id ?? index}
+                      className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                    >
+                      <div
+                        className={`max-w-[92%] rounded-2xl px-4 py-2.5 text-[12.5px] leading-relaxed shadow-2xs ${
+                          msg.role === 'user'
+                            ? 'bg-neutral-900 text-white rounded-br-xs'
+                            : isThinkingMsg
+                            ? 'bg-gradient-to-br from-indigo-50/90 via-white to-violet-50/70 border border-indigo-200/80 text-neutral-800 rounded-bl-xs'
+                            : 'bg-white border border-neutral-200/90 text-neutral-800 rounded-bl-xs'
+                        }`}
+                      >
+                        {msg.role === 'user' ? (
+                          <div className="whitespace-pre-wrap">{msg.content}</div>
+                        ) : isThinkingMsg ? (
+                          <div className="space-y-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                <Brain size={13} className="animate-pulse" />
+                              </div>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="font-bold text-[12px] text-indigo-900">
+                                  Sedang Mempelajari &amp; Berpikir
+                                </span>
+                                <span className="inline-flex items-center gap-0.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                                </span>
+                              </div>
+                            </div>
+
+                            <p className="text-[12px] text-neutral-700 leading-relaxed">
+                              {msg.content}
+                            </p>
+
+                            {msg.metadata?.thinking_stage && (
+                              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/80 border border-indigo-100 text-[11px] font-medium text-indigo-700">
+                                <Loader2 size={12} className="animate-spin shrink-0 text-indigo-600" />
+                                <span className="truncate">{msg.metadata.thinking_stage}</span>
+                              </div>
+                            )}
+
+                            <p className="text-[10.5px] text-neutral-500 leading-snug pt-0.5">
+                              💡 Panel boleh ditutup atau halaman di-refresh — PROVIS AI tetap memproses &amp; menyimpan jawabannya di latar belakang.
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            {renderFormattedContent(msg.content)}
+
+                            {/* Subtle Local Self-Learning Memory Badge */}
+                            {(msg.metadata?.learned_from_memory || msg.metadata?.newly_learned) && (
+                              <div className="mt-2.5 pt-2 border-t border-neutral-100 flex items-center gap-1.5">
+                                {msg.metadata?.learned_from_memory ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                                    <Zap size={10} />
+                                    Dijawab Instan dari Memori Lokal PROVIS
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/80">
+                                    <Sparkles size={10} />
+                                    Baru Dipelajari &amp; Disimpan ke Memori Lokal
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {/* Action Links & Download Buttons */}
+                        {!isThinkingMsg && msgActions.length > 0 && (
+                          <div className="mt-3 pt-2.5 border-t border-neutral-100 flex flex-wrap gap-2">
+                            {msgActions.map((act, actIdx) => (
+                              <a
+                                key={actIdx}
+                                href={act.url}
+                                target={act.url.startsWith('http') || act.url.includes('/storage/') || act.url.includes('/report-view') ? '_blank' : '_self'}
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11.5px] font-semibold bg-neutral-900 hover:bg-neutral-800 text-white transition-all shadow-2xs cursor-pointer"
+                              >
+                                {act.url.endsWith('.pdf') || act.url.includes('report') ? <FileText size={12} /> : <ExternalLink size={12} />}
+                                <span>{act.label}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
 
               {isLoading && (

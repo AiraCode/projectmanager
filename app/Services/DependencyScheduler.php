@@ -37,12 +37,18 @@ class DependencyScheduler
             }
             $visited[$curr] = true;
 
-            // Find all direct successors of $curr
+            // Find all direct successors of $curr (both relational task_dependencies & legacy wbs.predecessor column)
             $nextSuccessorIds = TaskDependency::where('predecessor_wbs_id', $curr)
                 ->pluck('successor_wbs_id')
                 ->toArray();
 
-            foreach ($nextSuccessorIds as $nextId) {
+            $legacySuccessorIds = Wbs::where('predecessor', $curr)
+                ->pluck('id')
+                ->toArray();
+
+            $allNext = array_unique(array_merge($nextSuccessorIds, $legacySuccessorIds));
+
+            foreach ($allNext as $nextId) {
                 if (!isset($visited[$nextId])) {
                     $queue[] = $nextId;
                 }

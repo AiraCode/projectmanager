@@ -12,11 +12,15 @@ return new class extends Migration
     public function up(): void
     {
         // 1. Add is_ai_beta_tester to users
-        Schema::table('users', function (Blueprint $table) {
-            if (!Schema::hasColumn('users', 'is_ai_beta_tester')) {
-                $table->boolean('is_ai_beta_tester')->default(false)->after('is_standalone');
-            }
-        });
+        if (Schema::hasTable('users') && !Schema::hasColumn('users', 'is_ai_beta_tester')) {
+            $hasStandalone = Schema::hasColumn('users', 'is_standalone');
+            Schema::table('users', function (Blueprint $table) use ($hasStandalone) {
+                $col = $table->boolean('is_ai_beta_tester')->default(false);
+                if ($hasStandalone) {
+                    $col->after('is_standalone');
+                }
+            });
+        }
 
         // 2. Create ai_chat_sessions table
         if (!Schema::hasTable('ai_chat_sessions')) {

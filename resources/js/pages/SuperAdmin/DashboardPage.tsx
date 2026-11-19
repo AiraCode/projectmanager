@@ -47,14 +47,17 @@ const ROLE_COLORS: Record<string, string> = {
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: number; sub?: string; color: string }) {
   return (
-    <div className="bg-white rounded-2xl p-5 border flex items-center gap-4" style={{ borderColor: 'rgba(139,92,246,0.1)', boxShadow: '0 1px 8px rgba(139,92,246,0.06)' }}>
-      <div className={`flex items-center justify-center w-12 h-12 rounded-xl flex-shrink-0 ${color}`}>
-        <Icon size={22} />
+    <div
+      className="bg-white rounded-2xl p-4 sm:p-5 border flex items-center gap-3.5 min-w-0 overflow-hidden"
+      style={{ borderColor: 'rgba(139,92,246,0.1)', boxShadow: '0 1px 8px rgba(139,92,246,0.06)' }}
+    >
+      <div className={`flex items-center justify-center w-11 h-11 rounded-xl flex-shrink-0 ${color}`}>
+        <Icon size={20} />
       </div>
-      <div>
-        <div className="text-[28px] font-black leading-none text-neutral-900">{value}</div>
-        <div className="text-[12px] font-semibold text-neutral-500 mt-1">{label}</div>
-        {sub && <div className="text-[11px] text-neutral-400 mt-0.5">{sub}</div>}
+      <div className="min-w-0 flex-1">
+        <div className="text-[24px] sm:text-[26px] font-black leading-none text-neutral-900 truncate">{value}</div>
+        <div className="text-[12px] font-semibold text-neutral-500 mt-1 leading-tight truncate" title={label}>{label}</div>
+        {sub && <div className="text-[11px] text-neutral-400 mt-0.5 truncate">{sub}</div>}
       </div>
     </div>
   );
@@ -81,8 +84,8 @@ export default function SuperAdminDashboardPage({
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+        {/* Stats Grid — Auto-fits container width so cards never overflow when Provis Assistant panel is docked */}
+        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))' }}>
           <StatCard icon={Users}      label="Total Users"     value={stats.total_users}     color="bg-violet-100 text-violet-600" />
           <StatCard icon={Building2}  label="Companies"       value={stats.total_companies}  color="bg-indigo-100 text-indigo-600" />
           <StatCard icon={FolderOpen} label="Projects"        value={stats.total_projects}   color="bg-blue-100 text-blue-600" />
@@ -92,7 +95,7 @@ export default function SuperAdminDashboardPage({
         </div>
 
         {/* Recent Users + Recent Audit Logs */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))' }}>
 
           {/* Recent Users */}
           <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: 'rgba(139,92,246,0.1)', boxShadow: '0 1px 8px rgba(139,92,246,0.06)' }}>
