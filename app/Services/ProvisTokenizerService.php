@@ -245,6 +245,9 @@ class ProvisTokenizerService
             'terdaftar', 'terkait', 'termasuk', 'diselesaikan', 'selesai', 'berjalan', 'berlangsung', 'dikerjakan',
             'pegang', 'megang', 'kelola', 'sibuk', 'molor', 'ngaret', 'kepake', 'dipakai', 'dibuat', 'diubah',
             'ditugaskan', 'diakses', 'diberikan', 'dicabut', 'miliar', 'milyar', 'juta', 'ribu', 'persen', 'hitung',
+            'bernama', 'namanya', 'membuatkan', 'buatkanku', 'buatin', 'bikinkan', 'bikinin', 'daftarkan', 'registrasi',
+            'role', 'peran', 'username', 'katasandi', 'sandi', 'akun', 'super', 'utama', 'progres', 'buat', 'untukku',
+            'named', 'account',
         ]);
 
         $wordCorrections = [];
@@ -970,6 +973,124 @@ class ProvisTokenizerService
         }
 
         return $cand;
+    }
+
+    /**
+     * Extract target role for CREATE_USER from natural Indonesian/English prompts.
+     *
+     * @return array{id: int, name: string, label: string}|null
+     */
+    public function extractUserCreationRole(string $text): ?array
+    {
+        $lower = mb_strtolower($text);
+        $roleKey = null;
+
+        if (preg_match('/\b(super\s*admin(?:istrator)?)\b/i', $lower)) {
+            $roleKey = 'SuperAdmin';
+        } elseif (preg_match('/\b(admin\s*utama|admin_utama)\b/i', $lower)) {
+            $roleKey = 'admin_utama';
+        } elseif (preg_match('/\b(admin\s*progres+|admin_progres)\b/i', $lower)) {
+            $roleKey = 'admin_progres';
+        } elseif (preg_match('/\b(pic|project\s+manager)\b/i', $lower)) {
+            $roleKey = 'pic';
+        } elseif (preg_match('/\b(worker|pekerja|karyawan|staff|staf)\b/i', $lower)) {
+            $roleKey = 'worker';
+        }
+
+        if ($roleKey === null) {
+            return null;
+        }
+
+        $roleModel = \App\Models\Role::where('name', $roleKey)->first();
+        if (!$roleModel) {
+            return null;
+        }
+
+        return [
+            'id'    => (int) $roleModel->id,
+            'name'  => $roleModel->name,
+            'label' => match ($roleModel->name) {
+                'SuperAdmin'    => 'SuperAdmin',
+                'admin_utama'   => 'Admin Utama',
+                'admin_progres' => 'Admin Progres',
+                'pic'           => 'PIC (Project Manager)',
+                'worker'        => 'Worker',
+                default         => $roleModel->name,
+            },
+        ];
+    }
+
+    /**
+     * Extract username / account name for CREATE_USER from natural prompts.
+     */
+    public function extractUserCreationName(string $text, bool $allowBareName = false): ?string
+    {
+        $trimmed = trim($text);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        // Strip conversational confirmation lead-ins like "tidak, maksud saya adalah..."
+        $cleaned = preg_replace('/^(?:tidak\s*,?\s*|bukan\s*,?\s*|iya\s*,?\s*)?(?:maksud\s+(?:saya|aku)\s+(?:adalah\s+)?)?/i', '', $trimmed) ?? $trimmed;
+
+        $cleanNameCandidate = function (string $raw): ?string {
+            $cand = trim($raw, " \t\n\r\0\x0B.,;:\"'?!");
+            // Stop before role, company, division, email, password, or filler clauses
+            $cand = preg_replace('/(?:,\s*|\s+)(?:dengan\s+role|dengan\s+peran|dengan\s+email|dengan\s+password|role\s+|peran\s+|sebagai\s+|di\s+pt\b|di\s+perusahaan\b|perusahaan\s+|divisi\s+|division\s+|email\s+|password\s+|pass\s+|sandi\s+|untuk\s+|for\s+role|as\s+|with\s+role|with\s+email).*$/i', '', $cand) ?? $cand;
+            $cand = preg_replace('/\s+(?:dong|ya|yah|bro|min|nih|aja|saja)$/i', '', $cand) ?? $cand;
+            $cand = trim($cand, " \t\n\r\0\x0B.,;:\"'?!");
+
+            if (mb_strlen($cand) < 2 || mb_strlen($cand) > 45) {
+                return null;
+            }
+            if (preg_match('/^(akun|user|pengguna|account|baru|new|saya|aku|kamu|role|peran|super\s*admin|admin\s*utama|admin\s*progres|pic|worker|bisa|ya|tidak|batal|cancel|apa|siapa|nama)$/i', $cand)) {
+                return null;
+            }
+            return $cand;
+        };
+
+        // 1. Explicit quoted name: bernama "Aria" / nama akun "Aria Pratama"
+        if (preg_match('/\b(?:bernama|namanya|dengan\s+nama\s+(?:akun|user)?|atas\s+nama|nama\s+(?:akun|user)|nama|named|name)\s*(?::|=)?\s*["\']([^"\']{2,45})["\']/i', $cleaned, $m)) {
+            $cand = $cleanNameCandidate($m[1]);
+            if ($cand !== null) return $cand;
+        }
+
+        // 2. Unquoted name after explicit naming keyword
+        if (preg_match('/\b(?:bernama|namanya|dengan\s+nama\s+(?:akun|user)?|atas\s+nama|nama\s+(?:akun|user)|nama|named|name)\s*(?::|=)?\s*([a-zA-Z0-9][a-zA-Z0-9\s._-]{1,50})/i', $cleaned, $m)) {
+            $cand = $cleanNameCandidate($m[1]);
+            if ($cand !== null) return $cand;
+        }
+
+        // 3. Bare reply when user was asked for account name
+        if ($allowBareName) {
+            return $cleanNameCandidate($cleaned);
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract an email address from prompt if supplied.
+     */
+    public function extractEmailFromPrompt(string $text): ?string
+    {
+        if (preg_match('/([a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,})/i', $text, $m)) {
+            return mb_strtolower(trim($m[1]));
+        }
+        return null;
+    }
+
+    /**
+     * Extract password from prompt when explicitly introduced by password/sandi keyword.
+     */
+    public function extractPasswordFromPrompt(string $text): ?string
+    {
+        if (preg_match('/\b(?:password(?:nya)?|kata\s*sandi(?:nya)?|sandi(?:nya)?|pwd|pass)\s*(?::|=|adalah|jadi)?\s*(?:["\']([^"\']{6,64})["\']|([^\s,;]{6,64}))/i', $text, $m)) {
+            $pwd = !empty($m[1]) ? $m[1] : ($m[2] ?? '');
+            $pwd = trim($pwd);
+            return mb_strlen($pwd) >= 6 ? $pwd : null;
+        }
+        return null;
     }
 
     /**
@@ -2544,6 +2665,17 @@ class ProvisTokenizerService
         // 4a. Create Project (covers "tolong buatkan projek...", "bisakah kamu membuatkanku projek...", "buatin projek...", "mau bikin projek...")
         if (preg_match('/\b(?:buat|buatkan|buatkanku|buatin|membuat|membuatkan|membuatkanku|bikin|bikinkan|bikinin|tambah|tambahkan|cipta|ciptakan|create|generate)\s+(?:saya\s+|aku\s+|ku\s+|a\s+|new\s+|sebuah\s+|baru\s+){0,3}(?:proyek|projek|projeck|project)(?:ku|nya)?\b/i', $lower)) {
             return 'CREATE_PROJECT';
+        }
+
+        // 4a-2. Create User Account (covers "kalau buat akun baru bisa?", "membuatkan akun baru bernama Aria dengan role Super Admin")
+        if (
+            (
+                preg_match('/\b(?:buat|buatkan|buatkanku|buatin|membuat|membuatkan|membuatkanku|bikin|bikinkan|bikinin|tambah|tambahkan|daftar|daftarkan|registrasi|create|add|register|make)\s+(?:saya\s+|aku\s+|ku\s+|a\s+|an\s+|new\s+|sebuah\s+|baru\s+){0,4}(?:akun|user|pengguna|account)\b/i', $lower)
+                || preg_match('/\b(?:akun|user|account)\s+baru\b.*\b(?:bisa|buat|buatkan|membuatkan|bikin|tambah|create|bernama|namanya|nama|role|dengan)\b/i', $lower)
+            )
+            && !preg_match('/\b(berapa|jumlah|total|daftar|list|siapa\s+saja|apa\s+saja|cara\s+membuat|bagaimana\s+cara)\b/i', $lower)
+        ) {
+            return 'CREATE_USER';
         }
 
         // 4b. Manage Project User Access & Private/Public Visibility

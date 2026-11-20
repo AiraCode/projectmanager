@@ -14,6 +14,7 @@ use App\Models\MainWbs;
 use App\Models\Project;
 use App\Models\ProjectActivityLog;
 use App\Models\ProjectMember;
+use App\Models\Role;
 use App\Models\SubWbs;
 use App\Models\TaskDependency;
 use App\Models\TaskDependencyGroup;
@@ -23,6 +24,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -981,6 +983,7 @@ class ProvisAiService
             'KNOWLEDGE_BASE',
             'ANALYZE_BLOCKER',
             'CREATE_PROJECT',
+            'CREATE_USER',
             'MANAGE_PROJECT_ACCESS',
             'ADD_TASK',
             'UPDATE_TASK_STATUS',
@@ -1107,6 +1110,9 @@ class ProvisAiService
             // Interactive Slot-Filling + Safe Two-Step Write Handlers
             case 'CREATE_PROJECT':
                 return $this->proposeCreateProject($prompt, $tokenized, $user, $lang);
+
+            case 'CREATE_USER':
+                return $this->proposeCreateUser($prompt, $tokenized, $user, $lang);
 
             case 'MANAGE_PROJECT_ACCESS':
                 return $this->proposeManageProjectAccess($prompt, $tokenized, $user, $activeProjectId, $sessionContext, $lang);
@@ -4620,14 +4626,14 @@ class ProvisAiService
             if (preg_match('/\b(halo|hallo|hello|hai|hi|hey|pagi|siang|sore|malam|apa\s+kabar|terima\s*kasih|makasih|thanks|jam\s+berapa|tanggal\s+berapa|pakai\s+api|gemini|gpt|qwen|bisa\s+(?:untuk|buat|bantu)\s+apa|help)\b/i', $lowerPrompt)) {
                 return true;
             }
-            if (!in_array($awaiting, ['title', 'task_name', 'company'], true)) {
+            if (!in_array($awaiting, ['title', 'task_name', 'company', 'username', 'role', 'division', 'email'], true)) {
                 return true;
             }
         }
 
         // Starting a different write action switches topic (unless it's the same draft type!)
         $draftType = $draft['type'] ?? '';
-        $writeIntents = ['CREATE_PROJECT', 'MANAGE_PROJECT_ACCESS', 'ADD_TASK', 'UPDATE_TASK_STATUS', 'UPDATE_TASK_PROGRESS', 'SET_PREDECESSOR', 'UPDATE_SCHEDULE', 'RECONCILE_DATES'];
+        $writeIntents = ['CREATE_PROJECT', 'CREATE_USER', 'MANAGE_PROJECT_ACCESS', 'ADD_TASK', 'UPDATE_TASK_STATUS', 'UPDATE_TASK_PROGRESS', 'SET_PREDECESSOR', 'UPDATE_SCHEDULE', 'RECONCILE_DATES'];
         if (in_array($intent, $writeIntents, true) && $intent !== $draftType) {
             // Allow duration/schedule words when answering CREATE_PROJECT duration slot
             if (!($draftType === 'CREATE_PROJECT' && $awaiting === 'duration' && $intent === 'UPDATE_SCHEDULE')) {
@@ -4703,6 +4709,60 @@ class ProvisAiService
 
             if ($revised) {
                 return $this->buildCreateProjectDraftOrConfirm($payload, $user, $lang);
+            }
+        }
+
+        if ($type === 'CREATE_USER') {
+            $payload = $pendingAction['payload'] ?? [];
+            $revised = false;
+
+            $newEmail = $this->tokenizer->extractEmailFromPrompt($prompt);
+            if ($newEmail !== null) {
+                $payload['email'] = $newEmail;
+                $payload['email_auto'] = false;
+                $revised = true;
+            }
+
+            $newPwd = $this->tokenizer->extractPasswordFromPrompt($prompt);
+            if ($newPwd !== null) {
+                $payload['password'] = $newPwd;
+                $payload['password_auto'] = false;
+                $revised = true;
+            }
+
+            $newRole = $this->tokenizer->extractUserCreationRole($prompt);
+            if ($newRole !== null) {
+                $payload['role_id']    = $newRole['id'];
+                $payload['role_name']  = $newRole['name'];
+                $payload['role_label'] = $newRole['label'];
+                $revised = true;
+            }
+
+            if (preg_match('/\b(ganti|ubah|revisi|ralat)\s+nama\s*(?:akun|user)?\s*(?:jadi|ke)?\s*(.+)$/i', $prompt, $mUName)) {
+                $newName = $this->tokenizer->extractUserCreationName($mUName[2], true);
+                if ($newName !== null) {
+                    $payload['username'] = $newName;
+                    $revised = true;
+                }
+            }
+
+            if (preg_match('/\b(ganti|ubah|revisi|ralat|perusahaan|pt\.|cv\.)\b/i', $lower)) {
+                $newComp = $this->tokenizer->extractCompanyInfo($prompt, false);
+                if ($newComp !== null && empty($newComp['is_new'])) {
+                    $payload['company_id']   = $newComp['id'];
+                    $payload['company_name'] = $newComp['name'];
+                    $revised = true;
+                }
+            }
+
+            if (!empty($tokenized['matched_divisions'])) {
+                $payload['division_id']   = $tokenized['matched_divisions'][0]['id'];
+                $payload['division_name'] = $tokenized['matched_divisions'][0]['name'];
+                $revised = true;
+            }
+
+            if ($revised) {
+                return $this->buildCreateUserDraftOrConfirm($payload, $user, $lang);
             }
         }
 
@@ -4800,6 +4860,50 @@ class ProvisAiService
                 }
 
                 return $this->buildCreateProjectDraftOrConfirm($data, $user, $lang);
+
+            case 'CREATE_USER':
+                $roleInfo = $this->tokenizer->extractUserCreationRole($prompt);
+                if ($roleInfo !== null) {
+                    $data['role_id']    = $roleInfo['id'];
+                    $data['role_name']  = $roleInfo['name'];
+                    $data['role_label'] = $roleInfo['label'];
+                }
+
+                $uName = $this->tokenizer->extractUserCreationName($prompt, $awaiting === 'username');
+                if ($uName !== null) {
+                    $data['username'] = $uName;
+                }
+
+                $email = $this->tokenizer->extractEmailFromPrompt($prompt);
+                if ($email !== null) {
+                    $data['email']      = $email;
+                    $data['email_auto'] = false;
+                }
+
+                $pwd = $this->tokenizer->extractPasswordFromPrompt($prompt);
+                if ($pwd !== null) {
+                    $data['password']      = $pwd;
+                    $data['password_auto'] = false;
+                }
+
+                $compInfo = $this->tokenizer->extractCompanyInfo($prompt, $awaiting === 'company');
+                if ($compInfo !== null && empty($compInfo['is_new'])) {
+                    $data['company_id']   = $compInfo['id'];
+                    $data['company_name'] = $compInfo['name'];
+                }
+
+                if (!empty($tokenized['matched_divisions'])) {
+                    $data['division_id']   = $tokenized['matched_divisions'][0]['id'];
+                    $data['division_name'] = $tokenized['matched_divisions'][0]['name'];
+                } elseif ($awaiting === 'division') {
+                    $divMatch = Division::whereRaw('LOWER(divisi) LIKE ?', ['%' . mb_strtolower(trim($prompt)) . '%'])->first();
+                    if ($divMatch) {
+                        $data['division_id']   = (int) $divMatch->id;
+                        $data['division_name'] = $divMatch->divisi;
+                    }
+                }
+
+                return $this->buildCreateUserDraftOrConfirm($data, $user, $lang);
 
             case 'UPDATE_SCHEDULE':
                 $project = Project::find($data['project_id'] ?? $activeProjectId);
@@ -5272,6 +5376,317 @@ class ProvisAiService
             'pending_action'  => $pending,
             'resolved_intent' => 'CREATE_PROJECT',
         ];
+    }
+
+    /**
+     * Check whether the acting user is permitted to create accounts (and optionally a specific target role).
+     */
+    protected function canUserCreateAccount(User $actor, ?string $targetRoleName = null): bool
+    {
+        if ($this->isSuperAdmin($actor)) {
+            return true;
+        }
+
+        if ($actor->isAdminUtama()) {
+            $usersFeatures = $actor->permission_matrix['features']['users'] ?? [];
+            if (!in_array('create', $usersFeatures, true)) {
+                return false;
+            }
+            if ($targetRoleName !== null && $targetRoleName === 'SuperAdmin') {
+                return false;
+            }
+            return true;
+        }
+
+        if ($actor->isPic()) {
+            $usersFeatures = $actor->permission_matrix['features']['users'] ?? [];
+            if (!in_array('create', $usersFeatures, true)) {
+                return false;
+            }
+            if ($targetRoleName !== null && in_array($targetRoleName, ['SuperAdmin', 'admin_utama', 'admin_progres', 'pic'], true)) {
+                return false;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Propose CREATE_USER using interactive slot-filling & confirmation preview.
+     */
+    protected function proposeCreateUser(string $prompt, array $tokenized, User $user, string $lang): array
+    {
+        if (!$this->canUserCreateAccount($user)) {
+            return $this->roleRestrictedResponse(
+                $user,
+                'Pembuatan akun baru hanya dapat dilakukan oleh **SuperAdmin** (atau **Admin/PIC** dengan izin manajemen user).',
+                'Creating new accounts is restricted to **SuperAdmin** (or authorized **Admin/PIC** with user creation permission).',
+                $lang
+            );
+        }
+
+        $data = [];
+
+        $roleInfo = $this->tokenizer->extractUserCreationRole($prompt);
+        if ($roleInfo !== null) {
+            $data['role_id']    = $roleInfo['id'];
+            $data['role_name']  = $roleInfo['name'];
+            $data['role_label'] = $roleInfo['label'];
+        }
+
+        $username = $this->tokenizer->extractUserCreationName($prompt, false);
+        if ($username !== null) {
+            $data['username'] = $username;
+        }
+
+        $email = $this->tokenizer->extractEmailFromPrompt($prompt);
+        if ($email !== null) {
+            $data['email']      = $email;
+            $data['email_auto'] = false;
+        }
+
+        $password = $this->tokenizer->extractPasswordFromPrompt($prompt);
+        if ($password !== null) {
+            $data['password']      = $password;
+            $data['password_auto'] = false;
+        }
+
+        $compInfo = $this->tokenizer->extractCompanyInfo($prompt, false);
+        if ($compInfo !== null && empty($compInfo['is_new'])) {
+            $data['company_id']   = $compInfo['id'];
+            $data['company_name'] = $compInfo['name'];
+        } elseif ($user->isPic() && $user->companies_id) {
+            $picComp = Company::find($user->companies_id);
+            if ($picComp) {
+                $data['company_id']   = $picComp->id;
+                $data['company_name'] = $picComp->name;
+            }
+        }
+
+        if (!empty($tokenized['matched_divisions'])) {
+            $data['division_id']   = $tokenized['matched_divisions'][0]['id'];
+            $data['division_name'] = $tokenized['matched_divisions'][0]['name'];
+        }
+
+        return $this->buildCreateUserDraftOrConfirm($data, $user, $lang);
+    }
+
+    /**
+     * Evaluate CREATE_USER slots & return next missing slot question or full confirmation summary.
+     */
+    protected function buildCreateUserDraftOrConfirm(array $data, User $user, string $lang): array
+    {
+        $hasName = !empty($data['username']);
+        $hasRole = !empty($data['role_name']) && !empty($data['role_id']);
+
+        // Enforce role creation permissions before proceeding
+        if ($hasRole && !$this->canUserCreateAccount($user, $data['role_name'])) {
+            $attempted = $data['role_label'] ?? $data['role_name'];
+            unset($data['role_id'], $data['role_name'], $data['role_label']);
+
+            return $this->roleRestrictedResponse(
+                $user,
+                "Akun Anda tidak memiliki izin untuk membuat akun dengan role **{$attempted}**.",
+                "Your account is not authorized to create users with the **{$attempted}** role.",
+                $lang
+            );
+        }
+
+        // Neither Name nor Role known yet (e.g. "kalau buat akun baru bisa?" or "buatin akun baru untukku")
+        if (!$hasName && !$hasRole) {
+            $allowedRoles = $this->isSuperAdmin($user)
+                ? '`SuperAdmin`, `Admin Utama`, `Admin Progres`, `PIC`, atau `Worker`'
+                : ($user->isAdminUtama() ? '`Admin Utama`, `Admin Progres`, `PIC`, atau `Worker`' : '`Worker`');
+
+            $content = $lang === 'en'
+                ? "Yes, I can create a new user account right here! Please share the **account name** and **role** ({$allowedRoles}).\n\n*Example: `Create an account named Aria with role Super Admin`*"
+                : "Bisa banget! Saya bisa langsung buatkan akun baru di sistem PROVIS. Sebutkan saja **nama akun** dan **role**-nya ({$allowedRoles}).\n\n*Contoh: `Buatkan akun bernama Aria dengan role Super Admin`* 😊";
+
+            return [
+                'content'         => $content,
+                'actions'         => [],
+                'pending_draft'   => [
+                    'type'          => 'CREATE_USER',
+                    'awaiting_slot' => 'username',
+                    'expires_at'    => Carbon::now()->addMinutes(15)->toIso8601String(),
+                    'data'          => $data,
+                ],
+                'resolved_intent' => 'CREATE_USER',
+            ];
+        }
+
+        // Missing Username
+        if (!$hasName) {
+            $roleTag = $data['role_label'] ?? $data['role_name'];
+            $content = $lang === 'en'
+                ? "Got it — target role is **{$roleTag}**. What **name / username** should I use for this account?"
+                : "Siap — role-nya **{$roleTag}**. Akun baru ini mau diberi **nama** siapa?";
+
+            return [
+                'content'         => $content,
+                'actions'         => [],
+                'pending_draft'   => [
+                    'type'          => 'CREATE_USER',
+                    'awaiting_slot' => 'username',
+                    'expires_at'    => Carbon::now()->addMinutes(15)->toIso8601String(),
+                    'data'          => $data,
+                ],
+                'resolved_intent' => 'CREATE_USER',
+            ];
+        }
+
+        // Missing Role
+        if (!$hasRole) {
+            $allowedRoles = $this->isSuperAdmin($user)
+                ? '**SuperAdmin**, **Admin Utama**, **Admin Progres**, **PIC**, atau **Worker**'
+                : ($user->isAdminUtama() ? '**Admin Utama**, **Admin Progres**, **PIC**, atau **Worker**' : '**Worker**');
+
+            $content = $lang === 'en'
+                ? "Okay, account name **{$data['username']}**. What **role** should be assigned ({$allowedRoles})?"
+                : "Oke, nama akun **{$data['username']}**. Mau diberi **role** apa? ({$allowedRoles})";
+
+            return [
+                'content'         => $content,
+                'actions'         => [],
+                'pending_draft'   => [
+                    'type'          => 'CREATE_USER',
+                    'awaiting_slot' => 'role',
+                    'expires_at'    => Carbon::now()->addMinutes(15)->toIso8601String(),
+                    'data'          => $data,
+                ],
+                'resolved_intent' => 'CREATE_USER',
+            ];
+        }
+
+        // Company requirement for PIC / Worker roles
+        $needsCompany = in_array($data['role_name'], ['pic', 'worker'], true);
+        if ($needsCompany && empty($data['company_id'])) {
+            $compList = $this->isSuperAdmin($user)
+                ? Company::orderBy('id')->take(6)->pluck('name')->implode(', ')
+                : Company::whereIn('id', $user->getCompanyIds())->pluck('name')->implode(', ');
+
+            $content = $lang === 'en'
+                ? "Account **{$data['username']}** (`{$data['role_label']}`) needs a **company** assignment. Which company should they belong to?\n\n*(Registered: {$compList})*"
+                : "Untuk role **{$data['role_label']}** atas nama **{$data['username']}**, akun ini ditempatkan di **perusahaan** mana?\n\n*(Terdaftar: {$compList})*";
+
+            return [
+                'content'         => $content,
+                'actions'         => [],
+                'pending_draft'   => [
+                    'type'          => 'CREATE_USER',
+                    'awaiting_slot' => 'company',
+                    'expires_at'    => Carbon::now()->addMinutes(15)->toIso8601String(),
+                    'data'          => $data,
+                ],
+                'resolved_intent' => 'CREATE_USER',
+            ];
+        }
+
+        // Check email uniqueness if user explicitly typed one
+        if (!empty($data['email']) && User::where('email', $data['email'])->exists()) {
+            $takenEmail = $data['email'];
+            unset($data['email'], $data['email_auto']);
+            $content = $lang === 'en'
+                ? "⚠️ Email **{$takenEmail}** is already registered in PROVIS. Please provide a different email address."
+                : "⚠️ Email **{$takenEmail}** sudah terdaftar di PROVIS. Silakan sebutkan email lain ya.";
+
+            return [
+                'content'         => $content,
+                'actions'         => [],
+                'pending_draft'   => [
+                    'type'          => 'CREATE_USER',
+                    'awaiting_slot' => 'email',
+                    'expires_at'    => Carbon::now()->addMinutes(15)->toIso8601String(),
+                    'data'          => $data,
+                ],
+                'resolved_intent' => 'CREATE_USER',
+            ];
+        }
+
+        // Fill safe smart defaults for Email & Password if omitted so user can confirm in 1 step OR override
+        $email        = $data['email'] ?? $this->generateUniqueAccountEmail($data['username']);
+        $emailAuto    = empty($data['email']);
+        $password     = $data['password'] ?? 'Provis2026!';
+        $passwordAuto = empty($data['password']);
+
+        $payload = [
+            'username'      => Str::limit(trim($data['username']), 45, ''),
+            'email'         => $email,
+            'email_auto'    => $emailAuto,
+            'password'      => $password,
+            'password_auto' => $passwordAuto,
+            'role_id'       => $data['role_id'],
+            'role_name'     => $data['role_name'],
+            'role_label'    => $data['role_label'] ?? $data['role_name'],
+            'company_id'    => $data['company_id'] ?? null,
+            'company_name'  => $data['company_name'] ?? null,
+            'division_id'   => $data['division_id'] ?? null,
+            'division_name' => $data['division_name'] ?? null,
+        ];
+
+        $pending = [
+            'type'       => 'CREATE_USER',
+            'expires_at' => Carbon::now()->addMinutes(10)->toIso8601String(),
+            'payload'    => $payload,
+        ];
+
+        $compLineId = !empty($payload['company_name']) ? "\n- **Perusahaan**: {$payload['company_name']}" : '';
+        $compLineEn = !empty($payload['company_name']) ? "\n- **Company**: {$payload['company_name']}" : '';
+        $divLineId  = !empty($payload['division_name']) ? "\n- **Divisi**: {$payload['division_name']}" : '';
+        $divLineEn  = !empty($payload['division_name']) ? "\n- **Division**: {$payload['division_name']}" : '';
+
+        $emailTagId = $emailAuto ? ' *(otomatis)*' : '';
+        $emailTagEn = $emailAuto ? ' *(auto-generated)*' : '';
+        $pwdTagId   = $passwordAuto ? ' *(default sementara)*' : '';
+        $pwdTagEn   = $passwordAuto ? ' *(default temporary)*' : '';
+
+        if ($lang === 'en') {
+            $content = "👤 **Confirm New Account Creation**\n\n"
+                . "- **Username**: **{$payload['username']}**\n"
+                . "- **Role**: **{$payload['role_label']}**\n"
+                . "- **Email**: `{$payload['email']}`{$emailTagEn}\n"
+                . "- **Password**: `{$payload['password']}`{$pwdTagEn}"
+                . $compLineEn
+                . $divLineEn
+                . "\n\nReply **\"Yes\"** / **\"Confirm\"** to create this account now, **\"Cancel\"** to abort, or specify changes (e.g. `email aria.admin@provis.id password Secret123`).";
+        } else {
+            $content = "👤 **Konfirmasi Pembuatan Akun Baru**\n\n"
+                . "- **Nama Akun**: **{$payload['username']}**\n"
+                . "- **Role**: **{$payload['role_label']}**\n"
+                . "- **Email Login**: `{$payload['email']}`{$emailTagId}\n"
+                . "- **Password**: `{$payload['password']}`{$pwdTagId}"
+                . $compLineId
+                . $divLineId
+                . "\n\nApakah bisa langsung saya buat sekarang? *(Balas **\"Ya\"** / **\"Gas\"** untuk eksekusi, **\"Batal\"** untuk membatalkan, atau ketik revisi jika ingin mengubah email/password seperti `email aria.super@provis.id password Rahasia123`)*";
+        }
+
+        return [
+            'content'         => $content,
+            'actions'         => [],
+            'pending_draft'   => null,
+            'pending_action'  => $pending,
+            'resolved_intent' => 'CREATE_USER',
+        ];
+    }
+
+    /**
+     * Generate a clean, unique @provis.id email slug from a requested username.
+     */
+    protected function generateUniqueAccountEmail(string $username): string
+    {
+        $slug = Str::slug(trim($username), '.');
+        if ($slug === '') {
+            $slug = 'user';
+        }
+        $slug = Str::limit($slug, 30, '');
+        $candidate = "{$slug}@provis.id";
+        $suffix = 2;
+        while (User::where('email', $candidate)->exists()) {
+            $candidate = "{$slug}{$suffix}@provis.id";
+            $suffix++;
+        }
+        return $candidate;
     }
 
     /**
@@ -6329,6 +6744,9 @@ class ProvisAiService
             case 'CREATE_PROJECT':
                 return $this->commitCreateProject($payload, $user, $lang);
 
+            case 'CREATE_USER':
+                return $this->commitCreateUser($payload, $user, $lang);
+
             case 'MANAGE_PROJECT_ACCESS':
                 return $this->commitManageProjectAccess($payload, $user, $lang);
 
@@ -6443,6 +6861,152 @@ class ProvisAiService
             'pending_draft'   => null,
             'resolved_intent' => 'CREATE_PROJECT',
             'context_update'  => ['project_id' => $project->id],
+        ];
+    }
+
+    protected function commitCreateUser(array $payload, User $user, string $lang): array
+    {
+        $targetRoleName = $payload['role_name'] ?? '';
+        if (!$this->canUserCreateAccount($user, $targetRoleName)) {
+            return [
+                'content'         => $lang === 'en' ? '🔒 Permission denied.' : '🔒 Akses ditolak.',
+                'actions'         => [],
+                'pending_action'  => null,
+                'pending_draft'   => null,
+                'resolved_intent' => 'CREATE_USER',
+            ];
+        }
+
+        $role = Role::find($payload['role_id'] ?? null) ?? Role::where('name', $targetRoleName)->first();
+        if (!$role) {
+            return [
+                'content'         => $lang === 'en' ? 'Target role not found.' : 'Role tujuan tidak ditemukan.',
+                'actions'         => [],
+                'pending_action'  => null,
+                'pending_draft'   => null,
+                'resolved_intent' => 'CREATE_USER',
+            ];
+        }
+
+        $email = mb_strtolower(trim((string) ($payload['email'] ?? '')));
+        if ($email === '' || User::where('email', $email)->exists()) {
+            $email = $this->generateUniqueAccountEmail((string) ($payload['username'] ?? 'user'));
+        }
+
+        $plainPassword = (string) ($payload['password'] ?? 'Provis2026!');
+        $username      = Str::limit(trim((string) ($payload['username'] ?? 'New User')), 45, '');
+
+        $permissionMatrix = match ($role->name) {
+            'SuperAdmin' => [
+                'data_scope' => 'all',
+            ],
+            'admin_utama' => [
+                'sidebar' => ['Dashboard', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'User Management'],
+                'features' => [
+                    'projects' => ['view'],
+                    'tasks'    => ['view'],
+                    'weekly'   => ['view'],
+                    'budget'   => ['view', 'create', 'edit', 'delete'],
+                    'reports'  => ['view'],
+                ],
+                'data_scope' => 'all',
+            ],
+            'admin_progres' => [
+                'sidebar' => ['S-Curve Report', 'Division Progress'],
+                'features' => [
+                    'projects' => ['view'],
+                    'reports'  => ['view'],
+                ],
+                'data_scope' => 'all',
+            ],
+            'pic' => [
+                'sidebar' => ['Dashboard', 'Projects', 'Project Detail', 'Tasks', "Today's Tasks", 'Timeline', 'Weekly Progress', 'Budget Management', 'Division Progress', 'S-Curve Report', 'Working Tree', 'User Management'],
+                'features' => [
+                    'projects' => ['view', 'create', 'edit'],
+                    'tasks'    => ['view', 'create', 'edit'],
+                    'users'    => ['view', 'create', 'edit'],
+                    'reports'  => ['view'],
+                ],
+                'data_scope' => 'own_company',
+            ],
+            default => [
+                'sidebar' => ['Dashboard', 'Projects', 'Tasks', "Today's Tasks", 'Timeline', 'Activity Log'],
+                'features' => [
+                    'projects' => ['view'],
+                    'tasks'    => ['view', 'update_progress'],
+                ],
+                'data_scope' => 'own_company',
+            ],
+        };
+
+        $companyId  = !empty($payload['company_id']) ? (int) $payload['company_id'] : null;
+        $divisionId = !empty($payload['division_id']) ? (int) $payload['division_id'] : null;
+
+        $newUser = User::create([
+            'username'             => $username,
+            'email'                => Str::limit($email, 45, ''),
+            'password'             => Hash::make($plainPassword),
+            'roles_id'             => $role->id,
+            'companies_id'         => $companyId,
+            'divisions_id'         => $divisionId,
+            'permission_matrix'    => $permissionMatrix,
+            'is_ai_beta_tester'    => $role->name === 'SuperAdmin',
+            'created_by'           => $user->id,
+            'must_change_password' => false,
+        ]);
+
+        if ($companyId !== null) {
+            $newUser->companies()->sync([$companyId]);
+        }
+        if ($divisionId !== null) {
+            $newUser->syncDivisions([$divisionId]);
+        }
+
+        AuditLog::record(
+            'CREATE_USER',
+            "Provis Support System (AI Agent) atas permintaan {$user->username} membuat akun baru '{$newUser->username}' ({$newUser->email}) dengan role {$role->name}.",
+            $user->id,
+            request()?->ip(),
+            ['actor' => 'Provis Support System (AI Agent)', 'created_user_id' => $newUser->id, 'role' => $role->name]
+        );
+
+        $roleLabel  = $payload['role_label'] ?? $role->name;
+        $compLineId = !empty($payload['company_name']) ? "\n- **Perusahaan**: {$payload['company_name']}" : '';
+        $compLineEn = !empty($payload['company_name']) ? "\n- **Company**: {$payload['company_name']}" : '';
+        $divLineId  = !empty($payload['division_name']) ? "\n- **Divisi**: {$payload['division_name']}" : '';
+        $divLineEn  = !empty($payload['division_name']) ? "\n- **Division**: {$payload['division_name']}" : '';
+        $loginPortal = $role->name === 'SuperAdmin' ? '/admin/login' : '/login';
+
+        if ($lang === 'en') {
+            $content = "✅ **New User Account Created Successfully!**\n\n"
+                . "- **Username**: **{$newUser->username}** (`#{$newUser->id}`)\n"
+                . "- **Role**: **{$roleLabel}**\n"
+                . "- **Email**: `{$newUser->email}`\n"
+                . "- **Password**: `{$plainPassword}`"
+                . $compLineEn
+                . $divLineEn
+                . "\n- **Login Portal**: `{$loginPortal}`";
+        } else {
+            $content = "✅ **Akun Baru Berhasil Dibuat!**\n\n"
+                . "- **Nama Akun**: **{$newUser->username}** (`#{$newUser->id}`)\n"
+                . "- **Role**: **{$roleLabel}**\n"
+                . "- **Email Login**: `{$newUser->email}`\n"
+                . "- **Password**: `{$plainPassword}`"
+                . $compLineId
+                . $divLineId
+                . "\n- **Portal Login**: `{$loginPortal}`";
+        }
+
+        $mgmtUrl = $this->isSuperAdmin($user) ? '/admin/users' : '/users';
+
+        return [
+            'content' => $content,
+            'actions' => [
+                ['type' => 'link', 'label' => $lang === 'en' ? 'Open User Management' : 'Buka User Management', 'url' => $mgmtUrl],
+            ],
+            'pending_action'  => null,
+            'pending_draft'   => null,
+            'resolved_intent' => 'CREATE_USER',
         ];
     }
 

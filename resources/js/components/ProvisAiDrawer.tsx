@@ -252,9 +252,8 @@ function MetricPillList({
       {segments.map((seg, i) => (
         <span
           key={i}
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100/75 border border-slate-200/80 text-slate-700 whitespace-nowrap leading-tight ${
-            isFullscreen ? 'text-[11.5px]' : 'text-[11px]'
-          }`}
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100/75 border border-slate-200/80 text-slate-700 whitespace-nowrap leading-tight ${isFullscreen ? 'text-[11.5px]' : 'text-[11px]'
+            }`}
         >
           {formatInlineStyles(seg)}
         </span>
@@ -287,9 +286,8 @@ function renderFormattedContent(text: string, isFullscreen: boolean) {
       renderedBlocks.push(
         <div
           key={idx}
-          className={`rounded-xl bg-gradient-to-r from-indigo-50 via-violet-50/70 to-sky-50 border-l-4 border-indigo-600 border-y border-r border-indigo-200/70 text-indigo-950 font-bold mb-2 shadow-2xs leading-snug ${
-            isFullscreen ? 'px-3.5 py-2 text-[14px]' : 'px-3 py-1.5 text-[12.5px]'
-          }`}
+          className={`rounded-xl bg-gradient-to-r from-indigo-50 via-violet-50/70 to-sky-50 border-l-4 border-indigo-600 border-y border-r border-indigo-200/70 text-indigo-950 font-bold mb-2 shadow-2xs leading-snug ${isFullscreen ? 'px-3.5 py-2 text-[14px]' : 'px-3 py-1.5 text-[12.5px]'
+            }`}
         >
           {formatInlineStyles(headerText)}
         </div>
@@ -303,9 +301,8 @@ function renderFormattedContent(text: string, isFullscreen: boolean) {
       renderedBlocks.push(
         <h4
           key={idx}
-          className={`font-bold text-indigo-900 border-b border-indigo-100 pb-1 mt-2.5 mb-1 ${
-            isFullscreen ? 'text-[13px]' : 'text-[12px]'
-          }`}
+          className={`font-bold text-indigo-900 border-b border-indigo-100 pb-1 mt-2.5 mb-1 ${isFullscreen ? 'text-[13px]' : 'text-[12px]'
+            }`}
         >
           {formatInlineStyles(headerText)}
         </h4>
@@ -347,11 +344,10 @@ function renderFormattedContent(text: string, isFullscreen: boolean) {
           className={`flex items-start gap-2.5 pt-2 pb-0.5 ${leadingSpaces >= 2 ? 'ml-5' : ''}`}
         >
           <span
-            className={`min-w-[20px] h-5 px-1.5 rounded-md text-[10.5px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
-              isTopRank
-                ? 'bg-indigo-600 text-white shadow-2xs'
-                : 'bg-indigo-100 text-indigo-800 border border-indigo-200/80'
-            }`}
+            className={`min-w-[20px] h-5 px-1.5 rounded-md text-[10.5px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${isTopRank
+              ? 'bg-indigo-600 text-white shadow-2xs'
+              : 'bg-indigo-100 text-indigo-800 border border-indigo-200/80'
+              }`}
           >
             {num}
           </span>
@@ -396,16 +392,14 @@ function renderFormattedContent(text: string, isFullscreen: boolean) {
       renderedBlocks.push(
         <div
           key={idx}
-          className={`flex items-start gap-2 my-0.5 ${
-            isNested
-              ? `ml-6 pl-2.5 border-l-2 border-indigo-200/80 text-slate-600 ${isFullscreen ? 'text-[12.5px]' : 'text-[11.5px]'}`
-              : 'pl-1 text-slate-700'
-          }`}
+          className={`flex items-start gap-2 my-0.5 ${isNested
+            ? `ml-6 pl-2.5 border-l-2 border-indigo-200/80 text-slate-600 ${isFullscreen ? 'text-[12.5px]' : 'text-[11.5px]'}`
+            : 'pl-1 text-slate-700'
+            }`}
         >
           <span
-            className={`rounded-full shrink-0 mt-1.5 ${
-              isNested ? 'w-1.5 h-1.5 bg-indigo-400' : 'w-1.5 h-1.5 bg-indigo-500'
-            }`}
+            className={`rounded-full shrink-0 mt-1.5 ${isNested ? 'w-1.5 h-1.5 bg-indigo-400' : 'w-1.5 h-1.5 bg-indigo-500'
+              }`}
           />
           <div className="flex-1 min-w-0 leading-snug">
             {segments.length >= 2 && firstHasMetricNumber ? (
@@ -450,9 +444,8 @@ function renderFormattedContent(text: string, isFullscreen: boolean) {
       renderedBlocks.push(
         <div
           key={idx}
-          className={`px-2.5 py-1.5 rounded-lg bg-emerald-50/80 border border-emerald-200/80 text-emerald-950 leading-snug ${
-            isFullscreen ? 'text-[12.5px]' : 'text-[11.5px]'
-          }`}
+          className={`px-2.5 py-1.5 rounded-lg bg-emerald-50/80 border border-emerald-200/80 text-emerald-950 leading-snug ${isFullscreen ? 'text-[12.5px]' : 'text-[11.5px]'
+            }`}
         >
           {formatInlineStyles(trimmed)}
         </div>
@@ -463,9 +456,8 @@ function renderFormattedContent(text: string, isFullscreen: boolean) {
       renderedBlocks.push(
         <div
           key={idx}
-          className={`px-2.5 py-1.5 rounded-lg bg-amber-50/80 border border-amber-200/80 text-amber-950 leading-snug ${
-            isFullscreen ? 'text-[12.5px]' : 'text-[11.5px]'
-          }`}
+          className={`px-2.5 py-1.5 rounded-lg bg-amber-50/80 border border-amber-200/80 text-amber-950 leading-snug ${isFullscreen ? 'text-[12.5px]' : 'text-[11.5px]'
+            }`}
         >
           {formatInlineStyles(trimmed)}
         </div>
@@ -476,9 +468,8 @@ function renderFormattedContent(text: string, isFullscreen: boolean) {
       renderedBlocks.push(
         <div
           key={idx}
-          className={`px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 leading-snug ${
-            isFullscreen ? 'text-[12.5px]' : 'text-[12px]'
-          }`}
+          className={`px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 leading-snug ${isFullscreen ? 'text-[12.5px]' : 'text-[12px]'
+            }`}
         >
           {formatInlineStyles(trimmed)}
         </div>
@@ -502,9 +493,8 @@ function renderFormattedContent(text: string, isFullscreen: boolean) {
       renderedBlocks.push(
         <div
           key={idx}
-          className={`rounded-xl bg-gradient-to-r from-indigo-50 via-violet-50/70 to-sky-50 border-l-4 border-indigo-600 border-y border-r border-indigo-200/70 text-indigo-950 font-semibold mb-1.5 shadow-2xs leading-snug ${
-            isFullscreen ? 'px-3.5 py-2 text-[14px]' : 'px-3 py-1.5 text-[12.5px]'
-          }`}
+          className={`rounded-xl bg-gradient-to-r from-indigo-50 via-violet-50/70 to-sky-50 border-l-4 border-indigo-600 border-y border-r border-indigo-200/70 text-indigo-950 font-semibold mb-1.5 shadow-2xs leading-snug ${isFullscreen ? 'px-3.5 py-2 text-[14px]' : 'px-3 py-1.5 text-[12.5px]'
+            }`}
         >
           {formatInlineStyles(trimmed)}
         </div>
@@ -521,9 +511,8 @@ function renderFormattedContent(text: string, isFullscreen: boolean) {
 
   return (
     <div
-      className={`space-y-1.5 text-slate-700 break-normal ${
-        isFullscreen ? 'text-[13px] leading-[1.65]' : 'text-[12px] leading-[1.55]'
-      }`}
+      className={`space-y-1.5 text-slate-700 break-normal ${isFullscreen ? 'text-[13px] leading-[1.65]' : 'text-[12px] leading-[1.55]'
+        }`}
     >
       {renderedBlocks}
     </div>
@@ -1122,6 +1111,11 @@ export default function ProvisAiDrawer() {
     setMessages(prev => [...prev, userMessage]);
     if (!overrideText) setInputText('');
     setIsLoading(true);
+    window.requestAnimationFrame(() => {
+      if (!pendingDeleteSession && !editingSessionId) {
+        textareaRef.current?.focus({ preventScroll: true });
+      }
+    });
 
     try {
       const endpoint = currentSessionId ? `/ai/sessions/${currentSessionId}/chat` : '/ai/chat';
@@ -1199,13 +1193,28 @@ export default function ProvisAiDrawer() {
       ]);
     } finally {
       setIsLoading(false);
+      window.requestAnimationFrame(() => {
+        if (!showHistory && !pendingDeleteSession && !editingSessionId) {
+          const activeEl = document.activeElement as HTMLElement | null;
+          const focusedOtherInput =
+            activeEl &&
+            activeEl !== document.body &&
+            activeEl !== textareaRef.current &&
+            ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName);
+          if (!focusedOtherInput) {
+            textareaRef.current?.focus({ preventScroll: true });
+          }
+        }
+      });
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (!isLoading) {
+        sendMessage();
+      }
     }
   };
 
@@ -1215,18 +1224,18 @@ export default function ProvisAiDrawer() {
 
   const quickPrompts = user?.isSuperAdmin
     ? [
-        { label: '📊 Off-Plan & Delayed Projects Recap', prompt: 'Show me a recap of all delayed or off-plan projects' },
-        { label: '🛠️ Reconcile Schedule Dates', prompt: activeProjectId ? `Please reconcile dates for project ID #${activeProjectId}` : 'Please run date reconciliation for all projects' },
-        { label: '📝 Recent Git Commits Summary', prompt: 'What are the latest git commits and code updates?' },
-        { label: '📄 Generate Executive PDF Report', prompt: activeProjectId ? `Generate an executive PDF report for project ID #${activeProjectId}` : 'Generate a project summary PDF report' },
-        { label: '👥 User Statistics & AI Access', prompt: 'Which users currently have AI beta tester access?' },
-      ]
+      { label: '📊 Off-Plan & Delayed Projects Recap', prompt: 'Show me a recap of all delayed or off-plan projects' },
+      { label: '🛠️ Reconcile Schedule Dates', prompt: activeProjectId ? `Please reconcile dates for project ID #${activeProjectId}` : 'Please run date reconciliation for all projects' },
+      { label: '📝 Recent Git Commits Summary', prompt: 'What are the latest git commits and code updates?' },
+      { label: '📄 Generate Executive PDF Report', prompt: activeProjectId ? `Generate an executive PDF report for project ID #${activeProjectId}` : 'Generate a project summary PDF report' },
+      { label: '👥 User Statistics & AI Access', prompt: 'Which users currently have AI beta tester access?' },
+    ]
     : [
-        { label: '🚀 Create New Project (WBS)', prompt: 'Create a new 6-month project using a WBS template' },
-        { label: '📄 Generate Project PDF Report', prompt: activeProjectId ? `Generate an executive PDF report for this project` : 'Generate a project PDF report' },
-        { label: '🔗 Set Task Predecessor', prompt: 'How do I set predecessor dependencies between tasks?' },
-        { label: '📊 Project Status & Progress', prompt: activeProjectId ? `What is the current progress and remaining time of this project?` : 'What is the current status of active projects?' },
-      ];
+      { label: '🚀 Create New Project (WBS)', prompt: 'Create a new 6-month project using a WBS template' },
+      { label: '📄 Generate Project PDF Report', prompt: activeProjectId ? `Generate an executive PDF report for this project` : 'Generate a project PDF report' },
+      { label: '🔗 Set Task Predecessor', prompt: 'How do I set predecessor dependencies between tasks?' },
+      { label: '📊 Project Status & Progress', prompt: activeProjectId ? `What is the current progress and remaining time of this project?` : 'What is the current status of active projects?' },
+    ];
 
   const filteredSessions = sessions.filter(s =>
     !historySearch.trim() || s.title.toLowerCase().includes(historySearch.toLowerCase())
@@ -1256,11 +1265,10 @@ export default function ProvisAiDrawer() {
       {/* Solid Opaque Slide Drawer (no opacity black ghost fade, no mid-frame text squishing) */}
       <div
         aria-hidden={!isOpen}
-        className={`fixed top-0 right-0 bottom-0 flex flex-col font-sans overflow-hidden ${
-          isFullscreen
-            ? 'z-50 bg-slate-50 shadow-none'
-            : 'z-40 bg-white border-l border-slate-200/90 shadow-xl'
-        } ${isOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+        className={`fixed top-0 right-0 bottom-0 flex flex-col font-sans overflow-hidden ${isFullscreen
+          ? 'z-50 bg-slate-50 shadow-none'
+          : 'z-40 bg-white border-l border-slate-200/90 shadow-xl'
+          } ${isOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
         style={{
           width: isFullscreen ? '100vw' : '440px',
           maxWidth: '100vw',
@@ -1271,15 +1279,14 @@ export default function ProvisAiDrawer() {
         }}
       >
         <div
-          className={`flex flex-col flex-1 min-h-0 ${
-            fullscreenAnim === 'enter'
-              ? 'provis-anim-enter'
-              : fullscreenAnim === 'exit'
+          className={`flex flex-col flex-1 min-h-0 ${fullscreenAnim === 'enter'
+            ? 'provis-anim-enter'
+            : fullscreenAnim === 'exit'
               ? 'provis-anim-exit'
               : ''
-          }`}
+            }`}
         >
-        {/* Header */}
+          {/* Header */}
           <div className="border-b border-slate-200/80 bg-white flex-shrink-0">
             <div className={`px-4 py-3 flex items-center justify-between ${isFullscreen ? 'max-w-4xl mx-auto w-full' : ''}`}>
               <div className="flex items-center gap-2.5 min-w-0">
@@ -1324,11 +1331,10 @@ export default function ProvisAiDrawer() {
                         if (showHistory) scrollModeRef.current = 'instant';
                         setShowHistory(prev => !prev);
                       }}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11.5px] font-semibold transition-colors cursor-pointer ${
-                        showHistory
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-indigo-700 hover:bg-indigo-50'
-                      }`}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11.5px] font-semibold transition-colors cursor-pointer ${showHistory
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-indigo-700 hover:bg-indigo-50'
+                        }`}
                       title="Session History"
                     >
                       History
@@ -1361,11 +1367,10 @@ export default function ProvisAiDrawer() {
                         if (showHistory) scrollModeRef.current = 'instant';
                         setShowHistory(prev => !prev);
                       }}
-                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                        showHistory
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'text-slate-500 hover:text-indigo-700 hover:bg-indigo-50'
-                      }`}
+                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${showHistory
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-500 hover:text-indigo-700 hover:bg-indigo-50'
+                        }`}
                       title="Session History"
                     >
                       <History size={14} />
@@ -1450,21 +1455,18 @@ export default function ProvisAiDrawer() {
                         <div
                           key={s.id}
                           onClick={() => !isEditing && loadSession(s.id)}
-                          className={`group flex items-center justify-between p-3 rounded-xl border text-[12px] transition-all ${
-                            isEditing ? 'cursor-default' : 'cursor-pointer'
-                          } ${
-                            isActive
+                          className={`group flex items-center justify-between p-3 rounded-xl border text-[12px] transition-all ${isEditing ? 'cursor-default' : 'cursor-pointer'
+                            } ${isActive
                               ? 'bg-white border-2 border-indigo-500 ring-2 ring-indigo-500/15 shadow-xs'
                               : 'bg-white border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/20'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-start gap-2.5 min-w-0 flex-1 pr-2">
                             <div
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                                isActive
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-slate-100 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-700'
-                              }`}
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isActive
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-700'
+                                }`}
                             >
                               <MessageSquare size={13} />
                             </div>
@@ -1620,17 +1622,15 @@ export default function ProvisAiDrawer() {
                         className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
                       >
                         <div
-                          className={`rounded-2xl shadow-xs ${
-                            isFullscreen
-                              ? 'max-w-[85%] px-5 py-4 text-[13px] leading-[1.65]'
-                              : 'max-w-[97%] px-3.5 py-2.5 text-[12px] leading-[1.55]'
-                          } ${
-                            msg.role === 'user'
+                          className={`rounded-2xl shadow-xs ${isFullscreen
+                            ? 'max-w-[85%] px-5 py-4 text-[13px] leading-[1.65]'
+                            : 'max-w-[97%] px-3.5 py-2.5 text-[12px] leading-[1.55]'
+                            } ${msg.role === 'user'
                               ? 'bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-br-xs'
                               : isThinkingMsg
-                              ? 'bg-gradient-to-br from-indigo-50 via-white to-violet-50 border border-indigo-200 text-slate-800 rounded-bl-xs'
-                              : 'bg-white border border-slate-200/90 border-t-2 border-t-indigo-500/80 text-slate-800 rounded-bl-xs'
-                          }`}
+                                ? 'bg-gradient-to-br from-indigo-50 via-white to-violet-50 border border-indigo-200 text-slate-800 rounded-bl-xs'
+                                : 'bg-white border border-slate-200/90 border-t-2 border-t-indigo-500/80 text-slate-800 rounded-bl-xs'
+                            }`}
                         >
                           {msg.role === 'user' ? (
                             <div className="whitespace-pre-wrap">{msg.content}</div>
@@ -1733,9 +1733,8 @@ export default function ProvisAiDrawer() {
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Type an instruction or question… (Enter to send)"
+                  placeholder={isLoading ? 'Waiting for Provis Assistant…' : 'Type an instruction or question… (Enter to send)'}
                   rows={2}
-                  disabled={isLoading}
                   className="flex-1 bg-transparent border-0 resize-none text-[12.5px] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0 px-1 py-0.5"
                 />
                 <button
