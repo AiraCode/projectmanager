@@ -64,6 +64,7 @@ import {
     DatePicker,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import PerformanceWarningBanner from "@/components/PerformanceWarningBanner";
 
 const STATUSES: Status[] = [
     "Open",
@@ -1890,6 +1891,9 @@ export default function TasksPage() {
                     </div>
                 }
             />
+
+            {/* AI Timeline Performance Warning Banner */}
+            <PerformanceWarningBanner projectId={projectData.id?.replace("p-", "")} />
 
             {/* Filter and Search Bar */}
             <div className="flex flex-col sm:flex-row gap-2.5">

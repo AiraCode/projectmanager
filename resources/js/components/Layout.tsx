@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Modal, Button, formatDivisionName } from '@/components/ui';
 import ChangePasswordModal from './ChangePasswordModal';
 import ProvisAiDrawer from './ProvisAiDrawer';
+import PerformanceWarningBell from './PerformanceWarningBell';
 
 const NAV_ITEMS = [
   { to: '/projectlistpage',   icon: LayoutDashboard, label: 'Dashboard' },
@@ -507,6 +508,9 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
           ) : (
             <div className="flex-1" />
           )}
+
+          {/* AI Background Performance Watchdog Bell */}
+          <PerformanceWarningBell />
 
           {/* Provis Assistant Header Trigger */}
           {Boolean(user?.can_access_ai || user?.isSuperAdmin || user?.is_ai_beta_tester) && (

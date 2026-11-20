@@ -7,6 +7,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { recalculateProgress } from '@/utils/progressEngine';
 import { recalculateSchedule } from '@/utils/scheduleEngine';
 import { recalculateWeeklyData } from '@/utils/weeklyEngine';
+import PerformanceWarningBanner from '@/components/PerformanceWarningBanner';
 
 export default function DashboardPage() {
   const { project, userRole } = usePage().props as any;
@@ -112,6 +113,9 @@ export default function DashboardPage() {
           </div>
         }
       />
+
+      {/* AI Timeline Performance Warning Banner */}
+      <PerformanceWarningBanner projectId={projectId} />
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

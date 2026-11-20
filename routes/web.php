@@ -253,6 +253,14 @@ Route::middleware('auth')->group(function () {
         Route::get('/tasks/active', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'activeTasks'])->name('ai.tasks.active');
         Route::get('/tasks/{taskId}', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'taskStatus'])->name('ai.tasks.status');
     });
+
+    // ── Background AI Performance Watchdog Warnings (Accessible to ALL authenticated roles) ──
+    Route::prefix('ai/warnings')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Ai\PerformanceWarningController::class, 'index'])->name('ai.warnings.index');
+        Route::post('/scan', [\App\Http\Controllers\Ai\PerformanceWarningController::class, 'scan'])->name('ai.warnings.scan');
+        Route::post('/acknowledge-all', [\App\Http\Controllers\Ai\PerformanceWarningController::class, 'acknowledgeAll'])->name('ai.warnings.acknowledge-all');
+        Route::post('/{id}/acknowledge', [\App\Http\Controllers\Ai\PerformanceWarningController::class, 'acknowledge'])->name('ai.warnings.acknowledge');
+    });
 });
 
 // ── Public Storage File Serving (Evidence PDF & Media Preview) ──

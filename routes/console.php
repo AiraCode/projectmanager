@@ -89,5 +89,19 @@ Artisan::command('provis:ai-learn {taskId : The AiLearningTask ID to process loc
     $this->info("Completed local AI learning task #{$taskId}.");
 })->purpose('Process an asynchronous local self-learning AI reasoning task in the background');
 
+Artisan::command('provis:scan-warnings {--project= : Optional Project ID to evaluate}', function () {
+    $projectId = $this->option('project') ? (int) $this->option('project') : null;
+    $stats = app(\App\Services\AiPerformanceWatchdogService::class)->scanAll($projectId);
+
+    $this->info(
+        "AI Performance Watchdog completed: scanned {$stats['projects_scanned']} project(s), "
+        . "upserted {$stats['warnings_created_or_updated']} warning(s), "
+        . "auto-resolved {$stats['warnings_resolved']} warning(s), "
+        . "total open warnings: {$stats['warnings_active']}."
+    );
+})->purpose('Background AI watchdog that evaluates project & division task alignment against timelines');
+
+Schedule::command('provis:scan-warnings')->everyThirtyMinutes();
+
 
 

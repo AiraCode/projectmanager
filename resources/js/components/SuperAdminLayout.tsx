@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Modal, Button } from '@/components/ui';
 import ChangePasswordModal from './ChangePasswordModal';
 import ProvisAiDrawer from './ProvisAiDrawer';
+import PerformanceWarningBell from './PerformanceWarningBell';
 
 const ADMIN_NAV = [
   { to: '/admin',              icon: LayoutDashboard, label: 'Dashboard' },
@@ -249,6 +250,9 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
           </div>
 
           <div className="flex-1" />
+
+          {/* AI Background Performance Watchdog Bell */}
+          <PerformanceWarningBell />
 
           {/* Provis Assistant Header Trigger */}
           <button

@@ -171,5 +171,13 @@ class ProgressService
         if ($project->isDirty(['progress', 'status'])) {
             $project->save();
         }
+
+        // Immediately re-evaluate AI timeline performance warnings for this project
+        // so improved tasks auto-resolve and lagging tasks alert workers in real time.
+        try {
+            app(AiPerformanceWatchdogService::class)->scanProject((int) $project->id);
+        } catch (\Throwable $e) {
+            Log::warning('AI Performance Watchdog post-progress hook notice: ' . $e->getMessage());
+        }
     }
 }
