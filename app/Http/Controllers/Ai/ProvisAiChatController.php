@@ -190,6 +190,30 @@ class ProvisAiChatController extends Controller
     }
 
     /**
+     * Rename a chat session.
+     */
+    public function updateSession(Request $request, int $id): JsonResponse
+    {
+        $this->aiService->ensureTablesAndPruneExpiredChats(7);
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:100',
+        ]);
+
+        $title = trim($validated['title']);
+        if ($title === '') {
+            return response()->json(['message' => 'Session title cannot be empty.'], 422);
+        }
+
+        $session = AiChatSession::where('user_id', $request->user()->id)->findOrFail($id);
+        $session->update(['title' => $title]);
+
+        return response()->json([
+            'session' => $session,
+        ]);
+    }
+
+    /**
      * Delete a chat session.
      */
     public function deleteSession(Request $request, int $id): JsonResponse

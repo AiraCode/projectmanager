@@ -31,10 +31,14 @@ use Illuminate\Support\Str;
 class ProvisDeepLearningService
 {
     protected ProvisKnowledgeBaseService $knowledgeBase;
+    protected SCurvePredictionService $scurveService;
 
-    public function __construct(ProvisKnowledgeBaseService $knowledgeBase)
-    {
+    public function __construct(
+        ProvisKnowledgeBaseService $knowledgeBase,
+        SCurvePredictionService $scurveService
+    ) {
         $this->knowledgeBase = $knowledgeBase;
+        $this->scurveService = $scurveService;
     }
 
     // =========================================================================
@@ -74,6 +78,10 @@ class ProvisDeepLearningService
             'wajib' => 'required', 'butuh' => 'required', 'perlu' => 'required',
             'progres' => 'progress', 'progresnya' => 'progress', 'kemajuan' => 'progress',
             'workers' => 'worker', 'pics' => 'pic', 'admins' => 'admin',
+            'scurve' => 'scurve', 's-curve' => 'scurve', 'curve' => 'scurve', 'kurva' => 'scurve', 'spi' => 'scurve',
+            'perbandingan' => 'compare', 'bandingkan' => 'compare', 'banding' => 'compare', 'komparasi' => 'compare', 'compare' => 'compare',
+            'baik' => 'best', 'terbaik' => 'best', 'bagus' => 'best',
+            'buruk' => 'worst', 'terburuk' => 'worst', 'jelek' => 'worst', 'terjelek' => 'worst',
         ];
 
         if (isset($canonicalMap[$w])) {
@@ -122,13 +130,16 @@ class ProvisDeepLearningService
 
         $stop = [
             'apa', 'apakah', 'yang', 'di', 'ke', 'dari', 'dan', 'atau', 'ini', 'itu', 'untuk', 'dengan',
-            'pada', 'adalah', 'bisa', 'dapat', 'akan', 'sudah', 'tidak', 'ya', 'yah', 'dong', 'sih', 'nih',
-            'bro', 'min', 'kak', 'bos', 'tolong', 'coba', 'saya', 'aku', 'kamu', 'anda', 'ada', 'mana', 'saja',
-            'aja', 'paling', 'siapa', 'berapa', 'gimana', 'bagaimana', 'kenapa', 'mengapa', 'kapan', 'dimana',
+            'pada', 'adalah', 'bisa', 'dapat', 'akan', 'sudah', 'tidak', 'ya', 'yah', 'dong', 'sih', 'nih', 'nya',
+            'bro', 'min', 'kak', 'bos', 'tolong', 'coba', 'saya', 'aku', 'kamu', 'anda', 'ada', 'mana', 'manakah',
+            'saja', 'aja', 'paling', 'siapa', 'berapa', 'gimana', 'bagaimana', 'kenapa', 'mengapa', 'kapan', 'dimana',
             'sistem', 'provis', 'saat', 'sekarang', 'seluruh', 'semua', 'daftar', 'tampilkan', 'lihat', 'cek',
-            'kasih', 'tahu', 'tau', 'dong', 'the', 'is', 'are', 'was', 'were', 'a', 'an', 'of', 'to', 'in',
+            'kasih', 'tahu', 'tau', 'bertanya', 'tanya', 'nanya', 'jadi', 'hasil', 'hasilnya', 'antar', 'antara',
+            'masing', 'tiap', 'setiap', 'tentang', 'soal', 'seputar', 'mengenai', 'adalah', 'yaitu', 'seperti',
+            'sampai', 'hingga', 'adalah', 'punya', 'memiliki', 'buat', 'bikin', 'nih', 'tuh', 'lho', 'kok',
+            'the', 'is', 'are', 'was', 'were', 'a', 'an', 'of', 'to', 'in', 'into', 'by', 'from', 'that', 'this',
             'on', 'for', 'with', 'and', 'or', 'can', 'do', 'does', 'what', 'which', 'who', 'how', 'many',
-            'much', 'show', 'list', 'me', 'my', 'our', 'your', 'in', 'at', 'by', 'from', 'that', 'this',
+            'much', 'show', 'list', 'me', 'my', 'our', 'your', 'at', 'each', 'every', 'all', 'about',
         ];
 
         $out = [];
@@ -178,11 +189,13 @@ class ProvisDeepLearningService
                 return $exact;
             }
 
-            // 2. Jaccard token similarity match across learned patterns (>= 0.58 similarity, polarity-safe)
-            $asksLow = in_array('lowest', $keywords, true);
-            $candidates = AiLearnedKnowledge::orderByDesc('hit_count')->take(250)->get();
-            $best       = null;
-            $bestSim    = 0.0;
+            // 2. Jaccard token similarity match across learned patterns (>= 0.58 similarity, polarity & strategy-dimension safe)
+            $asksLow          = in_array('lowest', $keywords, true);
+            $asksCompanyScope = in_array('company', $keywords, true);
+            $expectedStrategy = $this->inferDeepStrategy($prompt, $keywords)['strategy'] ?? 'DYNAMIC_CROSS_SEARCH';
+            $candidates       = AiLearnedKnowledge::orderByDesc('hit_count')->take(250)->get();
+            $best             = null;
+            $bestSim          = 0.0;
 
             foreach ($candidates as $cand) {
                 $candKw = is_array($cand->keywords_json) ? $cand->keywords_json : [];
@@ -193,6 +206,16 @@ class ProvisDeepLearningService
                 // Never confuse "lowest / fewest / shortest" with "highest / most / longest"
                 $candLow = in_array('lowest', $candKw, true);
                 if ($asksLow !== $candLow) {
+                    continue;
+                }
+
+                // Never confuse company-level comparisons with single-table or project-level rankings
+                if ($asksCompanyScope !== in_array('company', $candKw, true)) {
+                    continue;
+                }
+
+                // Never reuse an incompatible strategy from Jaccard alone
+                if ($expectedStrategy !== 'DYNAMIC_CROSS_SEARCH' && $cand->strategy !== $expectedStrategy) {
                     continue;
                 }
 
@@ -342,6 +365,7 @@ class ProvisDeepLearningService
             'actions'              => $res['actions'] ?? [],
             'strategy'             => $entry->strategy,
             'learned_knowledge_id' => $entry->id,
+            'access_denied'        => !empty($res['access_denied']),
         ];
     }
 
@@ -357,6 +381,10 @@ class ProvisDeepLearningService
      */
     public function detectSpecializedStrategy(string $prompt): ?array
     {
+        if ($this->hasIrrelevantOrNoisyMix($prompt)) {
+            return null;
+        }
+
         $keywords = $this->extractStemmedKeywords($prompt);
         if (empty($keywords)) {
             return null;
@@ -371,15 +399,78 @@ class ProvisDeepLearningService
     }
 
     /**
+     * Detect when a prompt mixes irrelevant everyday/non-work terms alongside PROVIS words
+     * so shallow heuristics never hijack it and full-sentence deep reasoning evaluates all words instead.
+     */
+    protected function hasIrrelevantOrNoisyMix(string $prompt): bool
+    {
+        $lower = mb_strtolower($prompt);
+        return (bool) preg_match(
+            '/\b(kucing|anjing|hewan|binatang|makan|makanan|minum|minuman|masak|memasak|gorengan|goreng|nasi\s+goreng|mie\s+goreng|liburan|wisata|pantai|gunung|tidur|mimpi|pacar|cinta|jodoh|film|musik|konser|game|bola|sepakbola|cuaca|hujan|langit|planet|bulan|bintang|zodiak|horoskop|politik|presiden|pemilu|dokter|sakit|obat|sepatu|baju|celana|motor|mobil|kuliah|skripsi|ujian|kampus|sekolah|kopi|teh|susu|roti|bakso|soto|rendang|seblak|tanaman|hobi|memancing|resep|masakan|pekerjaan\s+rumah|homework|puisi|lagu|artis)\b/i',
+            $lower
+        );
+    }
+
+    /**
      * @param array<int, string> $keywords
      * @return array{strategy: string, params: array}
      */
     protected function inferDeepStrategy(string $prompt, array $keywords): array
     {
         $lower = mb_strtolower($prompt);
+
+        if ($this->hasIrrelevantOrNoisyMix($prompt)) {
+            return [
+                'strategy' => 'DYNAMIC_CROSS_SEARCH',
+                'params'   => ['keywords' => $keywords],
+            ];
+        }
+
         $has   = fn(string ...$ks): bool => count(array_intersect($ks, $keywords)) > 0;
         $isAsc = $has('lowest') || (bool) preg_match('/\b(paling\s+(?:sedikit|rendah|kecil|lambat|singkat|cepat|dekat)|tersedikit|terendah|terkecil|tercepat|terdekat|terpendek|least|lowest|fewest|shortest|smallest|slowest|nearest|earliest)\b/i', $lower);
         $dir   = $isAsc ? 'asc' : 'desc';
+
+        // 0a. Per-Company / Cross-Company S-Curve Comparison ("perbandingan s curve antar perusahaan", "s curve masing-masing perusahaan")
+        if (
+            ($has('scurve') || preg_match('/\b(s[\s-]?curve|kurva\s*s|spi)\b/i', $lower))
+            && ($has('company') || preg_match('/\b((?:antar|masing[\s-]masing|tiap|setiap|per|lintas|semua|seluruh)\s+(?:perusahaan|pt|company|companies)|per\s+pt)\b/i', $lower))
+        ) {
+            return ['strategy' => 'DYNAMIC_SCURVE_PER_COMPANY', 'params' => []];
+        }
+
+        // 0b. Ranked / Comparative S-Curve Across Accessible Projects ("manakah projek yang s curve nya paling baik sampai paling buruk")
+        if (
+            ($has('scurve') || preg_match('/\b(s[\s-]?curve|kurva\s*s|spi)\b/i', $lower))
+            && (
+                $has('best', 'worst', 'compare')
+                || preg_match('/\b(manakah|paling\s+(?:baik|bagus|buruk|jelek)|terbaik|terburuk|terjelek|bandingkan|perbandingan|komparasi|ranking|peringkat|urutkan|urutan|sampai\s+paling|semua\s+(?:proyek|projek)|antar\s+(?:proyek|projek)|masing[\s-]masing\s+(?:proyek|projek)|best\s+to\s+worst|worst\s+to\s+best|compare)\b/i', $lower)
+            )
+        ) {
+            $order = preg_match('/\b(paling\s+(?:buruk|jelek)\s+(?:ke|sampai|hingga)\s+(?:paling\s+)?(?:baik|bagus)|dari\s+(?:yang\s+)?(?:ter)?buruk|worst\s+to\s+best)\b/i', $lower)
+                ? 'worst_to_best'
+                : 'best_to_worst';
+            return ['strategy' => 'DYNAMIC_SCURVE_RANKED_PROJECTS', 'params' => ['order' => $order]];
+        }
+
+        // 0c. Per-Company Budget Comparison ("perbandingan budget antar perusahaan")
+        if (
+            $has('budget')
+            && ($has('company') || preg_match('/\b((?:antar|masing[\s-]masing|tiap|setiap|per|lintas|semua|seluruh)\s+(?:perusahaan|pt|company|companies)|per\s+pt)\b/i', $lower))
+        ) {
+            return ['strategy' => 'DYNAMIC_BUDGET_PER_COMPANY', 'params' => []];
+        }
+
+        // 0d. Ranked / Comparative Budget Across Projects ("manakah projek yang budgetnya paling besar")
+        if (
+            $has('budget')
+            && $has('proyek')
+            && (
+                $has('highest', 'lowest', 'compare')
+                || preg_match('/\b(manakah|antar\s+(?:proyek|projek)|masing[\s-]masing\s+(?:proyek|projek)|paling\s+(?:besar|kecil|hemat|boros|tinggi|rendah)|terbesar|terkecil|bandingkan|perbandingan)\b/i', $lower)
+            )
+        ) {
+            return ['strategy' => 'DYNAMIC_BUDGET_RANKED_PROJECTS', 'params' => ['direction' => $dir]];
+        }
 
         // 1. Division with most / fewest tasks
         if ($has('division') && ($has('task', 'most', 'lowest', 'highest', 'busiest') && preg_match('/\b(paling\s+banyak|paling\s+sedikit|terbanyak|tersedikit|beban\s+task|most\s+tasks?|fewest\s+tasks?|busiest\s+division)\b/i', $lower))) {
@@ -490,10 +581,45 @@ class ProvisDeepLearningService
 
         switch ($strategy) {
             case 'DYNAMIC_TOP_COMPANY_PROJECTS':
+            case 'DYNAMIC_SCURVE_PER_COMPANY':
+            case 'DYNAMIC_BUDGET_PER_COMPANY':
+                if ($hasGlobalScope) {
+                    return null;
+                }
                 return $deny(
                     'Perbandingan dan peringkat data lintas perusahaan di sistem PROVIS hanya dapat diakses oleh **SuperAdministrator**.',
                     'Cross-company rankings and comparisons across PROVIS are restricted to **SuperAdministrator** only.'
                 );
+
+            case 'DYNAMIC_SCURVE_RANKED_PROJECTS':
+                if ($user->isWorker() || $user->isAdminProgres()) {
+                    return $deny(
+                        'Perbandingan dan peringkat **S-Curve** antar proyek hanya dapat diakses oleh **SuperAdministrator** / Manajemen Proyek. Role Anda hanya dapat memantau tugas pada cakupan proyek yang ditetapkan.',
+                        'Cross-project **S-Curve** rankings and comparisons are restricted to **SuperAdministrator** / Project Management.'
+                    );
+                }
+                if ($isGlobal && !$hasGlobalScope) {
+                    return $deny(
+                        'Perbandingan **S-Curve** seluruh proyek secara global di sistem PROVIS hanya dapat diakses oleh **SuperAdministrator**.',
+                        'System-wide **S-Curve** comparisons across PROVIS are restricted to **SuperAdministrator**.'
+                    );
+                }
+                return null;
+
+            case 'DYNAMIC_BUDGET_RANKED_PROJECTS':
+                if ($user->isAdminProgres() || !($user->isAdminUtama() || $user->isPic() || $user->hasSidebarAccess('Budget Management'))) {
+                    return $deny(
+                        'Akun Anda tidak memiliki izin akses untuk membandingkan data **Budget** antar proyek.',
+                        'Your account does not have permission to compare **Budget** across projects.'
+                    );
+                }
+                if ($isGlobal && !$hasGlobalScope) {
+                    return $deny(
+                        'Perbandingan **Budget** seluruh proyek secara global di PROVIS hanya dapat diakses oleh **SuperAdministrator**.',
+                        'System-wide cross-project **Budget** comparisons are restricted to **SuperAdministrator**.'
+                    );
+                }
+                return null;
 
             case 'DYNAMIC_BUSIEST_PIC':
                 if ($user->isWorker() || $user->isAdminProgres()) {
@@ -602,15 +728,28 @@ class ProvisDeepLearningService
         $rbacDenied = $this->checkStrategyRbac($strategy, $prompt, $user, $lang);
         if ($rbacDenied !== null) {
             return [
-                'content'      => $rbacDenied,
-                'actions'      => [],
-                'should_learn' => false,
+                'content'       => $rbacDenied,
+                'actions'       => [],
+                'should_learn'  => false,
+                'access_denied' => true,
             ];
         }
 
         $accessibleIds = $this->getAccessibleProjectIds($user);
 
         switch ($strategy) {
+            case 'DYNAMIC_SCURVE_PER_COMPANY':
+                return $this->execSCurvePerCompany($user, $accessibleIds, $lang);
+
+            case 'DYNAMIC_SCURVE_RANKED_PROJECTS':
+                return $this->execSCurveRankedProjects($accessibleIds, $params['order'] ?? 'best_to_worst', $lang);
+
+            case 'DYNAMIC_BUDGET_PER_COMPANY':
+                return $this->execBudgetPerCompany($user, $accessibleIds, $lang);
+
+            case 'DYNAMIC_BUDGET_RANKED_PROJECTS':
+                return $this->execBudgetRankedProjects($accessibleIds, $params['direction'] ?? 'desc', $lang);
+
             case 'DYNAMIC_TOP_DIVISION_TASKS':
                 return $this->execTopDivisionTasks($user, $accessibleIds, $activeProjectId, $params['direction'] ?? 'desc', $lang);
 
@@ -1147,6 +1286,343 @@ class ProvisDeepLearningService
     }
 
     /**
+     * Rank ALL accessible projects by live S-Curve health (SPI, Variance, Progress, Delay Days)
+     * from Best to Worst (or Worst to Best).
+     */
+    protected function execSCurveRankedProjects(array $accessibleIds, string $order, string $lang): array
+    {
+        $projects = Project::whereIn('id', $accessibleIds)
+            ->with(['company', 'manager', 'mainWbs.subWbs.wbsTasks'])
+            ->get();
+
+        if ($projects->isEmpty()) {
+            return [
+                'content'      => $lang === 'en' ? 'No accessible projects found to rank S-Curve.' : 'Belum ada projek yang dapat diakses untuk peringkat S-Curve.',
+                'actions'      => [],
+                'should_learn' => true,
+            ];
+        }
+
+        $rows = [];
+        foreach ($projects as $p) {
+            $calc      = $this->scurveService->calculate($p);
+            $m         = $calc['metrics'] ?? [];
+            $spi       = (float) ($m['spi'] ?? 1.0);
+            $var       = (float) ($m['variance_progress'] ?? 0.0);
+            $actual    = (float) ($m['actual_progress'] ?? $p->progress ?? 0.0);
+            $planned   = (float) ($m['planned_progress'] ?? 0.0);
+            $isDelayed = (bool) ($m['is_delayed'] ?? false);
+            $delayDays = (int) ($m['delay_days'] ?? 0);
+            $overdue   = (int) ($m['overdue_tasks_count'] ?? 0);
+            $forecast  = $m['forecast_end_date'] ?? ($p->end ? Carbon::parse($p->end)->format('d M Y') : '—');
+            $plannedEnd = $m['planned_end_date'] ?? ($p->end ? Carbon::parse($p->end)->format('d M Y') : '—');
+
+            // Composite S-Curve score: higher SPI, non-negative variance, higher actual progress, fewer delay days = better
+            $healthScore = ($spi * 100.0) + ($var * 1.5) + ($actual * 0.25) - ($delayDays * 0.4);
+
+            $rows[] = [
+                'id'          => $p->id,
+                'title'       => $p->title,
+                'company'     => $p->company?->name ?? '—',
+                'spi'         => round($spi, 3),
+                'variance'    => round($var, 2),
+                'actual'      => round($actual, 1),
+                'planned'     => round($planned, 1),
+                'is_delayed'  => $isDelayed,
+                'delay_days'  => $delayDays,
+                'overdue'     => $overdue,
+                'planned_end' => $plannedEnd,
+                'forecast'    => $forecast,
+                'score'       => $healthScore,
+            ];
+        }
+
+        usort($rows, function (array $a, array $b) use ($order): int {
+            $cmp = $b['score'] <=> $a['score'];
+            if ($cmp === 0) {
+                $cmp = $b['variance'] <=> $a['variance'];
+            }
+            if ($cmp === 0) {
+                $cmp = $b['actual'] <=> $a['actual'];
+            }
+            return $order === 'worst_to_best' ? -$cmp : $cmp;
+        });
+
+        $best  = $order === 'worst_to_best' ? end($rows) : $rows[0];
+        $worst = $order === 'worst_to_best' ? $rows[0] : end($rows);
+
+        $lines = [];
+        foreach ($rows as $idx => $r) {
+            $badge = $r['is_delayed']
+                ? ($lang === 'en' ? "⚠️ Delayed +{$r['delay_days']}d" : "⚠️ Tertinggal +{$r['delay_days']}h")
+                : ($r['variance'] >= 0 ? ($lang === 'en' ? '🟢 On Track' : '🟢 Sesuai Plan') : '🟡 Monitor');
+            $varSign = $r['variance'] > 0 ? '+' : '';
+            $overdueNote = $r['overdue'] > 0 ? " · Overdue `{$r['overdue']} task`" : '';
+            $lines[] = ($idx + 1) . ". **{$r['title']}** (`#{$r['id']}` · {$r['company']})\n"
+                . "   • SPI `{$r['spi']}` · Deviasi `{$varSign}{$r['variance']}%` · Aktual **{$r['actual']}%** · {$badge}{$overdueNote}\n"
+                . "   • Prediksi selesai: **{$r['forecast']}** *(Target: {$r['planned_end']})*";
+        }
+
+        if ($lang === 'en') {
+            $title = $order === 'worst_to_best'
+                ? '### 📈 Project S-Curve Ranking (Worst to Best)'
+                : '### 📈 Project S-Curve Ranking (Best to Worst)';
+            $summary = "🏆 **Best**: **{$best['title']}** (`SPI {$best['spi']}`, `{$best['variance']}%`)\n"
+                . "📉 **Needs Attention**: **{$worst['title']}** (`SPI {$worst['spi']}`, `{$worst['variance']}%`)\n\n";
+        } else {
+            $title = $order === 'worst_to_best'
+                ? '### 📈 Peringkat S-Curve Seluruh Projek (Paling Buruk → Paling Baik)'
+                : '### 📈 Peringkat S-Curve Seluruh Projek (Paling Baik → Paling Buruk)';
+            $bestSign  = $best['variance'] > 0 ? '+' : '';
+            $worstSign = $worst['variance'] > 0 ? '+' : '';
+            $summary = "🏆 **S-Curve Paling Baik**: **{$best['title']}** (`#{$best['id']}` · SPI `{$best['spi']}` · `{$bestSign}{$best['variance']}%`)\n"
+                . "📉 **S-Curve Paling Buruk**: **{$worst['title']}** (`#{$worst['id']}` · SPI `{$worst['spi']}` · `{$worstSign}{$worst['variance']}%` · {$worst['overdue']} overdue)\n\n";
+        }
+
+        return [
+            'content'      => "{$title}\n\n{$summary}" . implode("\n", $lines),
+            'actions'      => [['type' => 'link', 'label' => $lang === 'en' ? 'Open S-Curve Report' : 'Buka S-Curve Report', 'url' => '/scurve']],
+            'should_learn' => true,
+        ];
+    }
+
+    /**
+     * Group ALL accessible projects by Company and compare per-company S-Curve health metrics
+     * (Average SPI, Average Variance, Average Actual Progress, and each project's S-Curve breakdown).
+     */
+    protected function execSCurvePerCompany(User $user, array $accessibleIds, string $lang): array
+    {
+        $cQuery = Company::query();
+        if (!$this->isSuperAdmin($user) && $user->getDataScope() !== 'all') {
+            $cQuery->whereIn('id', $user->getCompanyIds());
+        }
+        $companies = $cQuery->with([
+            'projects' => fn($q) => $q->whereIn('id', $accessibleIds)->with(['mainWbs.subWbs.wbsTasks']),
+        ])->get();
+
+        if ($companies->isEmpty()) {
+            return [
+                'content'      => $lang === 'en' ? 'No companies found to compare S-Curve.' : 'Belum ada data perusahaan untuk dibandingkan S-Curve-nya.',
+                'actions'      => [],
+                'should_learn' => true,
+            ];
+        }
+
+        $companyRows = [];
+        foreach ($companies as $comp) {
+            $projItems = [];
+            $sumSpi = 0.0;
+            $sumVar = 0.0;
+            $sumAct = 0.0;
+            $delayedCount = 0;
+
+            foreach ($comp->projects as $p) {
+                $calc      = $this->scurveService->calculate($p);
+                $m         = $calc['metrics'] ?? [];
+                $spi       = (float) ($m['spi'] ?? 1.0);
+                $var       = (float) ($m['variance_progress'] ?? 0.0);
+                $actual    = (float) ($m['actual_progress'] ?? $p->progress ?? 0.0);
+                $isDelayed = (bool) ($m['is_delayed'] ?? false);
+                $delayDays = (int) ($m['delay_days'] ?? 0);
+
+                $sumSpi += $spi;
+                $sumVar += $var;
+                $sumAct += $actual;
+                if ($isDelayed) {
+                    $delayedCount++;
+                }
+
+                $projItems[] = [
+                    'id'         => $p->id,
+                    'title'      => $p->title,
+                    'spi'        => round($spi, 3),
+                    'variance'   => round($var, 2),
+                    'actual'     => round($actual, 1),
+                    'is_delayed' => $isDelayed,
+                    'delay_days' => $delayDays,
+                ];
+            }
+
+            $cnt     = count($projItems);
+            $avgSpi  = $cnt > 0 ? round($sumSpi / $cnt, 3) : null;
+            $avgVar  = $cnt > 0 ? round($sumVar / $cnt, 2) : null;
+            $avgAct  = $cnt > 0 ? round($sumAct / $cnt, 1) : null;
+            $rankVal = $cnt > 0 ? (($avgSpi * 100.0) + ($avgVar * 1.5)) : -999999.0;
+
+            $companyRows[] = [
+                'company'       => $comp->name,
+                'project_count' => $cnt,
+                'avg_spi'       => $avgSpi,
+                'avg_var'       => $avgVar,
+                'avg_actual'    => $avgAct,
+                'delayed_count' => $delayedCount,
+                'projects'      => $projItems,
+                'score'         => $rankVal,
+            ];
+        }
+
+        usort($companyRows, fn($a, $b) => $b['score'] <=> $a['score']);
+
+        $activeRows = array_values(array_filter($companyRows, fn($r) => $r['project_count'] > 0));
+        $bestComp   = $activeRows[0] ?? null;
+        $worstComp  = !empty($activeRows) ? end($activeRows) : null;
+
+        $sections = [];
+        foreach ($companyRows as $idx => $cr) {
+            $num = $idx + 1;
+            if ($cr['project_count'] === 0) {
+                $sections[] = "{$num}. **{$cr['company']}** — *(Belum ada proyek)*";
+                continue;
+            }
+
+            $varSign = $cr['avg_var'] > 0 ? '+' : '';
+            $healthTag = $cr['delayed_count'] === 0
+                ? ($lang === 'en' ? '`On Track`' : '`On Track`')
+                : ($lang === 'en' ? "`{$cr['delayed_count']} delayed`" : "`{$cr['delayed_count']} tertinggal`");
+
+            $pBullets = [];
+            foreach ($cr['projects'] as $pr) {
+                $pSign = $pr['variance'] > 0 ? '+' : '';
+                $pStat = $pr['is_delayed'] ? "`+{$pr['delay_days']}h`" : '`On Track`';
+                $pBullets[] = "   - **{$pr['title']}** (`#{$pr['id']}`) · SPI `{$pr['spi']}` · `{$pSign}{$pr['variance']}%` · {$pStat}";
+            }
+
+            $sections[] = "{$num}. **{$cr['company']}** ({$cr['project_count']} proyek · {$healthTag})\n"
+                . "   • Rata SPI `{$cr['avg_spi']}` · Rata Deviasi `{$varSign}{$cr['avg_var']}%` · Aktual **{$cr['avg_actual']}%**\n"
+                . implode("\n", $pBullets);
+        }
+
+        if ($lang === 'en') {
+            $header = "### 🏢 Cross-Company S-Curve Comparison\n\n";
+            if ($bestComp && $worstComp && count($activeRows) > 1) {
+                $header .= "🏆 **Strongest**: **{$bestComp['company']}** (`SPI {$bestComp['avg_spi']}`, `{$bestComp['avg_var']}%`)\n"
+                    . "📉 **Needs Attention**: **{$worstComp['company']}** (`SPI {$worstComp['avg_spi']}`, `{$worstComp['avg_var']}%`)\n\n";
+            }
+        } else {
+            $header = "### 🏢 Perbandingan S-Curve Masing-Masing Perusahaan\n\n";
+            if ($bestComp && $worstComp && count($activeRows) > 1) {
+                $bSign = $bestComp['avg_var'] > 0 ? '+' : '';
+                $wSign = $worstComp['avg_var'] > 0 ? '+' : '';
+                $header .= "🏆 **Perusahaan dengan S-Curve Terbaik**: **{$bestComp['company']}** (`SPI {$bestComp['avg_spi']}`, `{$bSign}{$bestComp['avg_var']}%`)\n"
+                    . "📉 **Perusahaan yang Paling Perlu Perhatian**: **{$worstComp['company']}** (`SPI {$worstComp['avg_spi']}`, `{$wSign}{$worstComp['avg_var']}%`)\n\n";
+            }
+        }
+
+        return [
+            'content'      => $header . implode("\n\n", $sections),
+            'actions'      => [['type' => 'link', 'label' => $lang === 'en' ? 'Open S-Curve Report' : 'Buka S-Curve Report', 'url' => '/scurve']],
+            'should_learn' => true,
+        ];
+    }
+
+    /**
+     * Rank accessible projects by live Budget realization from BudgetEntry.
+     */
+    protected function execBudgetRankedProjects(array $accessibleIds, string $direction, string $lang): array
+    {
+        $projects = Project::whereIn('id', $accessibleIds)->with('company')->get();
+        if ($projects->isEmpty()) {
+            return ['content' => $lang === 'en' ? 'No accessible projects found.' : 'Belum ada projek yang dapat diakses.', 'actions' => [], 'should_learn' => true];
+        }
+
+        $spentByProj = BudgetEntry::whereIn('projects_id', $accessibleIds)
+            ->selectRaw('projects_id, SUM(harga_total) as total_spent, COUNT(*) as entry_count')
+            ->groupBy('projects_id')
+            ->get()
+            ->keyBy('projects_id');
+
+        $rows = [];
+        foreach ($projects as $p) {
+            $spent = (float) ($spentByProj[$p->id]->total_spent ?? 0);
+            $cnt   = (int) ($spentByProj[$p->id]->entry_count ?? 0);
+            $rows[] = [
+                'id'      => $p->id,
+                'title'   => $p->title,
+                'company' => $p->company?->name ?? '—',
+                'spent'   => $spent,
+                'entries' => $cnt,
+            ];
+        }
+
+        usort($rows, fn($a, $b) => $direction === 'asc' ? ($a['spent'] <=> $b['spent']) : ($b['spent'] <=> $a['spent']));
+
+        $lines = array_map(function ($r, $i) {
+            $rp = 'Rp ' . number_format((float) $r['spent'], 0, ',', '.');
+            return ($i + 1) . ". **{$r['title']}** (`#{$r['id']}` — {$r['company']}) — Total Pengeluaran: **{$rp}** ({$r['entries']} item)";
+        }, $rows, array_keys($rows));
+
+        $title = $direction === 'asc'
+            ? ($lang === 'en' ? '### 💰 Project Budget Comparison (Lowest to Highest)' : '### 💰 Perbandingan Realisasi Budget Projek (Terkecil → Terbesar)')
+            : ($lang === 'en' ? '### 💰 Project Budget Comparison (Highest to Lowest)' : '### 💰 Perbandingan Realisasi Budget Projek (Terbesar → Terkecil)');
+
+        return [
+            'content'      => "{$title}\n\n" . implode("\n", $lines),
+            'actions'      => [['type' => 'link', 'label' => $lang === 'en' ? 'Open Budget' : 'Buka Budget Management', 'url' => '/budget']],
+            'should_learn' => true,
+        ];
+    }
+
+    /**
+     * Group accessible project budget realization by Company.
+     */
+    protected function execBudgetPerCompany(User $user, array $accessibleIds, string $lang): array
+    {
+        $cQuery = Company::query();
+        if (!$this->isSuperAdmin($user) && $user->getDataScope() !== 'all') {
+            $cQuery->whereIn('id', $user->getCompanyIds());
+        }
+        $companies = $cQuery->with(['projects' => fn($q) => $q->whereIn('id', $accessibleIds)])->get();
+
+        if ($companies->isEmpty()) {
+            return ['content' => $lang === 'en' ? 'No companies found.' : 'Belum ada data perusahaan.', 'actions' => [], 'should_learn' => true];
+        }
+
+        $spentByProj = BudgetEntry::whereIn('projects_id', $accessibleIds)
+            ->selectRaw('projects_id, SUM(harga_total) as total_spent, COUNT(*) as entry_count')
+            ->groupBy('projects_id')
+            ->get()
+            ->keyBy('projects_id');
+
+        $rows = [];
+        foreach ($companies as $comp) {
+            $total   = 0.0;
+            $entries = 0;
+            $pLines  = [];
+            foreach ($comp->projects as $p) {
+                $s       = (float) ($spentByProj[$p->id]->total_spent ?? 0);
+                $c       = (int) ($spentByProj[$p->id]->entry_count ?? 0);
+                $total  += $s;
+                $entries += $c;
+                $pLines[] = "     - **{$p->title}** (`#{$p->id}`): Rp " . number_format($s, 0, ',', '.') . " ({$c} item)";
+            }
+            $rows[] = [
+                'company'  => $comp->name,
+                'total'    => $total,
+                'entries'  => $entries,
+                'projects' => $comp->projects->count(),
+                'p_lines'  => $pLines,
+            ];
+        }
+
+        usort($rows, fn($a, $b) => $b['total'] <=> $a['total']);
+
+        $sections = [];
+        foreach ($rows as $idx => $r) {
+            $rp = 'Rp ' . number_format($r['total'], 0, ',', '.');
+            $sections[] = ($idx + 1) . ". **{$r['company']}** — Total Realisasi Budget: **{$rp}** ({$r['projects']} proyek · {$r['entries']} item)\n"
+                . (!empty($r['p_lines']) ? implode("\n", $r['p_lines']) : '     - *(Belum ada proyek / entri budget)*');
+        }
+
+        $title = $lang === 'en' ? '### 🏢 Cross-Company Budget Comparison' : '### 🏢 Perbandingan Budget Masing-Masing Perusahaan';
+
+        return [
+            'content'      => "{$title}\n\n" . implode("\n\n", $sections),
+            'actions'      => [['type' => 'link', 'label' => $lang === 'en' ? 'Open Budget' : 'Buka Budget Management', 'url' => '/budget']],
+            'should_learn' => true,
+        ];
+    }
+
+    /**
      * Universal Cross-Table Deep Search & Synthesis (9 Local MySQL Tables + Knowledge Base!).
      */
     protected function execCrossTableDeepSearch(
@@ -1159,6 +1635,17 @@ class ProvisDeepLearningService
     ): array {
         $findings = [];
         $actions  = [];
+
+        // 0. Full-sentence relevance guard (never get fooled by 1-2 scattered keywords in an off-topic sentence!)
+        if ($this->hasIrrelevantOrNoisyMix($prompt)) {
+            return [
+                'content' => $lang === 'en'
+                    ? 'Sorry, I cannot answer that question because the topic you are asking about is outside the scope of the PROVIS system.'
+                    : 'Maaf, saya tidak bisa menjawab pertanyaan Anda karena konteks yang Anda tanyakan itu diluar scope sistem.',
+                'actions'      => [],
+                'should_learn' => false,
+            ];
+        }
 
         // 1. Relaxed Knowledge Base match (threshold lowered to 2.0 during deep learning!)
         $kbHits = $this->knowledgeBase->searchMultiple($prompt, $lang, $activeProjectId, 2);
@@ -1337,25 +1824,42 @@ class ProvisDeepLearningService
             ];
         }
 
-        // 3. Final Intelligent Snapshot (if question is completely outside DB records, give live context & ask 1 natural follow-up without failing!)
+        // 3. Final Intelligent Snapshot: analyze whole-sentence relevance after deep local scan!
         $projCount = count($accessibleIds);
         $userCount = $this->isSuperAdmin($user) ? User::count() : null;
         $compCount = $this->isSuperAdmin($user) ? Company::count() : null;
 
+        // Check whether ANY word in the prompt actually relates to PROVIS core domain
+        $hasAnyProvisConcept = !empty(array_intersect($keywords, [
+            'proyek', 'task', 'user', 'company', 'division', 'budget', 'scurve', 'overdue',
+            'weight', 'duration', 'evidence', 'deadline', 'completed', 'vendor', 'pic',
+            'worker', 'admin', 'progress', 'audit', 'template', 'private', 'compare',
+        ]));
+
+        if (!$hasAnyProvisConcept) {
+            return [
+                'content' => $lang === 'en'
+                    ? 'Sorry, I cannot answer that question because the topic you are asking about is outside the scope of the PROVIS system.'
+                    : 'Maaf, saya tidak bisa menjawab pertanyaan Anda karena konteks yang Anda tanyakan itu diluar scope sistem.',
+                'actions'      => [],
+                'should_learn' => false,
+            ];
+        }
+
         if ($lang === 'en') {
-            $content = "🧠 I searched all local PROVIS tables for *\"{$prompt}\"*, and there are no exact matching records yet"
+            $content = "🧠 I analyzed every word in *\"{$prompt}\"* across all local PROVIS tables, and there are no exact matching records yet"
                 . ($this->isSuperAdmin($user) ? " across your **{$projCount} projects**, **{$compCount} companies**, and **{$userCount} accounts**" : " across your **{$projCount} accessible projects**")
-                . ".\n\nCould you tell me a bit more specifically what data or action you want? For instance: **project progress/deadlines**, **division workload**, **budget categories**, **user accounts/access**, or **creating/updating a project/task**?";
+                . ".\n\nCould you clarify a bit more specifically which PROVIS data or action you want? For example: **S-Curve per project/company**, **project progress/deadlines**, **division workload**, **budget realization**, or **accounts & access**?";
         } else {
-            $content = "🧠 Saya sudah menelusuri seluruh tabel database lokal PROVIS untuk *\"{$prompt}\"*, namun belum menemukan data yang cocok secara langsung"
+            $content = "🧠 Saya sudah menganalisis seluruh kata pada pertanyaan *\"{$prompt}\"* di database lokal PROVIS, namun belum menemukan kombinasi data yang cocok secara langsung"
                 . ($this->isSuperAdmin($user) ? " di antara **{$projCount} projek**, **{$compCount} perusahaan**, dan **{$userCount} akun**" : " di **{$projCount} projek** yang bisa kamu akses")
-                . ".\n\nBoleh jelaskan sedikit lebih spesifik data atau aksi apa yang kamu cari? Misalnya soal **progres/deadline projek**, **beban divisi**, **kategori budget**, **akun/akses user**, atau **buat/ubah projek & task**?";
+                . ".\n\nBoleh perjelas sedikit bagian mana di PROVIS yang ingin dianalisis? Misalnya: **S-Curve antar projek/perusahaan**, **progres/deadline projek**, **beban divisi**, **realisasi budget**, atau **akun & akses user**?";
         }
 
         return [
             'content'      => $content,
             'actions'      => [],
-            'should_learn' => false, // Don't pollute learned memory with unmatched non-PROVIS chatter
+            'should_learn' => false, // Don't pollute learned memory with unmatched/clarification prompts
         ];
     }
 

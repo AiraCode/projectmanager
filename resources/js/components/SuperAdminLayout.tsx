@@ -31,8 +31,9 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
     if (typeof window !== 'undefined') {
       const open = localStorage.getItem('provis_ai_open') === 'true';
       const docked = localStorage.getItem('provis_ai_docked') !== 'false';
+      const fullscreen = localStorage.getItem('provis_ai_fullscreen') === 'true';
       const width = Number(localStorage.getItem('provis_ai_width')) || 440;
-      return open && docked ? width : 0;
+      return open && docked && !fullscreen ? width : 0;
     }
     return 0;
   });
@@ -221,7 +222,7 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
 
       {/* Main Content */}
       <div
-        className="flex-1 flex flex-col min-w-0 overflow-hidden transition-all duration-300 ease-in-out"
+        className="flex-1 flex flex-col min-w-0 overflow-hidden transition-[margin-right] duration-250 ease-out"
         style={{
           background: '#f8f7ff',
           marginRight: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${aiMargin}px` : 0,
@@ -263,10 +264,10 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
             }`}
             title={
               aiBgStatus.isThinking
-                ? 'Provis Assistant sedang mempelajari pertanyaanmu di latar belakang…'
+                ? 'Provis Assistant is analyzing your question in the background…'
                 : aiBgStatus.hasUnreadReady
-                ? 'Jawaban Provis Assistant sudah siap! Klik untuk membuka'
-                : 'Buka / Tutup Provis Assistant'
+                ? 'Provis Assistant answer is ready! Click to open'
+                : 'Open / Close Provis Assistant'
             }
           >
             {aiBgStatus.isThinking ? (
@@ -277,12 +278,12 @@ export default function SuperAdminLayout({ children }: { children?: React.ReactN
             <span className="hidden sm:inline">Provis Assistant</span>
             {aiBgStatus.isThinking ? (
               <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">
-                Mempelajari…
+                Thinking…
               </span>
             ) : aiBgStatus.hasUnreadReady ? (
               <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Siap
+                Ready
               </span>
             ) : (
               <span className="text-[9.5px] font-medium px-1.5 py-0.2 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">

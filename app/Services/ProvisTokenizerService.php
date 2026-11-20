@@ -114,9 +114,19 @@ class ProvisTokenizerService
                 : null;
         }
 
-        $matchedTasks   = $effectiveProjectId ? $this->matchTasksInProject($normalizedPrompt, (int) $effectiveProjectId) : [];
-        $matchedSubWbs  = $effectiveProjectId ? $this->matchSubWbsInProject($normalizedPrompt, (int) $effectiveProjectId) : [];
-        $concepts       = $this->extractSemanticConcepts($normalizedPrompt);
+        $matchedTasks      = $effectiveProjectId ? $this->matchTasksInProject($normalizedPrompt, (int) $effectiveProjectId) : [];
+        $matchedSubWbs     = $effectiveProjectId ? $this->matchSubWbsInProject($normalizedPrompt, (int) $effectiveProjectId) : [];
+        $concepts          = $this->extractSemanticConcepts($normalizedPrompt);
+        $sentenceStructure = $this->analyzeSentenceStructure($normalizedPrompt, array_merge([
+            'matched_projects'  => $matchedProjects,
+            'matched_tasks'     => $matchedTasks,
+            'matched_divisions' => $matchedDivisions,
+            'matched_companies' => $matchedCompanies,
+            'statuses'          => $statuses,
+            'percentages'       => $percentages,
+            'dates'             => $dates,
+            'concepts'          => $concepts,
+        ]));
 
         $entities = [
             'language'               => $language,
@@ -138,6 +148,7 @@ class ProvisTokenizerService
             'heavy_typo_candidates'  => $heavyTypoCandidates,
             'effective_project_id'   => $effectiveProjectId,
             'concepts'               => $concepts,
+            'sentence_structure'     => $sentenceStructure,
         ];
 
         $actionIntent = $this->detectActionIntent($normalizedPrompt, $entities, $sessionContext);
@@ -2217,7 +2228,7 @@ class ProvisTokenizerService
                 'words'   => ['budget', 'budgetnya', 'anggaran', 'dana', 'duit', 'uang', 'biaya', 'pengeluaran', 'belanja', 'expenditure', 'spending', 'cost', 'rupiah', 'pagu', 'capex', 'opex', 'keuangan'],
             ],
             'ENTITY_SCURVE' => [
-                'phrases' => ['kurva s', 'planned vs actual', 'weekly progress', 'progres mingguan', 'kapan selesai', 'estimasi selesai', 'prediksi selesai', 'ramalan selesai', 'ramalan progres'],
+                'phrases' => ['s curve', 's curve nya', 'kurva s', 'kurva-s', 'planned vs actual', 'weekly progress', 'progres mingguan', 'kapan selesai', 'estimasi selesai', 'prediksi selesai', 'ramalan selesai', 'ramalan progres'],
                 'words'   => ['scurve', 's-curve', 'kurva', 'spi', 'prediksi', 'forecast', 'weekly', 'mingguan'],
             ],
             'ENTITY_BLOCKER' => [
@@ -2311,13 +2322,192 @@ class ProvisTokenizerService
     }
 
     /**
+     * Full-sentence holistic analyzer (detects comparative scope, cross-company/project grouping,
+     * irrelevant noise mixed with 1-2 PROVIS words, and whole-sentence domain coherence ratio).
+     *
+     * @return array{
+     *   is_comparative_rank: bool,
+     *   is_cross_company: bool,
+     *   is_cross_project: bool,
+     *   has_irrelevant_noise: bool,
+     *   is_low_coherence: bool,
+     *   coherence_ratio: float,
+     *   meaningful_count: int,
+     *   domain_explained_count: int
+     * }
+     */
+    public function analyzeSentenceStructure(string $text, array $entities = []): array
+    {
+        $lower    = mb_strtolower(trim($text));
+        $norm     = $this->normalizeForSearch($text);
+        $concepts = $entities['concepts'] ?? $this->extractSemanticConcepts($text);
+
+        $isComparativeRank = (bool) preg_match(
+            '/\b(paling\s+(?:baik|bagus|buruk|jelek|tinggi|rendah|cepat|lambat|besar|kecil|sedikit|banyak|mahal|murah|boros|hemat|dekat|lama)|terbaik|terburuk|terjelek|tertinggi|terendah|terbesar|terkecil|ranking|peringkat|urutkan|urutan|bandingkan|perbandingan|komparasi|sampai\s+paling|best\s+to\s+worst|worst\s+to\s+best|compare|comparison|which\s+(?:project|company|one)\s+(?:has|is))\b/i',
+            $lower
+        );
+
+        $isCrossCompany = (bool) preg_match(
+            '/\b((?:antar|masing[\s-]masing|tiap|setiap|per|lintas|semua|seluruh)\s+(?:perusahaan|pt|company|companies)|per\s+pt)\b/i',
+            $lower
+        );
+
+        $isCrossProject = (bool) preg_match(
+            '/\b((?:antar|masing[\s-]masing|tiap|setiap|per|lintas|semua|seluruh|manakah)\s+(?:proyek|projek|projeck|projects?)|(?:proyek|projek|projects?)\s+yang\s+.{0,45}?(?:paling|terbaik|terburuk|tertinggi|terendah|bandingkan|perbandingan))\b/i',
+            $lower
+        );
+
+        $hasIrrelevantNoise = $this->isClearlyOutOfScope($text) || (bool) preg_match(
+            '/\b(kucing|anjing|hewan|binatang|makan|makanan|minum|minuman|masak|memasak|gorengan|goreng|liburan|wisata|pantai|gunung|tidur|mimpi|pacar|cinta|jodoh|film|musik|konser|game|bola|sepakbola|cuaca|hujan|langit|planet|bulan|bintang|zodiak|horoskop|politik|presiden|pemilu|dokter|sakit|obat|sepatu|baju|celana|motor|mobil|kuliah|skripsi|ujian|kampus|sekolah|kopi|teh|susu|roti|bakso|soto|rendang|seblak|tanaman|hobi|memancing|resep|masakan)\b/i',
+            $lower
+        );
+
+        // Compute full-sentence domain coherence across all meaningful content tokens
+        $functionalStop = [
+            'yang', 'dan', 'atau', 'di', 'ke', 'dari', 'untuk', 'dengan', 'pada', 'ini', 'itu', 'nya',
+            'apa', 'apakah', 'siapa', 'mana', 'manakah', 'kapan', 'berapa', 'gimana', 'bagaimana',
+            'kenapa', 'mengapa', 'ada', 'bisa', 'dapat', 'mau', 'ingin', 'tolong', 'coba', 'cek',
+            'lihat', 'tampilkan', 'tunjukkan', 'kasih', 'sebutkan', 'daftar', 'list', 'show', 'get',
+            'find', 'check', 'tell', 'aku', 'saya', 'kami', 'kita', 'kamu', 'anda', 'bro', 'min',
+            'dong', 'yah', 'sih', 'nih', 'ya', 'aja', 'saja', 'jadi', 'hasil', 'hasilnya', 'bertanya',
+            'tanya', 'nanya', 'mohon', 'boleh', 'tahu', 'tau', 'sama', 'paling', 'sampai', 'antara',
+            'antar', 'masing', 'tiap', 'setiap', 'semua', 'seluruh', 'perbandingan', 'bandingkan',
+            'adalah', 'yaitu', 'seperti', 'kalau', 'kalo', 'jika', 'tentang', 'soal', 'seputar',
+            'mengenai', 'saat', 'sekarang', 'hari', 'the', 'and', 'for', 'with', 'from', 'that',
+            'this', 'what', 'which', 'who', 'how', 'many', 'much', 'are', 'was', 'were', 'can',
+            'please', 'could', 'would', 'about', 'only', 'just', 'per', 'atas', 'bawah', 'dalam',
+            'sudah', 'belum', 'sedang', 'akan', 'lebih', 'kurang', 'sangat', 'sekali', 'banget',
+            'dong', 'kah', 'lah', 'pun', 'kok', 'lho', 'deh', 'nih', 'tuh', 'dong',
+        ];
+
+        $provisVocab = [
+            'user', 'users', 'akun', 'account', 'accounts', 'pengguna', 'karyawan', 'pegawai',
+            'staff', 'staf', 'orang', 'member', 'members', 'anggota', 'personel', 'personil',
+            'pekerja', 'profil', 'profile', 'superadmin', 'admin', 'admins', 'administrator',
+            'utama', 'progres', 'progress', 'pic', 'pics', 'manager', 'leader', 'worker', 'workers',
+            'operator', 'teknisi', 'pelaksana', 'beta', 'tester', 'proyek', 'projek', 'projeck',
+            'project', 'projects', 'projekku', 'proyekku', 'projeknya', 'proyeknya', 'portofolio',
+            'portfolio', 'perusahaan', 'perusahan', 'company', 'companies', 'klien', 'client',
+            'clients', 'tenant', 'korporasi', 'divisi', 'division', 'divisions', 'departemen',
+            'department', 'bagian', 'unit', 'bidang', 'task', 'tasks', 'pekerjaan', 'kerjaan',
+            'tugas', 'subtask', 'item', 'aktivitas', 'kegiatan', 'job', 'jobs', 'tasknya',
+            'pekerjaannya', 'wbs', 'sub', 'main', 'hierarki', 'hierarchy', 'struktur', 'template',
+            'templates', 'master', 'default', 'budget', 'budgetnya', 'anggaran', 'dana', 'duit',
+            'uang', 'biaya', 'pengeluaran', 'belanja', 'expenditure', 'spending', 'cost', 'rupiah',
+            'pagu', 'capex', 'opex', 'keuangan', 'scurve', 'curve', 'kurva', 'spi', 'prediksi',
+            'forecast', 'weekly', 'mingguan', 'planned', 'actual', 'deviasi', 'estimasi', 'selesai',
+            'terkunci', 'locked', 'gembok', 'blocker', 'penghambat', 'terhambat', 'blocked',
+            'kendala', 'mentok', 'predecessor', 'dependensi', 'dependency', 'ketergantungan',
+            'today', 'besok', 'deadline', 'due', 'tenggat', 'agenda', 'jatuh', 'tempo', 'minggu',
+            'bulan', 'tahun', 'terlambat', 'telat', 'delay', 'delayed', 'overdue', 'molor',
+            'ketinggalan', 'ngaret', 'off', 'plan', 'behind', 'schedule', 'outstanding', 'purchase',
+            'request', 'barang', 'terpenuhi', 'datang', 'nunggu', 'audit', 'riwayat', 'history',
+            'jejak', 'log', 'logs', 'aktivitas', 'pdf', 'cetak', 'print', 'unduh', 'download',
+            'laporan', 'report', 'eksekutif', 'git', 'commit', 'commits', 'koding', 'kodingan',
+            'coding', 'changelog', 'sistem', 'system', 'aplikasi', 'provis', 'keseluruhan',
+            'akses', 'izin', 'permission', 'visibilitas', 'visibility', 'private', 'privat',
+            'public', 'publik', 'rahasia', 'status', 'open', 'completed', 'done', 'pending',
+            'baik', 'bagus', 'buruk', 'jelek', 'tinggi', 'rendah', 'cepat', 'lambat', 'besar',
+            'kecil', 'mahal', 'murah', 'boros', 'hemat', 'terbaik', 'terburuk', 'tertinggi',
+            'terendah', 'terbesar', 'terkecil', 'tercepat', 'terlambat', 'kosong', 'bobot',
+            'weight', 'durasi', 'duration', 'jadwal', 'tanggal', 'mulai', 'akhir', 'target',
+            'rekonsiliasi', 'reconcile', 'sinkron', 'evidence', 'bukti', 'lampiran', 'vendor',
+            'gantt', 'timeline', 'ringkasan', 'summary', 'overview', 'analisis', 'analisa',
+            'detail', 'rincian', 'stat', 'statistik', 'jumlah', 'total', 'rasio', 'persen',
+            'persentase', 'ubah', 'ganti', 'edit', 'update', 'buat', 'tambah', 'hubungkan',
+            'pabrik', 'smelter', 'commissioning', 'commisioning', 'engineering', 'maintenance',
+            'produksi', 'production', 'procurement', 'purchasing', 'finance', 'hrga', 'legal',
+            'safety', 'she', 'ppic', 'busdev', 'sales', 'it', 'qc', 'civil', 'utility',
+        ];
+
+        $entityTokens = [];
+        foreach (array_merge(
+            $entities['matched_projects'] ?? [],
+            $entities['matched_tasks'] ?? [],
+            $entities['matched_companies'] ?? [],
+            $entities['matched_divisions'] ?? []
+        ) as $item) {
+            $label = $item['title'] ?? $item['name'] ?? '';
+            foreach (explode(' ', $this->normalizeForSearch((string) $label)) as $et) {
+                if (strlen($et) >= 3) {
+                    $entityTokens[$et] = true;
+                }
+            }
+        }
+        if (!empty($entities['requested_company_name'])) {
+            foreach (explode(' ', $this->normalizeForSearch((string) $entities['requested_company_name'])) as $et) {
+                if (strlen($et) >= 3) {
+                    $entityTokens[$et] = true;
+                }
+            }
+        }
+        if (!empty($entities['requested_user_name'])) {
+            foreach (explode(' ', $this->normalizeForSearch((string) $entities['requested_user_name'])) as $et) {
+                if (strlen($et) >= 3) {
+                    $entityTokens[$et] = true;
+                }
+            }
+        }
+
+        $meaningfulTokens = [];
+        foreach (explode(' ', $norm) as $tok) {
+            if (strlen($tok) < 3 || is_numeric($tok)) {
+                continue;
+            }
+            if (in_array($tok, $functionalStop, true)) {
+                continue;
+            }
+            $meaningfulTokens[] = $tok;
+        }
+        $meaningfulTokens = array_values(array_unique($meaningfulTokens));
+        $meaningfulCount  = count($meaningfulTokens);
+        $explainedCount   = 0;
+
+        foreach ($meaningfulTokens as $mt) {
+            if (in_array($mt, $provisVocab, true) || isset($entityTokens[$mt])) {
+                $explainedCount++;
+                continue;
+            }
+            // Also count stemmed base or Levenshtein-1 match against PROVIS vocab
+            $base = preg_replace('/(nya|ku|mu|kah|lah|kan|an)$/u', '', $mt) ?? $mt;
+            if (strlen($base) >= 3 && (in_array($base, $provisVocab, true) || isset($entityTokens[$base]))) {
+                $explainedCount++;
+                continue;
+            }
+            foreach ($provisVocab as $pv) {
+                if (strlen($pv) >= 5 && strlen($mt) >= 5 && abs(strlen($pv) - strlen($mt)) <= 1 && levenshtein($mt, $pv) <= 1) {
+                    $explainedCount++;
+                    break;
+                }
+            }
+        }
+
+        $coherenceRatio = $meaningfulCount > 0 ? round($explainedCount / $meaningfulCount, 3) : 1.0;
+        $unexplained    = $meaningfulCount - $explainedCount;
+        $isLowCoherence = ($meaningfulCount >= 4 && $coherenceRatio < 0.5 && $unexplained >= 2)
+            || ($hasIrrelevantNoise && !empty($concepts));
+
+        return [
+            'is_comparative_rank'    => $isComparativeRank,
+            'is_cross_company'       => $isCrossCompany,
+            'is_cross_project'       => $isCrossProject,
+            'has_irrelevant_noise'   => $hasIrrelevantNoise,
+            'is_low_coherence'       => $isLowCoherence,
+            'coherence_ratio'        => $coherenceRatio,
+            'meaningful_count'       => $meaningfulCount,
+            'domain_explained_count' => $explainedCount,
+        ];
+    }
+
+    /**
      * Classify user's high-level intent using weighted concept-bag scoring + question/command separation.
      */
     public function detectActionIntent(string $text, array $entities = [], array $sessionContext = []): string
     {
-        $lower    = mb_strtolower(trim($text));
-        $concepts = $entities['concepts'] ?? $this->extractSemanticConcepts($text);
-        $has      = fn(string $c): bool => !empty($concepts[$c]);
+        $lower     = mb_strtolower(trim($text));
+        $concepts  = $entities['concepts'] ?? $this->extractSemanticConcepts($text);
+        $structure = $entities['sentence_structure'] ?? $this->analyzeSentenceStructure($text, $entities);
+        $has       = fn(string $c): bool => !empty($concepts[$c]);
 
         // 0. If user has a pending confirmation and replies with confirm/cancel, handle immediately
         $confirmation = $entities['confirmation'] ?? $this->detectConfirmation($text);
@@ -2486,6 +2676,27 @@ class ProvisTokenizerService
             if ($has('ENTITY_TASK') || $has('ENTITY_BUDGET') || $has('ENTITY_SCURVE')) {
                 $scores['QUERY_COMPANIES'] -= 5;
             }
+        }
+
+        // Cross-dimensional / Multi-project / Cross-company holistic guard:
+        // Never let a single-project handler (QUERY_SCURVE, QUERY_BUDGET, QUERY_SUMMARY) hijack
+        // a full-sentence comparison like "manakah projek yang s curve nya paling baik sampai paling buruk"
+        // or "perbandingan s curve antar perusahaan". Let Deep Reasoning synthesize all records!
+        if (
+            ($structure['is_cross_company'] && ($has('ENTITY_SCURVE') || $has('ENTITY_BUDGET') || $has('ENTITY_OVERDUE') || $has('ENTITY_TASK')))
+            || (
+                ($structure['is_cross_project'] || ($structure['is_comparative_rank'] && empty($entities['matched_projects'] ?? [])))
+                && ($has('ENTITY_SCURVE') || $has('ENTITY_BUDGET'))
+            )
+        ) {
+            return 'GENERAL_QUERY';
+        }
+
+        // Anti-1-2-keyword hijack guard:
+        // If a multi-word prompt has irrelevant noise OR low full-sentence PROVIS coherence,
+        // DO NOT fire a shallow synchronous handler from 1-2 stray words — route to holistic Deep Thinking!
+        if ($structure['is_low_coherence'] || $structure['has_irrelevant_noise']) {
+            return 'GENERAL_QUERY';
         }
 
         // ── Divisions Directory & Stats ──
@@ -2745,8 +2956,11 @@ class ProvisTokenizerService
         }
 
         $hasStrongProvis = $this->hasProvisDomainSignal($text, $entities);
+        $structure       = $entities['sentence_structure'] ?? $this->analyzeSentenceStructure($text, $entities);
 
         // 2. Clearly out-of-scope (e.g. cooking, homework, personal to-do list, movies, politics, weather, trivia)
+        //    Note: If clearly out-of-scope keywords are mixed with 1-2 PROVIS keywords (noise trap),
+        //    let it fall through ONLY if long noisy mixture so Thinking Engine inspects all words first!
         if ($this->isClearlyOutOfScope($text) && !$hasStrongProvis) {
             return ['status' => 'out_of_scope', 'reason' => 'clearly_non_provis', 'ambiguous_term' => null];
         }
@@ -2755,6 +2969,7 @@ class ProvisTokenizerService
         //    When user uses ambiguous words WITHOUT specifying PROVIS Task / Project / matched entity / pinned task_id!
         $hasPinnedTask    = !empty($sessionContext['task_id']);
         $hasFollowUpIndex = !empty($entities['follow_up']['item_index']) && (!empty($sessionContext['referenced_tasks']) || !empty($sessionContext['referenced_projects']));
+        $wordCount        = count(array_filter(explode(' ', trim($lower))));
 
         if (!$hasStrongProvis && !$hasFollowUpIndex) {
             // Case 3a: Ambiguous "tugas" (could mean PROVIS Task, PROVIS Project, or personal homework/to-do list!)
@@ -2762,12 +2977,18 @@ class ProvisTokenizerService
                 return ['status' => 'ambiguous', 'reason' => 'ambiguous_tugas', 'ambiguous_term' => 'tugas'];
             }
 
-            // Case 3b: Ambiguous "pekerjaan / kerjaan / kegiatan / urusan / jadwal ini / hal ini" with no PROVIS entity
-            if (preg_match('/\b(pekerjaan|kerjaan|kegiatan|urusan|jadwal\s+ini|deadline\s+ini|hal\s+ini)\b/i', $lower) && !$hasPinnedTask) {
-                $term = preg_match('/\b(pekerjaan|kerjaan)\b/i', $lower) ? 'pekerjaan'
-                    : (preg_match('/\b(urusan)\b/i', $lower) ? 'urusan'
-                    : (preg_match('/\b(kegiatan)\b/i', $lower) ? 'kegiatan' : 'jadwal ini'));
-                return ['status' => 'ambiguous', 'reason' => 'ambiguous_work_term', 'ambiguous_term' => $term];
+            // Case 3b: Ambiguous "pekerjaan / kerjaan / kegiatan / urusan / jadwal ini / hal ini / rencana (short)" with no PROVIS entity
+            if (
+                preg_match('/\b(pekerjaan|kerjaan|kegiatan|urusan|jadwal\s+ini|deadline\s+ini|hal\s+ini)\b/i', $lower)
+                || ($wordCount <= 6 && preg_match('/\b(rencana|besok|acara)\b/i', $lower))
+            ) {
+                if (!$hasPinnedTask) {
+                    $term = preg_match('/\b(pekerjaan|kerjaan)\b/i', $lower) ? 'pekerjaan'
+                        : (preg_match('/\b(urusan)\b/i', $lower) ? 'urusan'
+                        : (preg_match('/\b(kegiatan)\b/i', $lower) ? 'kegiatan'
+                        : (preg_match('/\b(rencana)\b/i', $lower) ? 'rencana' : 'jadwal ini')));
+                    return ['status' => 'ambiguous', 'reason' => 'ambiguous_work_term', 'ambiguous_term' => $term];
+                }
             }
 
             // Case 3c: Vague deictic question ("kapan ini diselesaikan?", "kapan ini selesai?", "ini gimana?", "sudah sampai mana?")
@@ -2779,6 +3000,12 @@ class ProvisTokenizerService
             ) {
                 return ['status' => 'ambiguous', 'reason' => 'ambiguous_reference', 'ambiguous_term' => 'ini'];
             }
+        }
+
+        // Note: if sentence is longer/noisy with mixed irrelevant words + 1-2 PROVIS keywords, allow pass-through
+        // so detectActionIntent returns GENERAL_QUERY -> Async Thinking evaluates every word before answering/rejecting!
+        if ($structure['is_low_coherence'] && $hasStrongProvis) {
+            return ['status' => 'in_scope', 'reason' => 'needs_deep_holistic_analysis', 'ambiguous_term' => null];
         }
 
         return ['status' => 'in_scope', 'reason' => 'default_allow', 'ambiguous_term' => null];

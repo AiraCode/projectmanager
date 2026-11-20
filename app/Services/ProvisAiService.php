@@ -1005,7 +1005,7 @@ class ProvisAiService
                 return [
                     'content'              => $res['content'],
                     'actions'              => $res['actions'] ?? [],
-                    'resolved_intent'      => 'LEARNED_ANALYSIS',
+                    'resolved_intent'      => !empty($res['access_denied']) ? 'ACCESS_DENIED' : 'LEARNED_ANALYSIS',
                     'learned_from_memory'  => true,
                     'learned_knowledge_id' => $learned->id,
                 ];
@@ -7114,31 +7114,41 @@ class ProvisAiService
             }
         }
 
-        // 8. Concept-Bag Safety Recovery (if any core domain concept was detected, answer directly with live data!)
-        $concepts = $tokenized['concepts'] ?? $this->tokenizer->extractSemanticConcepts($prompt);
-        if (!empty($concepts['ENTITY_USER']) || !empty($concepts['ROLE_SUPERADMIN']) || !empty($concepts['ROLE_ADMIN']) || !empty($concepts['ROLE_PIC']) || !empty($concepts['ROLE_WORKER']) || !empty($concepts['ROLE_BETA'])) {
-            return $this->handleUsersQuery($user, $activeProjectId, $sessionContext, $lang, $prompt, $tokenized);
-        }
-        if (!empty($concepts['ENTITY_COMPANY'])) {
-            return $this->handleCompaniesQuery($tokenized, $user, $lang, $prompt);
-        }
-        if (!empty($concepts['ENTITY_DIVISION'])) {
-            return $this->handleDivisionsQuery($tokenized, $user, $activeProjectId, $sessionContext, $lang, $prompt);
-        }
-        if (!empty($concepts['ENTITY_BUDGET'])) {
-            return $this->handleBudgetQuery($tokenized, $user, $activeProjectId, $sessionContext, $lang);
-        }
-        if (!empty($concepts['ENTITY_SCURVE'])) {
-            return $this->handleSCurveQuery($tokenized, $user, $activeProjectId, $sessionContext, $lang);
-        }
-        if (!empty($concepts['ENTITY_TEMPLATE'])) {
-            return $this->handleTemplatesQuery($user, $lang);
-        }
-        if (!empty($concepts['ENTITY_AUDIT'])) {
-            return $this->handleAuditLogQuery($user, $lang);
-        }
-        if (!empty($concepts['ENTITY_SYSTEM'])) {
-            return $this->handleSystemOverviewQuery($user, $lang, $prompt);
+        // 8. Concept-Bag Safety Recovery: ONLY for clear, high-coherence single-topic prompts!
+        // Never allow 1-2 stray words inside comparative/cross-entity/noisy prompts to hijack Deep Thinking!
+        $concepts  = $tokenized['concepts'] ?? $this->tokenizer->extractSemanticConcepts($prompt);
+        $structure = $tokenized['sentence_structure'] ?? $this->tokenizer->analyzeSentenceStructure($prompt, $tokenized);
+        $allowConceptRecovery = !($structure['is_low_coherence'] ?? false)
+            && !($structure['has_irrelevant_noise'] ?? false)
+            && !($structure['is_cross_company'] ?? false)
+            && !(($structure['is_cross_project'] ?? false) && (!empty($concepts['ENTITY_SCURVE']) || !empty($concepts['ENTITY_BUDGET'])))
+            && !(($structure['is_comparative_rank'] ?? false) && empty($tokenized['matched_projects'] ?? []) && (!empty($concepts['ENTITY_SCURVE']) || !empty($concepts['ENTITY_BUDGET'])));
+
+        if ($allowConceptRecovery) {
+            if (!empty($concepts['ENTITY_USER']) || !empty($concepts['ROLE_SUPERADMIN']) || !empty($concepts['ROLE_ADMIN']) || !empty($concepts['ROLE_PIC']) || !empty($concepts['ROLE_WORKER']) || !empty($concepts['ROLE_BETA'])) {
+                return $this->handleUsersQuery($user, $activeProjectId, $sessionContext, $lang, $prompt, $tokenized);
+            }
+            if (!empty($concepts['ENTITY_COMPANY'])) {
+                return $this->handleCompaniesQuery($tokenized, $user, $lang, $prompt);
+            }
+            if (!empty($concepts['ENTITY_DIVISION'])) {
+                return $this->handleDivisionsQuery($tokenized, $user, $activeProjectId, $sessionContext, $lang, $prompt);
+            }
+            if (!empty($concepts['ENTITY_BUDGET'])) {
+                return $this->handleBudgetQuery($tokenized, $user, $activeProjectId, $sessionContext, $lang);
+            }
+            if (!empty($concepts['ENTITY_SCURVE'])) {
+                return $this->handleSCurveQuery($tokenized, $user, $activeProjectId, $sessionContext, $lang);
+            }
+            if (!empty($concepts['ENTITY_TEMPLATE'])) {
+                return $this->handleTemplatesQuery($user, $lang);
+            }
+            if (!empty($concepts['ENTITY_AUDIT'])) {
+                return $this->handleAuditLogQuery($user, $lang);
+            }
+            if (!empty($concepts['ENTITY_SYSTEM'])) {
+                return $this->handleSystemOverviewQuery($user, $lang, $prompt);
+            }
         }
 
         // 9. Short incomplete write verb fragments (<= 4 words, e.g. "mau bikin", "mau ubah", "ubah projek")
@@ -7167,13 +7177,18 @@ class ProvisAiService
         }
 
         // 10. PROVIS WORK SCOPE CHECK BEFORE ASYNC LEARNING:
-        // Never waste deep-learning cycles on clearly non-PROVIS chatter; if ambiguous with zero PROVIS
-        // signals & zero DB hits, ask for clarification FIRST before rejecting on the follow-up!
-        if ($this->tokenizer->isClearlyOutOfScope($prompt)) {
+        // Unmistakable standalone out-of-scope prompts reject immediately; short vague work phrases clarify first.
+        // Longer unfamiliar, noisy, or mixed-keyword questions fall through to Step 11 (AI Thinking Mode)
+        // so the user sees the AI genuinely analyze all words locally before answering or rejecting!
+        if ($this->tokenizer->isClearlyOutOfScope($prompt) && !$this->tokenizer->hasProvisDomainSignal($prompt, $tokenized)) {
             return $this->outOfScopeResponse($lang);
         }
 
-        if (!$this->tokenizer->hasProvisDomainSignal($prompt, $tokenized) && !$this->hasAccessibleDbMatch($prompt, $user)) {
+        if (
+            !$this->tokenizer->hasProvisDomainSignal($prompt, $tokenized)
+            && !$this->hasAccessibleDbMatch($prompt, $user)
+            && $wordCount <= 5
+        ) {
             return $this->askScopeClarification($prompt, ['status' => 'ambiguous', 'reason' => 'unrecognized_scope', 'ambiguous_term' => null], $lang);
         }
 

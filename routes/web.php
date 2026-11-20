@@ -246,6 +246,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/sessions', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'sessions'])->name('ai.sessions');
         Route::post('/sessions', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'createSession'])->name('ai.sessions.store');
         Route::get('/sessions/{id}', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'getSession'])->name('ai.sessions.show');
+        Route::patch('/sessions/{id}', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'updateSession'])->name('ai.sessions.update');
         Route::post('/sessions/{id}/chat', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'chat'])->name('ai.sessions.chat');
         Route::post('/chat', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'chat'])->name('ai.chat');
         Route::delete('/sessions/{id}', [\App\Http\Controllers\Ai\ProvisAiChatController::class, 'deleteSession'])->name('ai.sessions.destroy');
