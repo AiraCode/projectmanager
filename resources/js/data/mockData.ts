@@ -51,6 +51,8 @@ export interface SubSubtask {
   requires_evidence?: boolean;
   completedByName?: string | null;
   completedAt?: string | null;
+  completedDate?: string | null;
+  progressHistory?: Array<{ date: string; progress: number }>;
 }
 
 export interface SubMainJob {

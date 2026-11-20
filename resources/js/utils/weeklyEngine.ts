@@ -33,6 +33,8 @@ export interface SchedulableItem {
   finishDate: string;
   progress: number;
   actualEarned: number;
+  completedDate?: string | null;
+  progressHistory?: Array<{ date: string; progress: number }>;
 }
 
 export interface DailyPoint {
@@ -126,6 +128,8 @@ export function recalculateWeeklyData(project: Project): Project {
             finishDate: st.finishDate,
             progress: effectiveProg,
             actualEarned: 0,
+            completedDate: st.completedDate,
+            progressHistory: st.progressHistory,
           });
           hasTaskItems = true;
         }
@@ -235,6 +239,14 @@ export function recalculateWeeklyData(project: Project): Project {
   const endMs = parseUtcDate(maxDateStr);
   let rawPlanDailyCum = 0;
   let rawActDailyCum = 0;
+  const progressAtDate = new Map<string, number>();
+  const progressEventsByTask = new Map<string, Map<string, number>>();
+  schedulableItems.forEach(item => {
+    if (!item.progressHistory?.length) return;
+    const events = new Map<string, number>();
+    item.progressHistory.forEach(event => events.set(event.date, Number(event.progress)));
+    progressEventsByTask.set(item.id, events);
+  });
 
   while (curMs <= endMs && dailyData.length < 2000) {
     const curStr = formatUtcDate(curMs);
@@ -253,10 +265,28 @@ export function recalculateWeeklyData(project: Project): Project {
         if (dur > 0) dayPlanRaw += item.weight / dur;
       }
 
-      if (isPastOrToday && item.actualEarned > 0) {
+      if (isPastOrToday) {
+        const progressEvents = progressEventsByTask.get(item.id);
+        if (progressEvents) {
+          const previousProgress = progressAtDate.get(item.id) || 0;
+          const eventProgress = progressEvents.get(curStr);
+          if (eventProgress !== undefined) {
+            progressAtDate.set(item.id, eventProgress);
+          }
+          const currentProgress = progressAtDate.get(item.id) || 0;
+          dayActRaw += ((currentProgress - previousProgress) / 100) * item.weight;
+          return;
+        }
+
+        if (item.actualEarned <= 0) return;
+
         let aStart = iStartMs;
         let aEnd = iEndMs;
-        if (iEndMs <= todayMs) {
+        const completedMs = item.completedDate ? parseUtcDate(item.completedDate) : NaN;
+        if (item.progress >= 99.99 && !isNaN(completedMs) && completedMs <= todayMs) {
+          aStart = completedMs;
+          aEnd = completedMs;
+        } else if (iEndMs <= todayMs) {
           aStart = iStartMs;
           aEnd = iEndMs;
         } else if (iStartMs <= todayMs) {

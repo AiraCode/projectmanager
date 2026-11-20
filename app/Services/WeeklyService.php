@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Project;
+use App\Models\ProjectActivityLog;
 use Carbon\Carbon;
 
 class WeeklyService
@@ -17,6 +18,18 @@ class WeeklyService
         if (!$project->start || !$project->end) {
             return [];
         }
+
+        $progressHistoryByTask = ProjectActivityLog::query()
+            ->where('project_id', $project->id)
+            ->whereNotNull('wbs_id')
+            ->whereNotNull('new_progress')
+            ->orderBy('created_at')
+            ->get(['wbs_id', 'new_progress', 'created_at'])
+            ->groupBy('wbs_id')
+            ->map(fn ($logs) => $logs->map(fn ($log) => [
+                'date' => $log->created_at->toDateString(),
+                'progress' => (float) $log->new_progress,
+            ])->values()->all());
 
         $minDate = Carbon::parse($project->start);
         $maxDate = Carbon::parse($project->end);
@@ -64,6 +77,8 @@ class WeeklyService
                             'start'    => $stStart,
                             'end'      => $stEnd,
                             'progress' => $p,
+                            'completedAt' => $st->completed_at,
+                            'progressHistory' => $progressHistoryByTask->get((string) $st->id, []),
                         ];
                     }
                 }
@@ -79,6 +94,8 @@ class WeeklyService
                             'start'    => $t['start'],
                             'end'      => $t['end'],
                             'progress' => $t['progress'],
+                            'completedAt' => $t['completedAt'],
+                            'progressHistory' => $t['progressHistory'],
                         ];
                     }
                 } elseif ($smjStart && $smjEnd) {
@@ -89,6 +106,8 @@ class WeeklyService
                         'start'    => $smjStart,
                         'end'      => $smjEnd,
                         'progress' => $p,
+                        'completedAt' => null,
+                        'progressHistory' => [],
                     ];
                 }
             }
@@ -103,6 +122,8 @@ class WeeklyService
                         'start'    => $s['start'],
                         'end'      => $s['end'],
                         'progress' => $s['progress'],
+                        'completedAt' => $s['completedAt'],
+                        'progressHistory' => $s['progressHistory'],
                     ];
                 }
             } elseif ($mjStart && $mjEnd) {
@@ -113,6 +134,8 @@ class WeeklyService
                     'start'    => $mjStart,
                     'end'      => $mjEnd,
                     'progress' => $p,
+                    'completedAt' => null,
+                    'progressHistory' => [],
                 ];
             }
         }
@@ -133,7 +156,13 @@ class WeeklyService
 
             // Actual progress window bounded up to today
             if ($item['actualEarned'] > 0) {
-                if ($item['end']->lte($today)) {
+                $completedAt = $item['completedAt']
+                    ? Carbon::parse($item['completedAt'])->startOfDay()
+                    : null;
+                if ($prog >= 99.99 && $completedAt && $completedAt->lte($today)) {
+                    $aStart = $completedAt;
+                    $aEnd = $completedAt;
+                } elseif ($item['end']->lte($today)) {
                     $aStart = $item['start']->copy();
                     $aEnd = $item['end']->copy();
                 } elseif ($item['start']->lte($today)) {
@@ -160,6 +189,7 @@ class WeeklyService
         $rawCumulative = 0;
         $prevPlannedCum = 0;
         $actualCumulative = 0;
+        $previousActualCumulative = 0;
         $currentDate = Carbon::now()->startOfDay();
         $totalWeeks = count($weeks);
 
@@ -221,19 +251,28 @@ class WeeklyService
                     $effectiveEnd = $wEnd;
                 }
 
-                $weekActualRaw = 0.0;
+                $historyActualCumulative = 0.0;
+                $legacyActualCumulative = 0.0;
                 foreach ($schedulableItems as $item) {
-                    if ($item['dailyActualRate'] > 0 && $item['actStart'] && $item['actEnd']) {
-                        if ($item['actStart']->lte($effectiveEnd) && $item['actEnd']->gte($wStart)) {
-                            $overlapStart = $item['actStart']->greaterThan($wStart) ? $item['actStart'] : $wStart;
-                            $overlapEnd   = $item['actEnd']->lessThan($effectiveEnd) ? $item['actEnd'] : $effectiveEnd;
-                            $overlapDays  = max(0, $overlapStart->diffInDays($overlapEnd) + 1);
-                            $weekActualRaw += ($item['dailyActualRate'] * $overlapDays);
+                    if (!empty($item['progressHistory'])) {
+                        $progressAtEnd = 0.0;
+                        foreach ($item['progressHistory'] as $progressEvent) {
+                            if (Carbon::parse($progressEvent['date'])->gt($effectiveEnd)) {
+                                break;
+                            }
+                            $progressAtEnd = $progressEvent['progress'];
                         }
+                        $historyActualCumulative += ($progressAtEnd / 100.0) * $item['weight'];
+                    } elseif ($item['dailyActualRate'] > 0 && $item['actStart'] && $item['actEnd']
+                        && $item['actStart']->lte($effectiveEnd)) {
+                        $actualEnd = $item['actEnd']->lessThan($effectiveEnd) ? $item['actEnd'] : $effectiveEnd;
+                        $actualDays = max(0, $item['actStart']->diffInDays($actualEnd) + 1);
+                        $legacyActualCumulative += $item['dailyActualRate'] * $actualDays;
                     }
                 }
-                $actualCumulative += $weekActualRaw;
-                $actualValue = $weekActualRaw;
+                $actualCumulative = min(100.0, round($historyActualCumulative + $legacyActualCumulative, 2));
+                $actualValue = round($actualCumulative - $previousActualCumulative, 2);
+                $previousActualCumulative = $actualCumulative;
             } else {
                 $actualValue = 0.0;
             }

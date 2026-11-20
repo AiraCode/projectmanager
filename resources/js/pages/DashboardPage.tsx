@@ -95,10 +95,10 @@ export default function DashboardPage() {
   const chartStart = Math.max(0, currentWeekIdx - 10);
   const chartEnd = Math.min((p.weeklyData || []).length, currentWeekIdx + 12);
   
-  const miniChart = p.weeklyData.slice(chartStart, chartEnd).map(w => ({
+  const miniChart = p.weeklyData.slice(chartStart, chartEnd).map((w, idx) => ({
     week: `W${w.week}`,
     Planned: w.plannedCumulative,
-    Actual: w.actualCumulative > 0 ? w.actualCumulative : undefined,
+    Actual: chartStart + idx <= currentWeekIdx ? w.actualCumulative : undefined,
   }));
 
   return (

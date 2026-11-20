@@ -2476,10 +2476,22 @@ class ProjectController extends Controller
             }) : collect();
         })->keyBy(fn($item) => (string) $item->id);
 
-        $mainJobs = $p->mainWbs->sortBy('order_index')->values()->map(function ($mj, $mjIdx) use ($workerDivisionIds, $allTasksMap) {
+        $progressHistoryByTask = ProjectActivityLog::query()
+            ->where('project_id', $p->id)
+            ->whereNotNull('wbs_id')
+            ->whereNotNull('new_progress')
+            ->orderBy('created_at')
+            ->get(['wbs_id', 'new_progress', 'created_at'])
+            ->groupBy('wbs_id')
+            ->map(fn ($logs) => $logs->map(fn ($log) => [
+                'date' => $log->created_at->toDateString(),
+                'progress' => (float) $log->new_progress,
+            ])->values()->all());
+
+        $mainJobs = $p->mainWbs->sortBy('order_index')->values()->map(function ($mj, $mjIdx) use ($workerDivisionIds, $allTasksMap, $progressHistoryByTask) {
             $mjCode = (string) ($mjIdx + 1);
 
-            $subMainJobs = $mj->subWbs->sortBy('order_index')->values()->map(function ($smj, $smjIdx) use ($mjCode, $workerDivisionIds, $allTasksMap) {
+            $subMainJobs = $mj->subWbs->sortBy('order_index')->values()->map(function ($smj, $smjIdx) use ($mjCode, $workerDivisionIds, $allTasksMap, $progressHistoryByTask) {
                 $smjCode = $mjCode . '.' . ($smjIdx + 1);
 
                 $tasksQuery = $smj->wbsTasks;
@@ -2493,7 +2505,7 @@ class ProjectController extends Controller
                     });
                 }
 
-                $subtasks = $tasksQuery->sortBy('order_index')->values()->map(function ($st, $stIdx) use ($smjCode, $allTasksMap) {
+                $subtasks = $tasksQuery->sortBy('order_index')->values()->map(function ($st, $stIdx) use ($smjCode, $allTasksMap, $progressHistoryByTask) {
                     $taskDivs = $st->divisions;
                     if (($taskDivs === null || $taskDivs->isEmpty()) && $st->division) {
                         $taskDivs = collect([$st->division]);
@@ -2575,6 +2587,8 @@ class ProjectController extends Controller
                         })() : [],
                         'completedByName' => $st->completedBy ? ($st->completedBy->username ?? $st->completedBy->name) : null,
                         'completedAt'     => $st->completed_at ? $st->completed_at->format('d M Y H:i') : null,
+                        'completedDate'   => $st->completed_at ? $st->completed_at->format('Y-m-d') : null,
+                        'progressHistory' => $progressHistoryByTask->get((string) $st->id, []),
                     ];
                 })->values()->toArray();
 
