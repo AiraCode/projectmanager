@@ -8,6 +8,8 @@ use App\Services\AiPerformanceWatchdogService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class PerformanceWarningController extends Controller
 {
@@ -16,6 +18,24 @@ class PerformanceWarningController extends Controller
     public function __construct(AiPerformanceWatchdogService $watchdog)
     {
         $this->watchdog = $watchdog;
+    }
+
+    /**
+     * Render dedicated responsive AI Performance Watchdog page.
+     */
+    public function page(Request $request): Response
+    {
+        $user = $request->user();
+        $projectId = $request->query('project_id') ? (int) $request->query('project_id') : null;
+
+        // Passive throttled background check before rendering page
+        $this->watchdog->scanIfStale(120);
+
+        return Inertia::render('AiWarningsPage', [
+            'initialData'      => $this->watchdog->getWarningsForUser($user, null),
+            'initialProjectId' => $projectId,
+            'userRole'         => $user->role?->name ?? 'worker',
+        ]);
     }
 
     /**

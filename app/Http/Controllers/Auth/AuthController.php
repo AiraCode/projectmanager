@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class AuthController extends Controller
@@ -24,6 +25,7 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials)) {
             $request->session()->regenerate();
+            $request->session()->put('ai_login_session_key', (string) Str::uuid());
             
             // Redirect based on role logic
             $user = Auth::user();
@@ -63,6 +65,7 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials)) {
             $request->session()->regenerate();
+            $request->session()->put('ai_login_session_key', (string) Str::uuid());
             
             $user = Auth::user();
             $role = $user->role->name ?? '';

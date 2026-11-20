@@ -201,6 +201,13 @@ export default function PerformanceWarningBanner({
               S-Curve
             </Link>
 
+            <Link
+              href={`/ai-warnings?project_id=${primary.project_id}`}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11.5px] font-semibold bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 transition-colors"
+            >
+              All Alerts
+            </Link>
+
             {primary.status === 'active' && (
               <button
                 type="button"
@@ -260,6 +267,13 @@ export default function PerformanceWarningBanner({
               <span>{expanded ? 'Hide Details' : 'View Workers'}</span>
               {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
+            <Link
+              href={`/ai-warnings?project_id=${numericProjectId}`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-900 hover:bg-slate-800 text-white transition-colors"
+            >
+              <span>Open Full Page</span>
+              <ExternalLink size={11} />
+            </Link>
           </div>
         </div>
 

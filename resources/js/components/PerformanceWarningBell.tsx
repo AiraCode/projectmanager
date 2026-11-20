@@ -1,17 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, usePage } from '@inertiajs/react';
 import {
-  Bell,
-  AlertTriangle,
   AlertOctagon,
-  CheckCircle2,
-  RefreshCw,
-  Check,
-  ExternalLink,
-  Users,
   Building2,
-  Clock,
+  ExternalLink,
+  Layers,
   ShieldAlert,
+  TrendingDown,
+  Users,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -73,7 +70,7 @@ export interface WarningsPayload {
   monitoring: MonitoringSummary | null;
 }
 
-function getCsrfHeaders(): Record<string, string> {
+export function getCsrfHeaders(): Record<string, string> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   const metaToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
   if (metaToken) {
@@ -90,455 +87,317 @@ function getCsrfHeaders(): Record<string, string> {
   return headers;
 }
 
+/**
+ * Custom Watchdog Alert Bell SVG featuring a bold exclamation mark inside the bell body,
+ * clearly distinguishing AI Performance Watchdog alerts from standard notifications.
+ */
+function WatchdogAlertBellIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      <line x1="12" y1="6.8" x2="12" y2="11.4" strokeWidth={2.3} />
+      <circle cx="12" cy="14.2" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export default function PerformanceWarningBell() {
   const { user } = useAuth();
-  const { url } = usePage();
-  const [open, setOpen] = useState(false);
+  const { url, props } = usePage<any>();
   const [data, setData] = useState<WarningsPayload | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'personal' | 'monitoring'>('personal');
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [showCriticalPopup, setShowCriticalPopup] = useState(false);
 
   const isManagement = Boolean(user?.isSuperAdmin || user?.isAdminUtama || user?.isPIC);
+  const isSuperAdmin = Boolean(user?.isSuperAdmin);
+  const isActivePage = url.startsWith('/ai-warnings');
+  const loginSessionKey: string | null = props?.auth?.login_session_key ?? null;
 
   const fetchWarnings = useCallback(async () => {
     if (!user) return;
     try {
       const res = await fetch('/ai/warnings', {
-        credentials: 'same-origin',
         headers: { Accept: 'application/json' },
+        credentials: 'same-origin',
       });
       if (res.ok) {
         const json: WarningsPayload = await res.json();
         setData(json);
-        if (json.warnings.length === 0 && json.monitoring && json.monitoring.items.length > 0) {
-          setActiveTab('monitoring');
-        }
       }
     } catch {
-      // Ignore transient network hiccups
+      // Silently ignore network errors while polling
     }
   }, [user]);
 
   useEffect(() => {
     fetchWarnings();
+    const timer = window.setInterval(fetchWarnings, 60000);
+    const onRefresh = () => {
+      fetchWarnings();
+    };
+    window.addEventListener('provis-warnings-refresh', onRefresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('provis-warnings-refresh', onRefresh);
+    };
   }, [fetchWarnings, url]);
 
-  useEffect(() => {
-    const refreshHandler = () => fetchWarnings();
-    window.addEventListener('provis-warnings-refresh', refreshHandler);
-    const interval = window.setInterval(fetchWarnings, 60000);
-    return () => {
-      window.removeEventListener('provis-warnings-refresh', refreshHandler);
-      window.clearInterval(interval);
-    };
-  }, [fetchWarnings]);
+  // All unresolved critical alerts visible in user's scope (personal priority, then management monitoring)
+  const criticalItems = useMemo<PerformanceWarningItem[]>(() => {
+    if (!data) return [];
+    const personalCritical = (data.warnings ?? []).filter(w => w.severity === 'critical');
+    const monitoringCritical = isManagement
+      ? (data.monitoring?.items ?? []).filter(w => w.severity === 'critical')
+      : [];
 
-  useEffect(() => {
-    const handleOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    if (open) {
-      document.addEventListener('mousedown', handleOutside);
+    const merged = new Map<number, PerformanceWarningItem>();
+    for (const item of [...personalCritical, ...monitoringCritical]) {
+      merged.set(item.id, item);
     }
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, [open]);
+    return Array.from(merged.values());
+  }, [data, isManagement]);
 
-  const acknowledgeOne = async (id: number) => {
+  // Trigger dramatic Critical Pop-up ONCE per login session (re-triggers after Logout -> Login)
+  useEffect(() => {
+    if (!user || !loginSessionKey || criticalItems.length === 0) return;
+
+    const storageKey = `provis_critical_popup_seen_${user.id}`;
     try {
-      const res = await fetch(`/ai/warnings/${id}/acknowledge`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: getCsrfHeaders(),
-      });
-      if (res.ok) {
-        const json: WarningsPayload = await res.json();
-        setData(json);
-        window.dispatchEvent(new CustomEvent('provis-warnings-refresh'));
+      const seenSession = window.localStorage.getItem(storageKey);
+      if (seenSession !== loginSessionKey) {
+        window.localStorage.setItem(storageKey, loginSessionKey);
+        setShowCriticalPopup(true);
       }
     } catch {
-      // ignore
+      // Fallback if localStorage is restricted
+      setShowCriticalPopup(true);
     }
-  };
+  }, [user, loginSessionKey, criticalItems.length]);
 
-  const acknowledgeAll = async () => {
-    try {
-      const res = await fetch('/ai/warnings/acknowledge-all', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: getCsrfHeaders(),
-      });
-      if (res.ok) {
-        const json: WarningsPayload = await res.json();
-        setData(json);
-        window.dispatchEvent(new CustomEvent('provis-warnings-refresh'));
+  const dismissPopup = () => {
+    if (user && loginSessionKey) {
+      try {
+        window.localStorage.setItem(`provis_critical_popup_seen_${user.id}`, loginSessionKey);
+      } catch {
+        // Ignore
       }
-    } catch {
-      // ignore
     }
-  };
-
-  const runManualScan = async () => {
-    if (isScanning) return;
-    setIsScanning(true);
-    try {
-      const res = await fetch('/ai/warnings/scan', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-          ...getCsrfHeaders(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
-      if (res.ok) {
-        const json: WarningsPayload = await res.json();
-        setData(json);
-        window.dispatchEvent(new CustomEvent('provis-warnings-refresh'));
-      }
-    } finally {
-      setIsScanning(false);
-    }
+    setShowCriticalPopup(false);
   };
 
   if (!user) return null;
 
-  const badgeCount = data?.active_count ?? 0;
-  const personalWarnings = data?.warnings ?? [];
-  const monitoringItems = data?.monitoring?.items ?? [];
-  const hasCritical =
-    personalWarnings.some(w => w.severity === 'critical' && w.status === 'active') ||
-    monitoringItems.some(w => w.severity === 'critical' && w.status === 'active');
+  const personalVisibleCount = data?.warnings?.length ?? 0;
+  const monitoringVisibleCount = isManagement ? (data?.monitoring?.total_count ?? 0) : 0;
+  const badgeCount = isSuperAdmin
+    ? data?.monitoring?.active_count ?? 0
+    : data?.active_count ?? 0;
+
+  const hasAnyWarning =
+    badgeCount > 0 || personalVisibleCount > 0 || monitoringVisibleCount > 0;
+
+  const hasCritical = Boolean(
+    data?.warnings.some(w => w.severity === 'critical') ||
+      (isManagement && data?.monitoring?.items.some(w => w.severity === 'critical'))
+  );
+
+  // 3 distinct color states + optional active ring:
+  // 1) Critical = deep red (merah pekat)
+  // 2) Slight lag / active warning = deep yellow-amber (kuning pekat)
+  // 3) Clear / normal = soft pale amber with exclamation bell (kuning agak pudar, NEVER white/transparent)
+  const colorClasses = hasCritical
+    ? 'bg-rose-600 border-rose-700 text-white hover:bg-rose-700 shadow-sm'
+    : hasAnyWarning || badgeCount > 0
+    ? 'bg-amber-400 border-amber-500 text-amber-950 hover:bg-amber-500 shadow-xs'
+    : 'bg-amber-100/80 border-amber-300/90 text-amber-600 hover:bg-amber-200/80 hover:text-amber-700';
 
   return (
-    <div className="relative shrink-0" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => {
-          setOpen(prev => !prev);
-          if (!open) fetchWarnings();
-        }}
-        className={`relative p-2 rounded-xl border transition-all cursor-pointer shadow-2xs ${
-          badgeCount > 0
-            ? hasCritical
-              ? 'border-rose-200 bg-rose-50/80 hover:bg-rose-100/70 text-rose-700'
-              : 'border-amber-200 bg-amber-50/80 hover:bg-amber-100/70 text-amber-700'
-            : 'border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-600'
+    <>
+      <Link
+        href="/ai-warnings"
+        className={`relative flex items-center justify-center w-9 h-9 rounded-xl border transition-all duration-150 ${colorClasses} ${
+          isActivePage ? 'ring-2 ring-indigo-600 ring-offset-2' : ''
         }`}
         title={
-          badgeCount > 0
-            ? `${badgeCount} active AI timeline performance warning(s)`
-            : 'AI Timeline Performance Warnings'
+          hasCritical
+            ? `CRITICAL: ${criticalItems.length} severe timeline alert${criticalItems.length > 1 ? 's' : ''} — Open AI Watchdog`
+            : badgeCount > 0
+            ? `${badgeCount} AI performance alert${badgeCount > 1 ? 's' : ''} — Open AI Watchdog`
+            : 'AI Performance Watchdog (All timelines monitored)'
         }
-        aria-label="AI Timeline Performance Warnings"
+        aria-label="Open AI Performance Watchdog page"
       >
-        <Bell size={16} className={badgeCount > 0 ? 'animate-[wiggle_2s_ease-in-out_infinite]' : ''} />
+        <WatchdogAlertBellIcon
+          className={`w-[18px] h-[18px] ${hasCritical ? 'animate-pulse' : ''}`}
+        />
         {badgeCount > 0 && (
           <span
-            className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold text-white flex items-center justify-center shadow-xs ${
-              hasCritical ? 'bg-rose-600' : 'bg-amber-600'
+            className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold flex items-center justify-center shadow-xs border ${
+              hasCritical
+                ? 'bg-slate-950 text-white border-rose-300'
+                : 'bg-amber-800 text-white border-amber-200'
             }`}
           >
-            {badgeCount > 9 ? '9+' : badgeCount}
+            {badgeCount > 99 ? '99+' : badgeCount}
           </span>
         )}
-      </button>
+      </Link>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-[380px] sm:w-[440px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden">
-          {/* Header */}
-          <div className="px-4 py-3 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
-                <ShieldAlert size={15} className="text-amber-300" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <h4 className="font-bold text-[13px] truncate">AI Performance Watchdog</h4>
-                  {badgeCount > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-rose-500 text-white">
-                      {badgeCount} Active
-                    </span>
-                  )}
+      {/* Urgent Critical Timeline Breach Modal (Triggered once per fresh login session) */}
+      {showCriticalPopup && criticalItems.length > 0 && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-200"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="critical-watchdog-modal-title"
+        >
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl border-2 border-rose-600 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* High-Urgency Crimson Header */}
+            <div className="bg-gradient-to-r from-rose-950 via-rose-800 to-red-700 px-5 py-4 text-white flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3.5 min-w-0">
+                <div className="w-11 h-11 rounded-xl bg-rose-500/30 border border-rose-300/40 flex items-center justify-center shrink-0 animate-pulse">
+                  <AlertOctagon size={24} className="text-rose-100" />
                 </div>
-                <p className="text-[10.5px] text-slate-300 truncate">
-                  Automated timeline &amp; worker progress monitor
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              {isManagement && (
-                <button
-                  type="button"
-                  onClick={runManualScan}
-                  disabled={isScanning}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10.5px] font-semibold bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer disabled:opacity-50"
-                  title="Run background AI scan across all active projects now"
-                >
-                  <RefreshCw size={11} className={isScanning ? 'animate-spin' : ''} />
-                  <span>{isScanning ? 'Scanning…' : 'Scan Now'}</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Role Switch Tabs (Management sees Team Monitoring + Personal if applicable) */}
-          {isManagement && (
-            <div className="px-3 pt-2.5 pb-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('monitoring')}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                    activeTab === 'monitoring'
-                      ? 'bg-indigo-600 text-white shadow-2xs'
-                      : 'text-slate-600 hover:bg-slate-200/70'
-                  }`}
-                >
-                  <Users size={12} />
-                  <span>Team Alerts ({monitoringItems.length})</span>
-                </button>
-                {personalWarnings.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('personal')}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                      activeTab === 'personal'
-                        ? 'bg-indigo-600 text-white shadow-2xs'
-                        : 'text-slate-600 hover:bg-slate-200/70'
-                    }`}
+                <div className="min-w-0">
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rose-500/30 border border-rose-300/30 text-[10.5px] font-extrabold uppercase tracking-wider text-rose-100 mb-1">
+                    <ShieldAlert size={11} />
+                    <span>Urgent AI Watchdog Alert</span>
+                  </div>
+                  <h2
+                    id="critical-watchdog-modal-title"
+                    className="text-base sm:text-lg font-extrabold tracking-tight leading-snug"
                   >
-                    My Alerts ({personalWarnings.length})
-                  </button>
-                )}
-              </div>
-
-              {data?.monitoring && (
-                <span className="text-[10px] font-medium text-slate-500">
-                  {data.monitoring.workers_warned} worker(s) · {data.monitoring.companies_affected} comp.
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Body */}
-          <div className="max-h-[410px] overflow-y-auto p-3 space-y-2.5 bg-slate-50/40">
-            {activeTab === 'monitoring' && isManagement ? (
-              monitoringItems.length === 0 ? (
-                <div className="py-8 px-4 text-center">
-                  <CheckCircle2 size={28} className="mx-auto text-emerald-500 mb-2" />
-                  <p className="text-[12.5px] font-semibold text-slate-800">All Teams On Track</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    No lagging division tasks or overdue worker alerts detected right now.
+                    Critical Timeline Breach Detected ({criticalItems.length})
+                  </h2>
+                  <p className="text-[12px] sm:text-[12.5px] text-rose-100/90 mt-0.5">
+                    Immediate action is required on the severely behind-schedule project(s) below.
                   </p>
                 </div>
-              ) : (
-                monitoringItems.map(item => {
-                  const isCritical = item.severity === 'critical';
-                  return (
-                    <div
-                      key={item.id}
-                      className={`p-3 rounded-xl bg-white border shadow-2xs space-y-2 ${
-                        isCritical ? 'border-l-4 border-l-rose-500 border-slate-200' : 'border-l-4 border-l-amber-500 border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-[12px] text-slate-900">
-                              {item.worker_name || 'Worker'}
-                            </span>
-                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                              {item.division_name}
-                            </span>
-                            <span
-                              className={`px-1.5 py-0.2 rounded text-[9.5px] font-bold ${
-                                isCritical ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
-                              }`}
-                            >
-                              {isCritical ? 'Critical' : 'Warning'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-[10.5px] text-slate-500 mt-0.5">
-                            <Building2 size={10} />
-                            <span className="truncate font-medium">{item.company_name}</span>
-                            <span>·</span>
-                            <span className="truncate">{item.project_title}</span>
-                          </div>
-                        </div>
-                        <Link
-                          href={`/tasks?project_id=${item.project_id}`}
-                          onClick={() => setOpen(false)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 shrink-0"
-                          title="Open Project Tasks"
-                        >
-                          <ExternalLink size={12} />
-                        </Link>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10.5px]">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
-                          Actual: {item.actual_progress}%
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-semibold">
-                          Expected: {item.expected_progress}%
-                        </span>
-                        {item.overdue_count > 0 && (
-                          <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-semibold">
-                            {item.overdue_count} Overdue
-                          </span>
-                        )}
-                        {item.delay_days > 0 && (
-                          <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
-                            +{item.delay_days}d Late
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-[11.5px] text-slate-600 leading-snug">{item.message}</p>
-                    </div>
-                  );
-                })
-              )
-            ) : personalWarnings.length === 0 ? (
-              <div className="py-8 px-4 text-center">
-                <CheckCircle2 size={28} className="mx-auto text-emerald-500 mb-2" />
-                <p className="text-[12.5px] font-semibold text-slate-800">Great Job! Progress Is On Track</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  No timeline delays detected on your assigned project tasks.
-                </p>
               </div>
-            ) : (
-              <>
-                {(data?.personal_active_count ?? 0) > 1 && (
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={acknowledgeAll}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
-                    >
-                      <Check size={12} /> Mark All Read
-                    </button>
-                  </div>
-                )}
 
-                {personalWarnings.map(w => {
-                  const isCritical = w.severity === 'critical';
-                  const isAck = w.status === 'acknowledged';
-                  return (
-                    <div
-                      key={w.id}
-                      className={`p-3 rounded-xl bg-white border shadow-2xs space-y-2 ${
-                        isCritical
-                          ? 'border-l-4 border-l-rose-500 border-slate-200'
-                          : 'border-l-4 border-l-amber-500 border-slate-200'
-                      } ${isAck ? 'opacity-80' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2 min-w-0">
-                          {isCritical ? (
-                            <AlertOctagon size={15} className="text-rose-600 shrink-0 mt-0.5" />
-                          ) : (
-                            <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
-                          )}
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-[12px] text-slate-900 truncate">
-                                {w.project_title}
-                              </span>
-                              <span
-                                className={`px-1.5 py-0.2 rounded text-[9.5px] font-bold ${
-                                  isCritical
-                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
-                                }`}
-                              >
-                                {isCritical ? 'Critical' : 'Warning'}
-                              </span>
-                              {isAck && (
-                                <span className="px-1.5 py-0.2 rounded text-[9.5px] font-semibold bg-slate-100 text-slate-500">
-                                  Read
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[10.5px] text-slate-500 mt-0.5">
-                              {w.company_name} · Division: <strong>{w.division_name}</strong>
-                            </p>
-                          </div>
+              <button
+                type="button"
+                onClick={dismissPopup}
+                className="p-1.5 rounded-lg text-rose-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                aria-label="Close critical alert modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Scrollable Critical Items Body */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-3 bg-rose-50/40">
+              {criticalItems.slice(0, 3).map(item => (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-xl border border-rose-200 border-l-4 border-l-rose-600 p-4 shadow-2xs space-y-2.5"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                    <div className="min-w-0">
+                      {isManagement && item.worker_name && (
+                        <div className="inline-flex items-center gap-1.5 text-[12px] font-bold text-rose-700 mb-1">
+                          <Users size={13} />
+                          <span>{item.worker_name}</span>
                         </div>
-                      </div>
-
-                      <p className="text-[11.5px] text-slate-700 leading-relaxed">{w.message}</p>
-
-                      {/* Progress Comparison Bar */}
-                      <div className="bg-slate-50 rounded-lg p-2 border border-slate-200/80 space-y-1">
-                        <div className="flex items-center justify-between text-[10.5px] font-semibold">
-                          <span className="text-slate-600">
-                            Actual Progress: <strong className="text-slate-900">{w.actual_progress}%</strong>
-                          </span>
-                          <span className="text-indigo-700">
-                            Timeline Target: <strong>{w.expected_progress}%</strong>
-                          </span>
-                        </div>
-                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden relative">
-                          <div
-                            className="h-full bg-indigo-200 absolute left-0 top-0"
-                            style={{ width: `${Math.min(100, w.expected_progress)}%` }}
-                          />
-                          <div
-                            className={`h-full relative z-10 rounded-full ${
-                              isCritical ? 'bg-rose-500' : 'bg-amber-500'
-                            }`}
-                            style={{ width: `${Math.min(100, w.actual_progress)}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1">
-                        <Link
-                          href={`/tasks?project_id=${w.project_id}`}
-                          onClick={() => setOpen(false)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
-                        >
-                          <span>Update Tasks</span>
-                          <ExternalLink size={11} />
-                        </Link>
-
-                        {!isAck && (
-                          <button
-                            type="button"
-                            onClick={() => acknowledgeOne(w.id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
-                          >
-                            <Check size={11} />
-                            <span>Got it</span>
-                          </button>
-                        )}
+                      )}
+                      <h3 className="text-[14px] font-bold text-slate-900 leading-snug">
+                        {item.project_title}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-slate-600 mt-1">
+                        <span className="inline-flex items-center gap-1 font-medium">
+                          <Building2 size={12} className="text-slate-400" />
+                          <span>{item.company_name}</span>
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 text-rose-700 font-semibold">
+                          <Layers size={11} />
+                          <span>{item.division_name}</span>
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
-              </>
-            )}
-          </div>
 
-          {/* Footer */}
-          <div className="px-3.5 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500">
-            <span className="inline-flex items-center gap-1">
-              <Clock size={10} />
-              Auto-resolves once progress catches up
-            </span>
-            {(data?.resolved_recent_count ?? 0) > 0 && (
-              <span className="text-emerald-600 font-semibold">
-                {data?.resolved_recent_count} resolved this week
-              </span>
-            )}
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-600 text-white text-[10.5px] font-extrabold uppercase tracking-wide shrink-0 self-start">
+                      Critical
+                    </span>
+                  </div>
+
+                  {/* Critical Metrics Strip */}
+                  <div className="flex flex-wrap items-center gap-2 text-[11.5px]">
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold">
+                      Actual: {Math.round(item.actual_progress)}%
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-800 font-bold">
+                      Expected: {Math.round(item.expected_progress)}%
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-extrabold">
+                      <TrendingDown size={12} />
+                      <span>Gap {item.timeline_gap}%</span>
+                    </span>
+                    {item.overdue_count > 0 && (
+                      <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white font-bold">
+                        {item.overdue_count} Overdue
+                      </span>
+                    )}
+                    {item.delay_days > 0 && (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-bold">
+                        +{item.delay_days}d Delay
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-[12.5px] text-slate-700 leading-relaxed">{item.message}</p>
+
+                  <div className="pt-1 flex flex-wrap items-center justify-end gap-2">
+                    <Link
+                      href={`/tasks?project_id=${item.project_id}`}
+                      onClick={dismissPopup}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-rose-600 hover:bg-rose-700 text-white transition-colors"
+                    >
+                      <span>Resolve Tasks Now</span>
+                      <ExternalLink size={12} />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+
+              {criticalItems.length > 3 && (
+                <div className="text-center text-[12px] font-semibold text-rose-700 pt-1">
+                  +{criticalItems.length - 3} more critical alert(s) awaiting review on the Watchdog page.
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3.5 bg-white border-t border-rose-100 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2.5">
+              <button
+                type="button"
+                onClick={dismissPopup}
+                className="px-4 py-2 rounded-xl text-[12.5px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 transition-colors cursor-pointer"
+              >
+                Dismiss for This Session
+              </button>
+
+              <Link
+                href="/ai-warnings"
+                onClick={dismissPopup}
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl text-[13px] font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition-colors"
+              >
+                <ShieldAlert size={15} />
+                <span>Open AI Watchdog Center</span>
+              </Link>
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -255,6 +255,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // ── Background AI Performance Watchdog Warnings (Accessible to ALL authenticated roles) ──
+    Route::get('/ai-warnings', [\App\Http\Controllers\Ai\PerformanceWarningController::class, 'page'])->name('ai.warnings.page');
     Route::prefix('ai/warnings')->group(function () {
         Route::get('/', [\App\Http\Controllers\Ai\PerformanceWarningController::class, 'index'])->name('ai.warnings.index');
         Route::post('/scan', [\App\Http\Controllers\Ai\PerformanceWarningController::class, 'scan'])->name('ai.warnings.scan');

@@ -69,6 +69,9 @@ class HandleInertiaRequests extends Middleware
                 'error'   => fn () => $request->session()->get('error'),
             ],
             'auth' => [
+                'login_session_key' => $user
+                    ? ($request->session()->get('ai_login_session_key') ?: $request->session()->getId())
+                    : null,
                 'user' => $user ? [
                     'id'               => $user->id,
                     'name'             => $user->username ?? $user->name ?? 'User',
